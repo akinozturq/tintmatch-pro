@@ -74,11 +74,16 @@ TintMatch PRO, endüstriyel laboratuvar cihazlarının estetiğini yansıtan, di
    - 4 Adımlı akış: RM400 Veri Yükleme $\rightarrow$ Baz Boya Tanımlama $\rightarrow$ Seyreltme Serisi $\rightarrow$ Çift Sabitli K-M Çözümleme.
    - Dahili endüstriyel veri setleri (Phthalo Green PG7, Iron Oxide Red PR101, Phthalo Blue PB15:3).
    - Geri tahmin artık değer (residuals) tablosu ve otomatik kalite onayı.
-3. **Canlı Reçete Simülatörü & Auto-Match CCM:**
+3. **Canlı Reçete Simülatörü & Auto-Match CCM 2.0:**
    - Pasta oranlarını değiştiren ince kaydırıcılar (sliders) ve canlı renk kutucuğu.
-   - **Auto-Match CCM:** Hedef renk spektrumuna göre Non-Negative Least Squares (NNLS) ve L-BFGS-B ile en uygun pigment kombinasyonunu ve konsantrasyonları çözen otomatik reçete motoru.
+   - **Auto-Match CCM 2.0:** Hedef spektruma göre SLSQP kısıt motoruyla $\sum c_i \le \text{max\_total\_load}$ şartını kesin olarak sağlayan, 3 bağımsız optimizasyon profili türeten motor:
+     - **Reçete A (Color Match):** En yüksek D65 günışığı kolorimetrik uyumu ($\Delta E_{00} \le 0.50$).
+     - **Reçete B (Light Stability):** DIN 6172 / ASTM E805 bileşik metamerizm ($MI_{\text{composite}}$) ceza ağırlıklı formülasyon.
+     - **Reçete C (Economy / Low Load):** Toplam pigment yükünü minimize eden formülasyon.
+   - **What-If Pigment Duyarlılık Matrisi:** Her pigment için $\frac{\partial \Delta E_{00}}{\partial c}, \frac{\partial L^*}{\partial c}, \frac{\partial a^*}{\partial c}, \frac{\partial b^*}{\partial c}$ kısmi türevleri ve formülatör tavsiyeleri.
+   - **SLSQP Çözücü Teşhisi:** `OPTIMAL_CONVERGED`, kütle marjı, SHA-256 hesaplama hash izlenebilirliği.
 4. **ISO 18314 Onay Sertifikası & Dışa Aktarım:**
-   - Resmi laboratuvar onay belgesi, yazıcı/PDF çıktısı ve 31-kanal birim $K(\lambda), S(\lambda), (K/S)(\lambda)$ matrisini CSV olarak indirme.
+   - ISO 18314-1/2 hesaplama metodolojisine uygunluk doğrulama raporu, yazıcı/PDF çıktısı ve 31-kanal birim $K(\lambda), S(\lambda), (K/S)(\lambda)$ matrisini CSV olarak indirme.
 5. **Renk Bilimi & Spektrofotometri Sözlüğü:**
    - X-Rite RM400, Saunderson düzeltmesi, Kubelka-Munk, CIEDE2000, Metamerizm, Flokülasyon ve Rub-Out testleri teknik kılavuzu.
 
@@ -91,25 +96,30 @@ TintMatch PRO
 ├── backend/
 │   ├── color_engine/           # Bilimsel renk motoru
 │   │   ├── constants.py        # 31 kanal (400-700 nm), CIE 10°/2°, D65, A, F11, F2 SPDs
+│   │   ├── profiles.py         # ColorScienceProfile & OptimizationProfile (A/B/C)
+│   │   ├── quality_gate.py     # Policy-Driven Quality Gate & Yönsel artıklar
 │   │   ├── saunderson.py       # Fresnel yüzey düzeltmesi ve ters dönüşüm
 │   │   ├── kubelka_munk.py     # Çift ve tek sabitli K-M optimizasyonu, kontrast oranı
 │   │   ├── colorimetry.py      # XYZ, CIE L*a*b*, sRGB hex, CIEDE2000, Metamerizm İndeksi
-│   │   ├── formulation.py      # Reçete simülasyonu ve NNLS/L-BFGS-B Auto-Match CCM
-│   │   └── rm400_parser.py     # X-Rite RM400 CSV/TXT/XML parser & endüstriyel veri setleri
+│   │   ├── formulation.py      # CCM Engine 2.0 (SLSQP Kısıt Çözücü, 3 Profil, Duyarlılık Matrisi)
+│   │   └── rm400_parser.py     # PCHIP Normalizasyon, X-Rite RM400 CSV/TXT/XML parser
 │   ├── database/               # SQLite veritabanı katmanı
-│   │   └── db.py               # Otomatik şema kurulumu ve varsayılan veri tohumlama
+│   │   └── db.py               # Instruments, Measurements, Recipes (SHA-256 hash) ve Şema
 │   ├── routes/                 # FastAPI REST API yönlendiricileri
 │   │   ├── bases.py            # Baz boya yönetimi ve opasite denetimi
 │   │   ├── pastes.py           # Renklendirici pasta kütüphanesi
 │   │   ├── characterization.py # RM400 içe aktarım ve K-M matris türetimi
-│   │   ├── formulation.py      # Canlı reçete simülasyonu ve CCM eşleme
-│   │   └── reports.py          # ISO 18314 raporu ve CSV dışa aktarımı
-│   ├── tests/                  # Pytest kapsamlı test paketi (47 test, %90 Kapsam)
+│   │   ├── formulation.py      # Canlı reçete simülasyonu, 3-profil CCM eşleme ve profiller
+│   │   └── reports.py          # ISO 18314 metodolojik uygunluk raporu ve CSV dışa aktarımı
+│   ├── tests/                  # Pytest kapsamlı test paketi (52 test, %88 Kapsam)
+│   │   ├── data/
+│   │   │   └── regression_targets.json # Set C Deterministik 10 hedef spektrum
 │   │   ├── test_api_endpoints.py
 │   │   ├── test_color_engine.py
 │   │   ├── test_characterization_coverage.py
-│   │   └── test_matching_coverage.py
-│   └── main.py                 # FastAPI girişi ve statik React SPA sunumu
+│   │   ├── test_matching_coverage.py
+│   │   └── test_deterministic_regression.py # 10^-4 hassasiyetli regresyon testi
+│   └── main.py                 # FastAPI v2.0.0 girişi ve statik React SPA sunumu
 ├── frontend/                   # React 19 + TypeScript + Vite + Tailwind CSS SPA
 │   ├── src/
 │   │   ├── components/         # Minimalist UI bileşenleri

@@ -25,17 +25,31 @@ async def lifespan(app: FastAPI):
     yield
 
 
+import os
+
 app = FastAPI(
     title="TintMatch Pro API",
     description="B2B Spectrophotometric Colorant Paste and Base Characterization / CCM (Computer Color Matching) Web API",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
-# Enable CORS for local Vite dev server and external clients
+# Configurable CORS for enterprise deployment
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    origins = [orig.strip() for orig in allowed_origins_env.split(",") if orig.strip()]
+else:
+    origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*"
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,11 +67,13 @@ app.include_router(reports_router)
 def health_check():
     return {
         "status": "healthy",
-        "service": "TintMatch Pro CCM Engine",
-        "version": "1.0.0",
+        "service": "TintMatch Pro CCM Engine 2.0",
+        "version": "2.0.0",
         "spectral_channels": 31,
         "wavelength_range": "400-700 nm @ 10 nm",
-        "validation_standard": "CIEDE2000 ΔE00 < 0.3 (ISO 18314)"
+        "optimizer": "SLSQP Constrained Multi-Profile Optimizer",
+        "profiles": ["color_match", "light_stability", "economy"],
+        "validation_standard": "ISO 18314 Analytical Colorimetry Calculation Standards"
     }
 
 

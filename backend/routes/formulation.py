@@ -5,15 +5,17 @@ Handles live simulation of recipe sliders, instant digital color swatch updates,
 metamerism calculation, and automated color matching.
 """
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+import hashlib
 import json
 import numpy as np
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from ..database.db import get_db_connection
 from ..color_engine.constants import WAVELENGTHS
 from ..color_engine.formulation import predict_recipe, match_color_ccm
 from ..color_engine.colorimetry import reflectance_to_lab, reflectance_to_hex
+from ..color_engine.profiles import STANDARD_OPTIMIZATION_PROFILES
 
 router = APIRouter(prefix="/api/formulation", tags=["formulation"])
 
@@ -43,6 +45,7 @@ class MatchTargetRequest(BaseModel):
     max_total_load: float = Field(12.0, json_schema_extra={"example": 12.0})
     k1: float = Field(0.04, json_schema_extra={"example": 0.04})
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
+    profile_id: str | None = Field(None, description="Preferred profile: 'color_match', 'light_stability', 'economy'")
 
 
 class SaveRecipeRequest(BaseModel):
@@ -54,6 +57,9 @@ class SaveRecipeRequest(BaseModel):
     hex_color: str
     delta_e00: float | None = None
     contrast_ratio: float | None = None
+    profile_id: str | None = Field("color_match", json_schema_extra={"example": "color_match"})
+    calculation_hash: str | None = None
+    quality_gate: dict | None = None
 
 
 @router.post("/predict")
@@ -159,12 +165,33 @@ def match_color(req: MatchTargetRequest):
             max_pastes=req.max_pastes,
             max_total_load=req.max_total_load,
             k1=req.k1,
-            k2=req.k2
+            k2=req.k2,
+            profile_id=req.profile_id
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Color matching solver error: {str(e)}")
 
     return match_result
+
+
+@router.get("/profiles")
+def get_optimization_profiles():
+    """Returns standard industrial CCM optimization profiles (Color Match, Light Stability, Economy)."""
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "weights": {
+                "d65": p.weight_d65,
+                "a": p.weight_a,
+                "f11": p.weight_f11,
+                "metamerism": p.weight_metamerism,
+                "load": p.weight_load
+            }
+        }
+        for p in STANDARD_OPTIMIZATION_PROFILES
+    ]
 
 
 @router.get("/recipes")
@@ -180,18 +207,22 @@ def list_recipes():
 
     result = []
     for r in rows:
+        row_dict = dict(r)
         result.append({
-            "id": r["id"],
-            "name": r["name"],
-            "base_id": r["base_id"],
-            "base_name": r["base_name"],
-            "pastes": json.loads(r["pastes_json"]),
-            "predicted_reflectance": json.loads(r["predicted_reflectance"]),
-            "lab": json.loads(r["lab_json"]),
-            "hex_color": r["hex_color"],
-            "delta_e00": r["delta_e00"],
-            "contrast_ratio": r["contrast_ratio"],
-            "created_at": r["created_at"]
+            "id": row_dict["id"],
+            "name": row_dict["name"],
+            "base_id": row_dict["base_id"],
+            "base_name": row_dict.get("base_name"),
+            "pastes": json.loads(row_dict["pastes_json"]),
+            "predicted_reflectance": json.loads(row_dict["predicted_reflectance"]),
+            "lab": json.loads(row_dict["lab_json"]),
+            "hex_color": row_dict["hex_color"],
+            "delta_e00": row_dict["delta_e00"],
+            "contrast_ratio": row_dict["contrast_ratio"],
+            "profile_id": row_dict.get("profile_id", "color_match"),
+            "calculation_hash": row_dict.get("calculation_hash"),
+            "quality_gate": json.loads(row_dict["quality_gate_json"]) if row_dict.get("quality_gate_json") else None,
+            "created_at": row_dict["created_at"]
         })
     return result
 
@@ -200,19 +231,34 @@ def list_recipes():
 def save_recipe(req: SaveRecipeRequest):
     conn = get_db_connection()
     cur = conn.cursor()
+
+    # Calculate SHA-256 calculation hash for audit trail if not supplied
+    calc_hash = req.calculation_hash
+    if not calc_hash:
+        hash_payload = f"{req.base_id}:{json.dumps(req.pastes, sort_keys=True)}:{req.predicted_reflectance}"
+        calc_hash = hashlib.sha256(hash_payload.encode()).hexdigest()
+
+    qg_json = json.dumps(req.quality_gate) if req.quality_gate else None
+
     cur.execute("""
-    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, profile_id, quality_gate_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.name, req.base_id, json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance), json.dumps(req.lab),
-        req.hex_color, req.delta_e00, req.contrast_ratio
+        req.hex_color, req.delta_e00, req.contrast_ratio,
+        calc_hash, req.profile_id or "color_match", qg_json
     ))
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
 
-    return {"success": True, "id": new_id, "message": f"Recipe '{req.name}' saved."}
+    return {
+        "success": True,
+        "id": new_id,
+        "calculation_hash": calc_hash,
+        "message": f"Recipe '{req.name}' saved with SHA-256 calculation hash."
+    }
 
 
 @router.delete("/recipes/{recipe_id}")

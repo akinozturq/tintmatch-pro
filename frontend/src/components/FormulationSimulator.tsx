@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import type {
   BasePaint,
   ColorantPaste,
-  RecipeSimulation
+  RecipeSimulation,
+  RecipeMatch,
+  SensitivityItem
 } from '../types';
 import { predictRecipe, matchColor } from '../services/api';
 import { SpectralChart } from './SpectralChart';
@@ -10,7 +12,14 @@ import {
   RotateCcw,
   CheckCircle2,
   Wand2,
-  Sliders
+  Sliders,
+  Sparkles,
+  ShieldCheck,
+  Scale,
+  Activity,
+  AlertTriangle,
+  HelpCircle,
+  Hash
 } from 'lucide-react';
 
 interface SimulatorProps {
@@ -36,6 +45,16 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
   const [mode, setMode] = useState<'manual' | 'automatch'>('manual');
   const [targetHex, setTargetHex] = useState<string>('#2563eb');
   const [targetReflectance, setTargetReflectance] = useState<number[] | null>(null);
+
+  // 3-Recipe CCM State
+  const [allRecipes, setAllRecipes] = useState<{
+    recipe_a?: RecipeMatch;
+    recipe_b?: RecipeMatch;
+    recipe_c?: RecipeMatch;
+  } | null>(null);
+  const [activeRecipeKey, setActiveRecipeKey] = useState<'recipe_a' | 'recipe_b' | 'recipe_c'>('recipe_a');
+  const [sensitivityMatrix, setSensitivityMatrix] = useState<SensitivityItem[]>([]);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
 
   const presetTargets = [
     { name: 'RAL 5012 Işık Mavi', hex: '#2563eb' },
@@ -99,6 +118,9 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
       resetConcs[p.id] = 0.0;
     });
     setConcentrations(resetConcs);
+    setAllRecipes(null);
+    setSensitivityMatrix([]);
+    setDiagnostics(null);
   };
 
   const handleRunAutoMatch = async () => {
@@ -130,21 +152,53 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
         max_total_load: 12.0,
       });
 
+      if (matchRes.recipes) {
+        setAllRecipes(matchRes.recipes);
+      }
+
+      const activeKey = (matchRes.primary_recipe_key as 'recipe_a' | 'recipe_b' | 'recipe_c') || 'recipe_a';
+      setActiveRecipeKey(activeKey);
+
+      const targetRecipe = matchRes.recipes ? matchRes.recipes[activeKey] : null;
+
       const newConcs: Record<number, number> = {};
       pastes.forEach((p) => {
         newConcs[p.id] = 0.0;
       });
-      matchRes.matched_pastes.forEach((mp) => {
+
+      const pastesToApply = targetRecipe ? targetRecipe.matched_pastes : matchRes.matched_pastes;
+      pastesToApply.forEach((mp) => {
         newConcs[Number(mp.id)] = mp.concentration;
       });
 
       setConcentrations(newConcs);
-      setSimulation(matchRes.prediction);
+      setSimulation(targetRecipe ? targetRecipe.prediction : matchRes.prediction);
+      setSensitivityMatrix(targetRecipe?.sensitivity_matrix || matchRes.sensitivity_matrix || []);
+      setDiagnostics(targetRecipe?.diagnostics || matchRes.diagnostics || null);
     } catch (err: any) {
       setErrorMessage(err.message || 'Eşleştirme başarısız');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelectRecipe = (key: 'recipe_a' | 'recipe_b' | 'recipe_c') => {
+    if (!allRecipes || !allRecipes[key]) return;
+    setActiveRecipeKey(key);
+    const selected = allRecipes[key]!;
+
+    const newConcs: Record<number, number> = {};
+    pastes.forEach((p) => {
+      newConcs[p.id] = 0.0;
+    });
+    selected.matched_pastes.forEach((mp) => {
+      newConcs[Number(mp.id)] = mp.concentration;
+    });
+
+    setConcentrations(newConcs);
+    setSimulation(selected.prediction);
+    setSensitivityMatrix(selected.sensitivity_matrix || []);
+    setDiagnostics(selected.diagnostics || null);
   };
 
   const chartSeries = [];
@@ -174,11 +228,16 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
         <div>
-          <h2 className="text-base font-semibold text-zinc-100">
-            Canlı CCM Reçete Simülatörü & Otomasyon
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-zinc-100">
+              Canlı CCM Reçete Simülatörü & Otomasyon
+            </h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-950/70 border border-sky-800/80 text-sky-300">
+              CCM Engine 2.0 (SLSQP)
+            </span>
+          </div>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Dinamik pasta kaydırıcıları ile anlık spektrum tahmini ve otomatik renk eşleme
+            Dinamik pasta kaydırıcıları ile çoklu aydınlatıcı analizi, duyarlılık matrisi ve 3 bağımsız formülasyon profili
           </p>
         </div>
 
@@ -204,7 +263,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             }`}
           >
             <Wand2 className="h-3.5 w-3.5" />
-            <span>Auto-Match CCM</span>
+            <span>Auto-Match CCM (3 Reçete)</span>
           </button>
         </div>
       </div>
@@ -252,7 +311,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-                  Hedef Renk Seçimi
+                  Hedef Spektral Eşleme
                 </span>
                 <span className="text-xs font-mono text-zinc-300">{targetHex}</span>
               </div>
@@ -291,11 +350,83 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
                 <button
                   onClick={handleRunAutoMatch}
                   disabled={isLoading}
-                  className="px-3.5 py-1 bg-zinc-100 hover:bg-white text-zinc-900 rounded text-xs font-semibold transition-colors disabled:opacity-50"
+                  className="px-3.5 py-1 bg-zinc-100 hover:bg-white text-zinc-900 rounded text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {isLoading ? 'Çözülüyor...' : 'Eşleştir'}
+                  <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                  <span>{isLoading ? 'Hesaplanıyor...' : '3 Reçete Türet'}</span>
                 </button>
               </div>
+
+              {/* 3 Alternative Recipe Selector Cards */}
+              {allRecipes && (
+                <div className="space-y-2 pt-2 border-t border-zinc-800">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                    <span>CCM OPTİMİZASYON PROFİLLERİ</span>
+                    <span>Aktif: {activeRecipeKey.toUpperCase()}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Recipe A Card */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRecipe('recipe_a')}
+                      className={`p-2 rounded-lg border text-left transition-all ${
+                        activeRecipeKey === 'recipe_a'
+                          ? 'bg-zinc-800 border-sky-500 shadow-sm shadow-sky-950 text-zinc-100'
+                          : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete A</div>
+                      <div className="text-[9px] text-zinc-400">Color Match</div>
+                      <div className="mt-1 font-mono text-[11px] font-bold text-sky-400">
+                        ΔE {allRecipes.recipe_a?.delta_e00?.toFixed(2) || '0.00'}
+                      </div>
+                      <div className="text-[9px] font-mono text-zinc-400">
+                        %{allRecipes.recipe_a?.total_load?.toFixed(1) || '0.0'} yük
+                      </div>
+                    </button>
+
+                    {/* Recipe B Card */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRecipe('recipe_b')}
+                      className={`p-2 rounded-lg border text-left transition-all ${
+                        activeRecipeKey === 'recipe_b'
+                          ? 'bg-zinc-800 border-amber-500 shadow-sm shadow-amber-950 text-zinc-100'
+                          : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete B</div>
+                      <div className="text-[9px] text-zinc-400">Light Stability</div>
+                      <div className="mt-1 font-mono text-[11px] font-bold text-amber-400">
+                        MI {allRecipes.recipe_b?.composite_mi?.toFixed(2) || '0.00'}
+                      </div>
+                      <div className="text-[9px] font-mono text-zinc-400">
+                        ΔE {allRecipes.recipe_b?.delta_e00?.toFixed(2) || '0.00'}
+                      </div>
+                    </button>
+
+                    {/* Recipe C Card */}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRecipe('recipe_c')}
+                      className={`p-2 rounded-lg border text-left transition-all ${
+                        activeRecipeKey === 'recipe_c'
+                          ? 'bg-zinc-800 border-emerald-500 shadow-sm shadow-emerald-950 text-zinc-100'
+                          : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete C</div>
+                      <div className="text-[9px] text-zinc-400">Ekonomi / Yük</div>
+                      <div className="mt-1 font-mono text-[11px] font-bold text-emerald-400">
+                        %{allRecipes.recipe_c?.total_load?.toFixed(1) || '0.0'}
+                      </div>
+                      <div className="text-[9px] font-mono text-zinc-400">
+                        ΔE {allRecipes.recipe_c?.delta_e00?.toFixed(2) || '0.00'}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -361,7 +492,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             <div className="pt-2 border-t border-zinc-800 flex items-center justify-between text-xs font-mono">
               <span className="text-zinc-400">Toplam Pasta Oranı:</span>
               <span className="font-semibold text-zinc-200">
-                %{simulation?.total_colorant_load.toFixed(2) || '0.00'}
+                %{simulation?.total_colorant_load.toFixed(2) || '0.00'} / max %12.0
               </span>
             </div>
           </div>
@@ -441,42 +572,49 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             {/* Quality Analysis */}
             <div className="space-y-2.5">
               <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
-                Kalite & Tolerans Metrikleri
+                Kalite Gate & Tolerans Denetimi
               </span>
 
               {simulation?.comparison && (
                 <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-1 font-mono text-xs">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-zinc-400">CIEDE2000 (ΔE00):</span>
-                    <span className={`font-semibold ${simulation.comparison.delta_e00 < 0.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    <span className={`font-semibold px-1.5 py-0.2 rounded ${simulation.comparison.delta_e00 < 0.5 ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/80' : 'bg-amber-950/80 text-amber-400 border border-amber-800/80'}`}>
                       {simulation.comparison.delta_e00.toFixed(3)}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-zinc-400">
-                    <span>ΔL: {simulation.comparison.delta_L.toFixed(2)}</span>
-                    <span>ΔC: {simulation.comparison.delta_C.toFixed(2)}</span>
-                    <span>ΔH: {simulation.comparison.delta_H.toFixed(2)}</span>
+                  <div className="flex justify-between text-[10px] text-zinc-400 pt-1 border-t border-zinc-900">
+                    <span>ΔL: {simulation.comparison.delta_L > 0 ? `+${simulation.comparison.delta_L.toFixed(2)}` : simulation.comparison.delta_L.toFixed(2)}</span>
+                    <span>Δa: {simulation.comparison.delta_a > 0 ? `+${simulation.comparison.delta_a.toFixed(2)}` : simulation.comparison.delta_a.toFixed(2)}</span>
+                    <span>Δb: {simulation.comparison.delta_b > 0 ? `+${simulation.comparison.delta_b.toFixed(2)}` : simulation.comparison.delta_b.toFixed(2)}</span>
+                    <span>ΔC: {simulation.comparison.delta_C > 0 ? `+${simulation.comparison.delta_C.toFixed(2)}` : simulation.comparison.delta_C.toFixed(2)}</span>
                   </div>
                 </div>
               )}
 
+              {/* Metamerism DIN 6172 */}
               <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-1.5 font-mono text-xs">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Metamerizm İndeksi</span>
-                  <span className="text-[10px] text-emerald-400 font-medium">Uyumlu</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Metamerizm İndeksi (DIN 6172)</span>
+                  <span className="text-[10px] text-emerald-400 font-medium">
+                    {simulation?.comparison?.metamerism?.rating || 'Uyumlu'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-[10px] text-zinc-400">
-                  <div className="p-1 bg-zinc-900 rounded">
-                    <span>Akkor: MI 0.18</span>
+                  <div className="p-1 bg-zinc-900 rounded flex justify-between">
+                    <span>MI(Akkor A):</span>
+                    <span className="text-zinc-200 font-semibold">{simulation?.comparison?.metamerism?.MI_A?.toFixed(2) || '0.00'}</span>
                   </div>
-                  <div className="p-1 bg-zinc-900 rounded">
-                    <span>TL84: MI 0.14</span>
+                  <div className="p-1 bg-zinc-900 rounded flex justify-between">
+                    <span>MI(TL84 F11):</span>
+                    <span className="text-zinc-200 font-semibold">{simulation?.comparison?.metamerism?.MI_F11?.toFixed(2) || '0.00'}</span>
                   </div>
                 </div>
               </div>
 
+              {/* Contrast Ratio */}
               <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400">Kontrast Oranı:</span>
+                <span className="text-zinc-400">Kontrast / Örtücülük:</span>
                 <span className="text-emerald-400 font-medium flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" />
                   %{simulation?.contrast_ratio.toFixed(1) || '98.5'} (Opak)
@@ -484,6 +622,97 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Solver Diagnostics Card */}
+          {diagnostics && (
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3.5 text-xs font-mono space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-3.5 w-3.5 text-sky-400" />
+                  <span className="text-zinc-300 font-medium text-[11px]">SLSQP Çözücü Teşhisi</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  diagnostics.success ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
+                }`}>
+                  {diagnostics.success ? 'OPTIMAL_CONVERGED' : 'FEASIBLE_LOCAL_MIN'}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-[10px] text-zinc-400 pt-1 border-t border-zinc-800/80">
+                <div>
+                  <span className="block text-zinc-500">İterasyon:</span>
+                  <span className="text-zinc-200">{diagnostics.iterations}</span>
+                </div>
+                <div>
+                  <span className="block text-zinc-500">Fonksiyon Çağrısı:</span>
+                  <span className="text-zinc-200">{diagnostics.function_evaluations}</span>
+                </div>
+                <div>
+                  <span className="block text-zinc-500">Kütle Marjı:</span>
+                  <span className="text-zinc-200">+{diagnostics.constraint_slack?.toFixed(2)}%</span>
+                </div>
+                <div>
+                  <span className="block text-zinc-500">Son Kayıp:</span>
+                  <span className="text-zinc-200">{diagnostics.final_loss?.toFixed(4)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Analytical Sensitivity Matrix Table */}
+          {sensitivityMatrix && sensitivityMatrix.length > 0 && (
+            <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Scale className="h-4 w-4 text-amber-400" />
+                  <span className="text-xs font-semibold text-zinc-200">
+                    Pigment Duyarlılık Matrisi (What-If Kısmi Türevleri)
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400">Δc = +0.05% simülasyonu</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-[10px] text-zinc-400">
+                      <th className="pb-1.5 font-medium">Pasta</th>
+                      <th className="pb-1.5 font-medium text-right">Oran</th>
+                      <th className="pb-1.5 font-medium text-right">∂ΔE00/∂c</th>
+                      <th className="pb-1.5 font-medium text-right">∂L*/∂c</th>
+                      <th className="pb-1.5 font-medium text-right">∂a*/∂c</th>
+                      <th className="pb-1.5 font-medium text-right">∂b*/∂c</th>
+                      <th className="pb-1.5 font-medium text-right">Öneri & Etki</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60 text-[11px]">
+                    {sensitivityMatrix.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-zinc-800/30">
+                        <td className="py-1.5 text-zinc-200 font-medium">{item.name}</td>
+                        <td className="py-1.5 text-right text-zinc-300">%{item.concentration.toFixed(2)}</td>
+                        <td className="py-1.5 text-right font-semibold text-sky-400">
+                          {item.d_de00_dc > 0 ? `+${item.d_de00_dc.toFixed(2)}` : item.d_de00_dc.toFixed(2)}
+                        </td>
+                        <td className={`py-1.5 text-right ${item.d_L_dc < 0 ? 'text-zinc-400' : 'text-zinc-300'}`}>
+                          {item.d_L_dc > 0 ? `+${item.d_L_dc.toFixed(2)}` : item.d_L_dc.toFixed(2)}
+                        </td>
+                        <td className={`py-1.5 text-right ${item.d_a_dc > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {item.d_a_dc > 0 ? `+${item.d_a_dc.toFixed(2)}` : item.d_a_dc.toFixed(2)}
+                        </td>
+                        <td className={`py-1.5 text-right ${item.d_b_dc > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                          {item.d_b_dc > 0 ? `+${item.d_b_dc.toFixed(2)}` : item.d_b_dc.toFixed(2)}
+                        </td>
+                        <td className="py-1.5 text-right text-[10px] text-zinc-400">
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800">
+                            {item.interpretation}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -146,3 +146,95 @@ export interface Iso18314Report {
     unit_ks: number[];
   };
 }
+
+export interface SensitivityItem {
+  paste_id: number | string;
+  name: string;
+  code: string;
+  concentration: number;
+  d_de00_dc: number;
+  d_L_dc: number;
+  d_a_dc: number;
+  d_b_dc: number;
+  d_C_dc: number;
+  d_H_dc: number;
+  interpretation: string;
+}
+
+export interface OptimizationProfileInfo {
+  id: string;
+  name: string;
+  description: string;
+  weights: {
+    d65: number;
+    a: number;
+    f11: number;
+    metamerism: number;
+    load: number;
+  };
+}
+
+export interface RecipeMatch {
+  profile_id: string;
+  profile_name: string;
+  description: string;
+  matched_pastes: Array<{
+    id: number | string;
+    name: string;
+    code: string;
+    hex: string;
+    concentration: number;
+    unit_k?: number[];
+    unit_s?: number[];
+  }>;
+  prediction: RecipeSimulation;
+  delta_e00: number;
+  composite_mi: number;
+  total_load: number;
+  passed_target_threshold: boolean;
+  status: string;
+  diagnostics?: {
+    solver: string;
+    iterations: number;
+    function_evaluations: number;
+    success: boolean;
+    message: string;
+    final_loss: number;
+    constraint_slack: number;
+  };
+  sensitivity_matrix?: SensitivityItem[];
+}
+
+export interface MatchResponse {
+  matched_pastes: Array<{
+    id: number | string;
+    name: string;
+    code: string;
+    hex: string;
+    concentration: number;
+    unit_k?: number[];
+    unit_s?: number[];
+  }>;
+  prediction: RecipeSimulation;
+  delta_e00: number;
+  composite_mi: number;
+  total_colorant_load: number;
+  passed_target_threshold: boolean;
+  status: string;
+  diagnostics?: {
+    solver: string;
+    iterations: number;
+    function_evaluations: number;
+    success: boolean;
+    message: string;
+    final_loss: number;
+    constraint_slack: number;
+  };
+  sensitivity_matrix?: SensitivityItem[];
+  primary_recipe_key?: string;
+  recipes?: {
+    recipe_a: RecipeMatch;
+    recipe_b: RecipeMatch;
+    recipe_c: RecipeMatch;
+  };
+}

@@ -102,9 +102,59 @@ def init_db():
         hex_color TEXT NOT NULL,
         delta_e00 REAL,
         contrast_ratio REAL,
+        calculation_hash TEXT,
+        profile_id TEXT DEFAULT 'color_match',
+        quality_gate_json TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
+    # Instruments registry
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS instruments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'X-Rite RM400',
+        serial_number TEXT UNIQUE,
+        geometry TEXT NOT NULL DEFAULT '45°/0°',
+        aperture_mm REAL NOT NULL DEFAULT 4.0,
+        calibration_date TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Laboratory measurements archive
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS measurements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instrument_id INTEGER,
+        operator TEXT DEFAULT 'Laboratory Technician',
+        sample_name TEXT NOT NULL,
+        file_sha256 TEXT,
+        raw_content TEXT,
+        parsed_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(instrument_id) REFERENCES instruments(id)
+    );
+    """)
+
+    # Migrate recipes table columns if upgrading from existing DB
+    cur.execute("PRAGMA table_info(recipes)")
+    recipe_cols = [row[1] for row in cur.fetchall()]
+    if "calculation_hash" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN calculation_hash TEXT")
+    if "profile_id" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN profile_id TEXT DEFAULT 'color_match'")
+    if "quality_gate_json" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN quality_gate_json TEXT")
+
+    # Seed default instrument if empty
+    cur.execute("SELECT COUNT(*) FROM instruments")
+    if cur.fetchone()[0] == 0:
+        cur.execute("""
+        INSERT INTO instruments (name, model, serial_number, geometry, aperture_mm, calibration_date)
+        VALUES ('Primary Lab Spectrophotometer', 'X-Rite RM400', 'XR-RM400-08941', '45°/0° Directional', 4.0, CURRENT_TIMESTAMP)
+        """)
 
     conn.commit()
 

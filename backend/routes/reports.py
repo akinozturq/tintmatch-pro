@@ -72,7 +72,7 @@ def get_iso18314_report(char_id: int):
             "r_squared": results.get("r_squared", 0.998),
             "threshold": 0.30,
             "passed": passed,
-            "conformance_status": "CONFORMS - Production Grade CCM Certified (ΔE00 < 0.30)" if passed else "NON-CONFORMING - Calibration Refinement Required"
+            "conformance_status": "Conforms to ISO 18314-1/2 Analytical Colorimetry Calculation Standards (ΔE00 < 0.30)" if passed else "NON-CONFORMING - Calibration Refinement Required"
         },
         "back_predictions": results.get("back_predictions", []),
         "spectral_matrix": {

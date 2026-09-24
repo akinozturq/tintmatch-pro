@@ -13,7 +13,44 @@ import re
 import csv
 import xml.etree.ElementTree as ET
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 from .constants import WAVELENGTHS, N_WAVELENGTHS
+
+
+def normalize_spectral_grid(
+    wavelengths: list[float] | np.ndarray,
+    reflectances: list[float] | np.ndarray,
+    target_grid: np.ndarray = WAVELENGTHS
+) -> np.ndarray:
+    """
+    Normalizes arbitrary spectral measurement grids (e.g. 380-730 nm, 5 nm / 20 nm)
+    onto standard 400-700 nm @ 10 nm (31 points) using shape-preserving PCHIP interpolation.
+    Guarantees no Runge overshoot and bounds reflectance strictly to [0.0, 1.0].
+    """
+    wls = np.asarray(wavelengths, dtype=float)
+    refl = np.asarray(reflectances, dtype=float)
+
+    if len(wls) != len(refl):
+        raise ValueError(f"Wavelengths ({len(wls)}) and reflectances ({len(refl)}) length mismatch.")
+
+    # 1. Deduplicate & sort monotonically
+    unique_wls, indices = np.unique(wls, return_index=True)
+    sorted_refl = refl[indices]
+
+    # Handle percentage scale (0-100) vs fractional (0-1)
+    if np.nanmax(sorted_refl) > 1.5:
+        sorted_refl = sorted_refl / 100.0
+
+    # If within 400..700 already and 31 points exact, return directly
+    if len(unique_wls) == len(target_grid) and np.allclose(unique_wls, target_grid, atol=1e-2):
+        return np.clip(sorted_refl, 0.0, 1.0)
+
+    # 2. PCHIP Shape-Preserving Hermite Interpolation (extrapolate cleanly at edges)
+    pchip = PchipInterpolator(unique_wls, sorted_refl, extrapolate=True)
+    interpolated = pchip(target_grid)
+
+    # 3. Clip strictly to physical reflectance bounds [0.0, 1.0]
+    return np.clip(interpolated, 0.0, 1.0)
 
 
 def parse_rm400_content(content: str, filename: str = "") -> dict:
@@ -152,13 +189,13 @@ def _parse_tabular_text(text: str, filename: str = "") -> dict:
     for row in parsed_rows:
         try:
             val_clean = row[0].replace(",", ".")
-            val_num = int(float(val_clean))
-            if 380 <= val_num <= 750:
+            val_num = float(val_clean)
+            if 360 <= val_num <= 780:
                 first_col_wls.append(val_num)
         except Exception:
             continue
 
-    if len(first_col_wls) >= 25:
+    if len(first_col_wls) >= 15:
         # Vertical layout! First column is wavelength, subsequent columns are samples
         header_row = parsed_rows[0]
         col_names = []
@@ -183,34 +220,46 @@ def _parse_tabular_text(text: str, filename: str = "") -> dict:
             if len(row) <= 1:
                 continue
             try:
-                wl = int(float(row[0].replace(",", ".")))
-                if 400 <= wl <= 700 and wl % 10 == 0:
-                    wls_read.append(wl)
-                    for col_idx in range(n_samples):
-                        if col_idx + 1 < len(row):
-                            v_str = row[col_idx + 1].replace(",", ".")
-                            spectra[col_idx].append(float(v_str))
-                        else:
-                            spectra[col_idx].append(0.0)
+                wl = float(row[0].replace(",", "."))
+                wls_read.append(wl)
+                for col_idx in range(n_samples):
+                    if col_idx + 1 < len(row):
+                        v_str = row[col_idx + 1].replace(",", ".")
+                        spectra[col_idx].append(float(v_str))
+                    else:
+                        spectra[col_idx].append(0.0)
             except Exception:
                 continue
 
         for idx, col_name in enumerate(col_names):
-            if len(spectra[idx]) >= 31:
-                r_arr = np.array(spectra[idx][:31], dtype=float)
-                if np.max(r_arr) > 1.5:
-                    r_arr = r_arr / 100.0
-                r_arr = np.clip(r_arr, 0.0, 1.0)
+            if len(spectra[idx]) >= 15:
+                r_arr = normalize_spectral_grid(wls_read, spectra[idx])
                 samples.append({
                     "name": col_name.strip() or f"Sample {idx+1}",
                     "concentration": _extract_concentration(col_name),
                     "reflectance": [round(float(v), 5) for v in r_arr],
-                    "metadata": {"layout": "vertical_columns"}
+                    "metadata": {"layout": "vertical_columns", "interpolated": len(wls_read) != 31}
                 })
         return {"samples": samples, "format": "CSV/TXT (Vertical)", "warnings": warnings}
 
     # Layout B: Horizontal layout (one sample per line, 31 reflectance values across line)
-    for idx, row in enumerate(parsed_rows):
+    # Check if a wavelength header row exists
+    header_wls = None
+    data_rows = []
+    for row in parsed_rows:
+        row_clean = [c.replace(",", ".") for c in row]
+        floats = []
+        for c in row_clean:
+            try:
+                floats.append(float(c))
+            except ValueError:
+                pass
+        if len(floats) >= 15 and 360 <= floats[0] <= 420 and 680 <= floats[-1] <= 780:
+            header_wls = floats
+        else:
+            data_rows.append(row)
+
+    for idx, row in enumerate(data_rows):
         # Extract all floats in this row
         row_floats = []
         name_candidate = f"Sample {idx+1}"
@@ -224,16 +273,17 @@ def _parse_tabular_text(text: str, filename: str = "") -> dict:
             except ValueError:
                 pass
 
-        # Filter out wavelength headers if they appear as floats
-        if len(row_floats) >= 31:
-            # Check if this row is just the wavelengths 400, 410, ..., 700
-            if int(row_floats[0]) == 400 and int(row_floats[1]) == 410:
+        if len(row_floats) >= 15:
+            if header_wls and len(row_floats) == len(header_wls):
+                r_arr = normalize_spectral_grid(header_wls, row_floats)
+            elif len(row_floats) >= 31:
+                r_arr = np.array(row_floats[-31:], dtype=float)
+                if np.max(r_arr) > 1.5:
+                    r_arr = r_arr / 100.0
+                r_arr = np.clip(r_arr, 0.0, 1.0)
+            else:
                 continue
 
-            r_arr = np.array(row_floats[-31:], dtype=float)
-            if np.max(r_arr) > 1.5:
-                r_arr = r_arr / 100.0
-            r_arr = np.clip(r_arr, 0.0, 1.0)
             samples.append({
                 "name": name_candidate,
                 "concentration": _extract_concentration(name_candidate),

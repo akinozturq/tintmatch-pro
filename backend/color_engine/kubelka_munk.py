@@ -11,6 +11,7 @@ from scipy.optimize import minimize, nnls
 from .constants import WAVELENGTHS, N_WAVELENGTHS
 from .saunderson import saunderson_correction, inverse_saunderson
 from .colorimetry import reflectance_to_lab, ciede2000
+from .quality_gate import evaluate_quality_gate
 
 
 def reflectance_to_ks(r_internal: np.ndarray | list[float]) -> np.ndarray:
@@ -296,6 +297,11 @@ def characterize_letdown_series(
             "measured_lab": [round(float(v), 2) for v in lab_meas],
             "predicted_lab": [round(float(v), 2) for v in lab_pred],
             "delta_e00": delta_e,
+            "delta_L": diff.get("delta_L", 0.0),
+            "delta_a": diff.get("delta_a", 0.0),
+            "delta_b": diff.get("delta_b", 0.0),
+            "delta_C": diff.get("delta_C", 0.0),
+            "delta_H": diff.get("delta_H", 0.0),
             "passed": delta_e < 0.3,
             "status": "PASS (<0.3)" if delta_e < 0.3 else ("WARNING (<0.6)" if delta_e < 0.6 else "RECHECK")
         })
@@ -303,7 +309,30 @@ def characterize_letdown_series(
     mean_de00 = float(np.mean(delta_e_list))
     max_de00 = float(np.max(delta_e_list))
     r_squared = float(max(0.0, 1.0 - (total_sse / max(total_var, 1e-9))))
+    spectral_rmse = float(np.sqrt(total_sse / max(n_letdowns * N_WAVELENGTHS, 1)))
     passed_validation = mean_de00 < 0.3
+
+    # Contrast ratio of base paint
+    cr_info = calculate_opacity_contrast_ratio(base_k, base_s, thickness=100.0, k1=k1, k2=k2)
+    base_cr = cr_info["luminous_contrast_ratio"]
+
+    # Directional residuals (mean across series)
+    mean_dir_res = {
+        "delta_L": round(float(np.mean([bp["delta_L"] for bp in back_predictions])), 2),
+        "delta_a": round(float(np.mean([bp["delta_a"] for bp in back_predictions])), 2),
+        "delta_b": round(float(np.mean([bp["delta_b"] for bp in back_predictions])), 2),
+        "delta_C": round(float(np.mean([bp["delta_C"] for bp in back_predictions])), 2),
+        "delta_H": round(float(np.mean([bp["delta_H"] for bp in back_predictions])), 2)
+    }
+
+    qg_result = evaluate_quality_gate(
+        mean_de00=mean_de00,
+        max_de00=max_de00,
+        r_squared=r_squared,
+        spectral_rmse=spectral_rmse,
+        contrast_ratio=base_cr,
+        directional_residuals=mean_dir_res
+    )
 
     return {
         "unit_k": [round(float(v), 5) for v in unit_k],
@@ -313,9 +342,11 @@ def characterize_letdown_series(
         "back_predictions": back_predictions,
         "mean_delta_e00": round(mean_de00, 3),
         "max_delta_e00": round(max_de00, 3),
-        "passed_validation": passed_validation,
+        "spectral_rmse": round(spectral_rmse, 4),
+        "passed_validation": qg_result["status"] == "PASS",
         "r_squared": round(r_squared, 4),
         "validation_threshold": 0.3,
         "model_type": "Two-Constant Kubelka-Munk" if use_two_constant else "Single-Constant K/S",
-        "summary": "Industrial Validation PASSED (ΔE00 < 0.3)" if passed_validation else f"Requires Calibration Tuning (Mean ΔE00 = {mean_de00:.2f})"
+        "quality_gate": qg_result,
+        "summary": "Industrial Validation PASSED (ΔE00 < 0.3)" if qg_result["status"] == "PASS" else f"Requires Calibration Tuning (Mean ΔE00 = {mean_de00:.2f})"
     }

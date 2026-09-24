@@ -3,7 +3,9 @@ import type {
   ColorantPaste,
   CharacterizationResult,
   RecipeSimulation,
-  Iso18314Report
+  Iso18314Report,
+  MatchResponse,
+  OptimizationProfileInfo
 } from '../types';
 
 const BASE_URL = '/api';
@@ -154,6 +156,12 @@ export async function predictRecipe(payload: {
   return res.json();
 }
 
+export async function fetchOptimizationProfiles(): Promise<OptimizationProfileInfo[]> {
+  const res = await fetch(`${BASE_URL}/formulation/profiles`);
+  if (!res.ok) throw new Error('Optimizasyon profilleri alınamadı');
+  return res.json();
+}
+
 export async function matchColor(payload: {
   target_reflectance: number[];
   base_id: number;
@@ -162,21 +170,8 @@ export async function matchColor(payload: {
   max_total_load?: number;
   k1?: number;
   k2?: number;
-}): Promise<{
-  matched_pastes: Array<{
-    id: number;
-    name: string;
-    code: string;
-    hex: string;
-    concentration: number;
-    unit_k: number[];
-    unit_s: number[];
-  }>;
-  prediction: RecipeSimulation;
-  delta_e00: number | null;
-  passed_target_threshold: boolean;
-  status: string;
-}> {
+  profile_id?: string;
+}): Promise<MatchResponse> {
   const res = await fetch(`${BASE_URL}/formulation/match`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
