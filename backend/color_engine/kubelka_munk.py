@@ -193,7 +193,12 @@ def characterize_letdown_series(
     ks_meas_list = []
 
     for item in letdowns:
-        c = float(item["concentration"])
+        raw_c = item.get("concentration")
+        if raw_c is None:
+            continue
+        c = float(raw_c)
+        if c <= 0:
+            continue
         r_m = np.asarray(item["reflectance"], dtype=float)
         # Check if values are in 0..100% scale instead of 0..1
         if np.max(r_m) > 1.5:
@@ -286,7 +291,8 @@ def characterize_letdown_series(
         delta_e_list.append(delta_e)
 
         # Spectral sum of squared errors
-        sse = float(np.sum((meas_r - pred_r_meas) ** 2))
+        diff_curve = meas_r - pred_r_meas
+        sse = float(np.sum(diff_curve ** 2))
         total_sse += sse
         total_var += float(np.sum((meas_r - np.mean(meas_r)) ** 2))
 
@@ -302,6 +308,7 @@ def characterize_letdown_series(
             "delta_b": diff.get("delta_b", 0.0),
             "delta_C": diff.get("delta_C", 0.0),
             "delta_H": diff.get("delta_H", 0.0),
+            "max_residual": round(float(np.max(np.abs(diff_curve))), 4),
             "passed": delta_e < 0.3,
             "status": "PASS (<0.3)" if delta_e < 0.3 else ("WARNING (<0.6)" if delta_e < 0.6 else "RECHECK")
         })
@@ -310,7 +317,12 @@ def characterize_letdown_series(
     max_de00 = float(np.max(delta_e_list))
     r_squared = float(max(0.0, 1.0 - (total_sse / max(total_var, 1e-9))))
     spectral_rmse = float(np.sqrt(total_sse / max(n_letdowns * N_WAVELENGTHS, 1)))
-    passed_validation = mean_de00 < 0.3
+    max_spec_res = float(np.max([bp["max_residual"] for bp in back_predictions])) if back_predictions else 0.0
+
+    # Numerical conditioning & parameter identifiability
+    pos_concs = concs[concs > 0]
+    cond_index = float(np.max(pos_concs) / max(np.min(pos_concs), 1e-4)) if len(pos_concs) > 0 else 1.0
+    identifiability = "ROBUST - Well Conditioned" if n_letdowns >= 3 and cond_index <= 500.0 else ("ACCEPTABLE" if n_letdowns >= 2 else "POOR - Insufficient Letdowns")
 
     # Contrast ratio of base paint
     cr_info = calculate_opacity_contrast_ratio(base_k, base_s, thickness=100.0, k1=k1, k2=k2)
@@ -325,12 +337,15 @@ def characterize_letdown_series(
         "delta_H": round(float(np.mean([bp["delta_H"] for bp in back_predictions])), 2)
     }
 
-    qg_result = evaluate_quality_gate(
+    from .quality_gate import evaluate_characterization_gate
+    qg_result = evaluate_characterization_gate(
         mean_de00=mean_de00,
         max_de00=max_de00,
         r_squared=r_squared,
         spectral_rmse=spectral_rmse,
         contrast_ratio=base_cr,
+        letdown_count=n_letdowns,
+        max_spectral_residual=max_spec_res,
         directional_residuals=mean_dir_res
     )
 
@@ -343,10 +358,14 @@ def characterize_letdown_series(
         "mean_delta_e00": round(mean_de00, 3),
         "max_delta_e00": round(max_de00, 3),
         "spectral_rmse": round(spectral_rmse, 4),
+        "max_spectral_residual": round(max_spec_res, 4),
+        "condition_index": round(cond_index, 2),
+        "identifiability": identifiability,
         "passed_validation": qg_result["status"] == "PASS",
         "r_squared": round(r_squared, 4),
         "validation_threshold": 0.3,
         "model_type": "Two-Constant Kubelka-Munk" if use_two_constant else "Single-Constant K/S",
+        "characterization_gate": qg_result,
         "quality_gate": qg_result,
-        "summary": "Industrial Validation PASSED (ΔE00 < 0.3)" if qg_result["status"] == "PASS" else f"Requires Calibration Tuning (Mean ΔE00 = {mean_de00:.2f})"
+        "summary": "Industrial Validation PASSED (Conforms to ISO 18314 Method)" if qg_result["status"] == "PASS" else f"Calibration Refinement Required (Mean ΔE00 = {mean_de00:.2f})"
     }

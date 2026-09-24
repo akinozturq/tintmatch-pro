@@ -138,6 +138,24 @@ def init_db():
     );
     """)
 
+    # Recipe trial attempts and formulation history
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS recipe_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipe_id INTEGER,
+        attempt_number INTEGER NOT NULL DEFAULT 1,
+        pastes_json TEXT NOT NULL,
+        predicted_reflectance TEXT,
+        delta_e00 REAL,
+        composite_mi REAL,
+        total_load REAL,
+        calculation_hash TEXT,
+        operator_notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(recipe_id) REFERENCES recipes(id)
+    );
+    """)
+
     # Migrate recipes table columns if upgrading from existing DB
     cur.execute("PRAGMA table_info(recipes)")
     recipe_cols = [row[1] for row in cur.fetchall()]

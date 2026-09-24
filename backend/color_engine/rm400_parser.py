@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 from .constants import WAVELENGTHS, N_WAVELENGTHS
+from .spectrum_normalizer import normalize_spectrum
 
 
 def normalize_spectral_grid(
@@ -23,34 +24,10 @@ def normalize_spectral_grid(
     target_grid: np.ndarray = WAVELENGTHS
 ) -> np.ndarray:
     """
-    Normalizes arbitrary spectral measurement grids (e.g. 380-730 nm, 5 nm / 20 nm)
-    onto standard 400-700 nm @ 10 nm (31 points) using shape-preserving PCHIP interpolation.
-    Guarantees no Runge overshoot and bounds reflectance strictly to [0.0, 1.0].
+    Normalizes arbitrary spectral measurement grids onto standard 400-700 nm @ 10 nm (31 points).
+    Delegates to centralized spectrum_normalizer.normalize_spectrum.
     """
-    wls = np.asarray(wavelengths, dtype=float)
-    refl = np.asarray(reflectances, dtype=float)
-
-    if len(wls) != len(refl):
-        raise ValueError(f"Wavelengths ({len(wls)}) and reflectances ({len(refl)}) length mismatch.")
-
-    # 1. Deduplicate & sort monotonically
-    unique_wls, indices = np.unique(wls, return_index=True)
-    sorted_refl = refl[indices]
-
-    # Handle percentage scale (0-100) vs fractional (0-1)
-    if np.nanmax(sorted_refl) > 1.5:
-        sorted_refl = sorted_refl / 100.0
-
-    # If within 400..700 already and 31 points exact, return directly
-    if len(unique_wls) == len(target_grid) and np.allclose(unique_wls, target_grid, atol=1e-2):
-        return np.clip(sorted_refl, 0.0, 1.0)
-
-    # 2. PCHIP Shape-Preserving Hermite Interpolation (extrapolate cleanly at edges)
-    pchip = PchipInterpolator(unique_wls, sorted_refl, extrapolate=True)
-    interpolated = pchip(target_grid)
-
-    # 3. Clip strictly to physical reflectance bounds [0.0, 1.0]
-    return np.clip(interpolated, 0.0, 1.0)
+    return normalize_spectrum(reflectances=reflectances, wavelengths=wavelengths, target_grid=target_grid)
 
 
 def parse_rm400_content(content: str, filename: str = "") -> dict:

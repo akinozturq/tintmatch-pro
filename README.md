@@ -147,26 +147,46 @@ Tüm renk bilimi algoritmaları, sınır koşulları, parser değişkenleri ve A
 
 ```bash
 python -m pytest --cov=backend/color_engine --cov=backend/routes --cov-report=term-missing
+### 7. X-Rite RM400 Yerel 64-Bit Donanım Sürücüsü & Spektral Normalizasyon
+- **Doğrudan DLL Entegrasyonu:** 64-bit Python `ctypes.WinDLL` köprüsü ile `RM400.dll` doğrudan yüklenir (`Connect`, `Measure`, `GetSpectralData`, `GetCalStatus`). Harici 32-bit IPC ara katmanına gerek kalmaz.
+- **Monotonik PCHIP Spektral Normalizasyon:** Gelen tüm spektral ölçümler (380-730 nm, 5 nm, 20 nm serileri) `spectrum_normalizer.py` üzerinden fiziksel $[0.0, 1.0]$ sınırlarında enterpole edilir. Sessiz kırpma (`r[:31]`) tamamen kaldırılmıştır.
+- **İkili Quality Gate Mimarisi:**
+  - `evaluate_characterization_gate`: RMSE $\le 0.015$, $R^2 \ge 0.995$, max residual $\le 0.035$, letdown serisi $\ge 3$, koşul indeksi (condition number).
+  - `evaluate_formulation_gate`: D65 $\Delta E_{00}$, yönsel kalıntılar ($\Delta L^*, \Delta a^*, \Delta b^*, \Delta C^*, \Delta H^*$), DIN 6172 bileşik metamerizm, kütle marjı (slack $\ge 0$), SLSQP yakınsama durumu.
+- **Kanonik SHA-256 Reçete İzi & Deneme Geçmişi:** Reçetenin tüm optik parametreleri (baz K/S, Saunderson $k_1/k_2$, profil, aydınlatıcı) deterministik hashlenir ve `recipe_history` tablosunda laborant denemeleri adım adım arşivlenir.
+
+---
+
+## 🧪 Kapsamlı Otomasyon Testleri (Test Suite)
+
+```bash
+python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices
 ```
 
-```
-Name                                   Stmts   Miss  Cover   Missing
---------------------------------------------------------------------
-backend\color_engine\__init__.py           6      0   100%
-backend\color_engine\colorimetry.py      130      6    95%
-backend\color_engine\constants.py         16      0   100%
-backend\color_engine\formulation.py       96      1    99%
-backend\color_engine\kubelka_munk.py     141      5    96%
-backend\color_engine\rm400_parser.py     196     22    89%
-backend\color_engine\saunderson.py        16      1    94%
-backend\routes\characterization.py       121     12    90%
-backend\routes\formulation.py            116      2    98%
-backend\routes\reports.py                 52      2    96%
-backend\routes\pastes.py                  42     12    71%
-backend\routes\bases.py                   76     41    46%
---------------------------------------------------------------------
-TOTAL                                   1008    104    90%
-============================= 47 passed in 7.83s ==============================
+```text
+Name                                          Stmts   Miss  Cover
+-----------------------------------------------------------------
+backend\color_engine\__init__.py                  6      0   100%
+backend\color_engine\colorimetry.py             126      1    99%
+backend\color_engine\constants.py                16      0   100%
+backend\color_engine\formulation.py             228     36    84%
+backend\color_engine\kubelka_munk.py            157      7    96%
+backend\color_engine\profiles.py                 57      0   100%
+backend\color_engine\quality_gate.py             44      1    98%
+backend\color_engine\rm400_parser.py            211     27    87%
+backend\color_engine\saunderson.py               31      1    97%
+backend\color_engine\spectrum_normalizer.py      25      2    92%
+backend\devices\rm400_driver.py                 140     60    57%
+backend\routes\__init__.py                        0      0   100%
+backend\routes\bases.py                          76     41    46%
+backend\routes\characterization.py              121     12    90%
+backend\routes\formulation.py                   199      5    97%
+backend\routes\instruments.py                    50     10    80%
+backend\routes\pastes.py                         42     12    71%
+backend\routes\reports.py                        52      2    96%
+-----------------------------------------------------------------
+TOTAL                                          1581    217    86%
+============================= 65 passed in 10.33s =============================
 ```
 
 ---

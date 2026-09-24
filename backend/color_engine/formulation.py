@@ -469,6 +469,26 @@ def _optimize_single_profile(
         delta=0.05
     )
 
+    # Formulation Quality Gate Evaluation
+    from .quality_gate import evaluate_formulation_gate
+    dir_res = {
+        "delta_L": sim["comparison"].get("delta_L", 0.0),
+        "delta_a": sim["comparison"].get("delta_a", 0.0),
+        "delta_b": sim["comparison"].get("delta_b", 0.0),
+        "delta_C": sim["comparison"].get("delta_C", 0.0),
+        "delta_H": sim["comparison"].get("delta_H", 0.0),
+    } if "comparison" in sim else {}
+
+    fg_result = evaluate_formulation_gate(
+        delta_e00_d65=float(de00),
+        composite_mi=float(comp_mi),
+        total_load=float(sim["total_colorant_load"]),
+        max_total_load=max_total_load,
+        solver_status=diag_status,
+        constraint_slack=float(max_total_load - sim["total_colorant_load"]),
+        directional_residuals=dir_res
+    )
+
     return {
         "profile_id": profile.id,
         "profile_name": profile.name,
@@ -480,6 +500,8 @@ def _optimize_single_profile(
         "total_load": sim["total_colorant_load"],
         "passed_target_threshold": de00 < 0.50,
         "status": diag_status,
+        "formulation_gate": fg_result,
+        "quality_gate": fg_result,
         "diagnostics": {
             "solver": "SLSQP",
             "iterations": int(res.nit),
@@ -647,6 +669,8 @@ def match_color_ccm(
         "total_colorant_load": primary["total_load"],
         "passed_target_threshold": primary["passed_target_threshold"],
         "status": primary["status"],
+        "formulation_gate": primary.get("quality_gate"),
+        "quality_gate": primary.get("quality_gate"),
         "diagnostics": primary["diagnostics"],
         "sensitivity_matrix": primary["sensitivity_matrix"],
         "primary_recipe_key": primary_key,

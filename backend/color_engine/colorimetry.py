@@ -20,12 +20,14 @@ from .constants import (
     ILLUMINANT_F2,
     ILLUMINANTS,
 )
+from .spectrum_normalizer import normalize_spectrum
 
 
 def reflectance_to_xyz(
     reflectance: np.ndarray | list[float],
     illuminant: str = "D65",
-    observer: str = "10"
+    observer: str = "10",
+    wavelengths: list[float] | np.ndarray | None = None
 ) -> tuple[float, float, float]:
     """
     Computes CIE XYZ tristimulus values from a 31-point spectral reflectance curve (400-700 nm).
@@ -35,15 +37,7 @@ def reflectance_to_xyz(
     Y = k * sum(S * R * y_bar)
     Z = k * sum(S * R * z_bar)
     """
-    r = np.asarray(reflectance, dtype=float)
-    if len(r) != 31:
-        # Interpolate or slice to 31 points
-        if len(r) > 31:
-            r = r[:31]
-        else:
-            raise ValueError(f"Expected 31 spectral reflectance points, got {len(r)}")
-
-    r = np.clip(r, 0.0, 1.0)
+    r = normalize_spectrum(reflectance, wavelengths=wavelengths)
 
     # Select observer
     if observer == "2":

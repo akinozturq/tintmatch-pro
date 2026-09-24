@@ -8,6 +8,69 @@ Provides centralized, immutable configuration profiles:
 
 from dataclasses import dataclass
 from typing import Literal
+from .saunderson import (
+    SaundersonProfile,
+    STANDARD_SAUNDERSON_PROFILES,
+    DEFAULT_SAUNDERSON_PROFILE
+)
+
+
+@dataclass(frozen=True)
+class ToleranceProfile:
+    """Acceptance tolerance criteria distinguishing corporate/plant standards from ISO calculations."""
+    id: str
+    name: str
+    description: str
+    mean_de00_limit: float = 0.30
+    single_de00_limit: float = 0.50
+    min_r_squared: float = 0.9950
+    max_spectral_rmse: float = 0.0150
+    opacity_limit: float = 98.0
+    composite_mi_limit: float = 0.30
+
+
+TOLERANCE_STRICT_LAB = ToleranceProfile(
+    id="strict_lab",
+    name="Strict Laboratory Standard",
+    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50)",
+    mean_de00_limit=0.30,
+    single_de00_limit=0.50,
+    min_r_squared=0.9950,
+    max_spectral_rmse=0.0150,
+    opacity_limit=98.0,
+    composite_mi_limit=0.30
+)
+
+TOLERANCE_INDUSTRIAL = ToleranceProfile(
+    id="industrial",
+    name="Industrial Production Standard",
+    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80)",
+    mean_de00_limit=0.50,
+    single_de00_limit=0.80,
+    min_r_squared=0.9900,
+    max_spectral_rmse=0.0250,
+    opacity_limit=97.0,
+    composite_mi_limit=0.60
+)
+
+TOLERANCE_COMMERCIAL = ToleranceProfile(
+    id="commercial",
+    name="Commercial Tinting Standard",
+    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20)",
+    mean_de00_limit=0.80,
+    single_de00_limit=1.20,
+    min_r_squared=0.9850,
+    max_spectral_rmse=0.0350,
+    opacity_limit=96.0,
+    composite_mi_limit=0.90
+)
+
+STANDARD_TOLERANCE_PROFILES = [
+    TOLERANCE_STRICT_LAB,
+    TOLERANCE_INDUSTRIAL,
+    TOLERANCE_COMMERCIAL
+]
+DEFAULT_TOLERANCE_PROFILE = TOLERANCE_STRICT_LAB
 
 
 @dataclass(frozen=True)
@@ -26,6 +89,7 @@ class ColorScienceProfile:
     # Surface & Film Optics (Fresnel & Kubelka-Munk)
     saunderson_k1: float = 0.040   # External Fresnel reflection (n ≈ 1.5)
     saunderson_k2: float = 0.600   # Internal diffuse scattering reflection
+    saunderson_profile_id: str = "gloss"
     default_film_thickness_um: float = 100.0
     substrate_black_rg: float = 0.04
     substrate_white_rg: float = 0.82
@@ -40,6 +104,7 @@ class ColorScienceProfile:
     # Formulation match targets
     formulation_de00_target: float = 0.50
     max_total_colorant_load: float = 12.0
+    tolerance_profile_id: str = "strict_lab"
 
 
 @dataclass(frozen=True)

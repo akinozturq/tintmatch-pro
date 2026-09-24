@@ -16,6 +16,7 @@ from .routes.pastes import router as pastes_router
 from .routes.characterization import router as characterization_router
 from .routes.formulation import router as formulation_router
 from .routes.reports import router as reports_router
+from .routes.instruments import router as instruments_router
 
 
 @asynccontextmanager
@@ -61,6 +62,7 @@ app.include_router(pastes_router)
 app.include_router(characterization_router)
 app.include_router(formulation_router)
 app.include_router(reports_router)
+app.include_router(instruments_router)
 
 
 @app.get("/api/health")

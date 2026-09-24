@@ -16,7 +16,65 @@ Default coefficients for glossy industrial coating surfaces:
     k2 = 0.60 (Internal diffuse reflectance)
 """
 
+from dataclasses import dataclass
 import numpy as np
+
+
+@dataclass(frozen=True)
+class SaundersonProfile:
+    """Optical parameters for film surface Fresnel reflection and internal diffuse scattering."""
+    id: str
+    name: str
+    description: str
+    k1: float = 0.040   # External Fresnel reflection (n ≈ 1.5)
+    k2: float = 0.600   # Internal diffuse back-reflection
+    refractive_index: float = 1.50
+
+
+# Predefined industrial surface optical profiles
+SAUNDERSON_GLOSS = SaundersonProfile(
+    id="gloss",
+    name="Glossy Paint Coating (Standard)",
+    description="High-gloss industrial and architectural paint films (n ≈ 1.50, k1=0.04, k2=0.60)",
+    k1=0.040,
+    k2=0.600,
+    refractive_index=1.50
+)
+
+SAUNDERSON_SEMI_GLOSS = SaundersonProfile(
+    id="semi_gloss",
+    name="Semi-Gloss / Satin Coating",
+    description="Semi-gloss and satin architectural finishes (k1=0.030, k2=0.550)",
+    k1=0.030,
+    k2=0.550,
+    refractive_index=1.48
+)
+
+SAUNDERSON_MATTE = SaundersonProfile(
+    id="matte",
+    name="Matte / Deep Flat Coating",
+    description="Low-sheen, high-PVC matte decorative coatings with micro-roughness (k1=0.015, k2=0.400)",
+    k1=0.015,
+    k2=0.400,
+    refractive_index=1.45
+)
+
+SAUNDERSON_COIL = SaundersonProfile(
+    id="coil",
+    name="Industrial Coil / Polyester Coating",
+    description="Stoved polyester/polyurethane coil coatings on metal substrates (k1=0.045, k2=0.620)",
+    k1=0.045,
+    k2=0.620,
+    refractive_index=1.52
+)
+
+STANDARD_SAUNDERSON_PROFILES = [
+    SAUNDERSON_GLOSS,
+    SAUNDERSON_SEMI_GLOSS,
+    SAUNDERSON_MATTE,
+    SAUNDERSON_COIL
+]
+DEFAULT_SAUNDERSON_PROFILE = SAUNDERSON_GLOSS
 
 
 def saunderson_correction(

@@ -60,6 +60,23 @@ class SaveRecipeRequest(BaseModel):
     profile_id: str | None = Field("color_match", json_schema_extra={"example": "color_match"})
     calculation_hash: str | None = None
     quality_gate: dict | None = None
+    k1: float = 0.04
+    k2: float = 0.60
+    composite_mi: float | None = None
+    total_load: float | None = None
+    operator_notes: str | None = None
+
+
+class AddAttemptRequest(BaseModel):
+    pastes: list[dict]
+    predicted_reflectance: list[float] | None = None
+    delta_e00: float | None = None
+    composite_mi: float | None = None
+    total_load: float | None = None
+    k1: float = 0.04
+    k2: float = 0.60
+    profile_id: str = "color_match"
+    operator_notes: str | None = None
 
 
 @router.post("/predict")
@@ -227,18 +244,74 @@ def list_recipes():
     return result
 
 
+def compute_canonical_execution_hash(
+    base_id: int,
+    base_hash: str,
+    pastes: list[dict],
+    k1: float = 0.04,
+    k2: float = 0.60,
+    profile_id: str = "color_match",
+    total_load: float | None = None,
+    illuminant: str = "D65",
+    observer: str = "10",
+    algorithm: str = "TintMatch-CCM-2.0-SLSQP",
+) -> str:
+    """Computes a canonical SHA-256 execution context hash capturing all optical, formulation, and solver parameters."""
+    def paste_sort_key(p):
+        pid = p.get("paste_id") or p.get("id") or 0
+        pname = p.get("name") or ""
+        return (str(pid), pname)
+
+    sorted_pastes = []
+    for p in sorted(pastes, key=paste_sort_key):
+        conc = round(float(p.get("concentration", 0.0)), 6)
+        sorted_pastes.append({
+            "id": p.get("paste_id") or p.get("id"),
+            "name": p.get("name"),
+            "concentration": conc
+        })
+
+    calc_total_load = total_load if total_load is not None else sum(p["concentration"] for p in sorted_pastes)
+
+    payload = {
+        "algorithm_version": algorithm,
+        "base_hash": base_hash,
+        "base_id": base_id,
+        "illuminant": illuminant,
+        "observer": observer,
+        "pastes": sorted_pastes,
+        "profile_id": profile_id or "color_match",
+        "saunderson_k1": round(float(k1), 4),
+        "saunderson_k2": round(float(k2), 4),
+        "total_load": round(float(calc_total_load), 6),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 @router.post("/recipes")
 def save_recipe(req: SaveRecipeRequest):
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Calculate SHA-256 calculation hash for audit trail if not supplied
+    # Look up base to compute base_hash
+    base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (req.base_id,)).fetchone()
+    base_hash = hashlib.sha256(f"{base_row['absorption_k']}:{base_row['scattering_s']}".encode()).hexdigest() if base_row else "default_base"
+
+    # Compute canonical SHA-256 execution context hash
     calc_hash = req.calculation_hash
     if not calc_hash:
-        hash_payload = f"{req.base_id}:{json.dumps(req.pastes, sort_keys=True)}:{req.predicted_reflectance}"
-        calc_hash = hashlib.sha256(hash_payload.encode()).hexdigest()
+        calc_hash = compute_canonical_execution_hash(
+            base_id=req.base_id,
+            base_hash=base_hash,
+            pastes=req.pastes,
+            k1=req.k1,
+            k2=req.k2,
+            profile_id=req.profile_id or "color_match",
+            total_load=req.total_load
+        )
 
     qg_json = json.dumps(req.quality_gate) if req.quality_gate else None
+    tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
 
     cur.execute("""
     INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, profile_id, quality_gate_json)
@@ -249,15 +322,147 @@ def save_recipe(req: SaveRecipeRequest):
         req.hex_color, req.delta_e00, req.contrast_ratio,
         calc_hash, req.profile_id or "color_match", qg_json
     ))
-    conn.commit()
     new_id = cur.lastrowid
+
+    # Automatically record Attempt #1 in recipe_history
+    cur.execute("""
+    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, operator_notes)
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        new_id,
+        json.dumps(req.pastes),
+        json.dumps(req.predicted_reflectance),
+        req.delta_e00,
+        req.composite_mi,
+        tot_load,
+        calc_hash,
+        req.operator_notes or "Initial formulation match (Attempt #1)"
+    ))
+
+    conn.commit()
     conn.close()
 
     return {
         "success": True,
         "id": new_id,
         "calculation_hash": calc_hash,
-        "message": f"Recipe '{req.name}' saved with SHA-256 calculation hash."
+        "attempt_number": 1,
+        "message": f"Recipe '{req.name}' saved with canonical SHA-256 hash and attempt #1 recorded."
+    }
+
+
+@router.get("/recipes/{recipe_id}/attempts")
+def get_recipe_attempts(recipe_id: int):
+    """Fetches all formulation trial attempts for a given recipe."""
+    conn = get_db_connection()
+    recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not recipe:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Recipe {recipe_id} not found.")
+
+    rows = conn.execute("""
+        SELECT * FROM recipe_history 
+        WHERE recipe_id = ? 
+        ORDER BY attempt_number ASC
+    """, (recipe_id,)).fetchall()
+    conn.close()
+
+    attempts = []
+    for r in rows:
+        row_dict = dict(r)
+        attempts.append({
+            "id": row_dict["id"],
+            "recipe_id": row_dict["recipe_id"],
+            "attempt_number": row_dict["attempt_number"],
+            "pastes": json.loads(row_dict["pastes_json"]) if row_dict["pastes_json"] else [],
+            "predicted_reflectance": json.loads(row_dict["predicted_reflectance"]) if row_dict.get("predicted_reflectance") else None,
+            "delta_e00": row_dict["delta_e00"],
+            "composite_mi": row_dict.get("composite_mi"),
+            "total_load": row_dict.get("total_load"),
+            "calculation_hash": row_dict.get("calculation_hash"),
+            "operator_notes": row_dict.get("operator_notes"),
+            "created_at": row_dict["created_at"]
+        })
+    return {"recipe_id": recipe_id, "recipe_name": recipe["name"], "attempts": attempts}
+
+
+@router.post("/recipes/{recipe_id}/attempts")
+def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
+    """Adds a new trial attempt / correction step for an existing recipe."""
+    conn = get_db_connection()
+    recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not recipe:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Recipe {recipe_id} not found.")
+
+    base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (recipe["base_id"],)).fetchone()
+    base_hash = hashlib.sha256(f"{base_row['absorption_k']}:{base_row['scattering_s']}".encode()).hexdigest() if base_row else "default_base"
+
+    # Compute next attempt number
+    max_att = conn.execute("SELECT MAX(attempt_number) as max_att FROM recipe_history WHERE recipe_id = ?", (recipe_id,)).fetchone()
+    next_att = (max_att["max_att"] or 0) + 1
+
+    calc_hash = compute_canonical_execution_hash(
+        base_id=recipe["base_id"],
+        base_hash=base_hash,
+        pastes=req.pastes,
+        k1=req.k1,
+        k2=req.k2,
+        profile_id=req.profile_id,
+        total_load=req.total_load
+    )
+
+    tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
+
+    cur = conn.cursor()
+    cur.execute("""
+    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, operator_notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        recipe_id,
+        next_att,
+        json.dumps(req.pastes),
+        json.dumps(req.predicted_reflectance) if req.predicted_reflectance else None,
+        req.delta_e00,
+        req.composite_mi,
+        tot_load,
+        calc_hash,
+        req.operator_notes or f"Manual correction attempt #{next_att}"
+    ))
+
+    # Update latest in recipes table if predicted reflectance is provided
+    if req.predicted_reflectance:
+        lab_dict = reflectance_to_lab(req.predicted_reflectance)
+        hex_col = reflectance_to_hex(req.predicted_reflectance)
+        cur.execute("""
+        UPDATE recipes SET 
+            pastes_json = ?,
+            predicted_reflectance = ?,
+            lab_json = ?,
+            hex_color = ?,
+            delta_e00 = ?,
+            calculation_hash = ?
+        WHERE id = ?
+        """, (
+            json.dumps(req.pastes),
+            json.dumps(req.predicted_reflectance),
+            json.dumps(lab_dict),
+            hex_col,
+            req.delta_e00,
+            calc_hash,
+            recipe_id
+        ))
+
+    conn.commit()
+    new_history_id = cur.lastrowid
+    conn.close()
+
+    return {
+        "success": True,
+        "history_id": new_history_id,
+        "attempt_number": next_att,
+        "calculation_hash": calc_hash,
+        "message": f"Attempt #{next_att} recorded for recipe {recipe_id}."
     }
 
 
@@ -265,7 +470,8 @@ def save_recipe(req: SaveRecipeRequest):
 def delete_recipe(recipe_id: int):
     conn = get_db_connection()
     cur = conn.cursor()
+    cur.execute("DELETE FROM recipe_history WHERE recipe_id = ?", (recipe_id,))
     cur.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
     conn.commit()
     conn.close()
-    return {"success": True, "message": f"Recipe {recipe_id} deleted."}
+    return {"success": True, "message": f"Recipe {recipe_id} and its attempt history deleted."}
