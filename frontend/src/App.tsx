@@ -103,6 +103,7 @@ export const App: React.FC = () => {
                   loadData();
                   setActiveTab('dashboard');
                 }}
+                onOpenInstruments={() => setIsInstrumentModalOpen(true)}
               />
             )}
 

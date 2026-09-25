@@ -38,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
 
   const tabs = [
     { id: 'dashboard', label: 'Laboratuvar', icon: Layers },
-    { id: 'wizard', label: 'RM400 Karakterizasyon', icon: Wand2 },
+    { id: 'wizard', label: 'K-M Karakterizasyon', icon: Wand2 },
     { id: 'formulation', label: 'CCM Reçete', icon: Sliders },
     { id: 'report', label: 'ISO 18314 Rapor', icon: FileCheck },
     { id: 'glossary', label: 'Sözlük', icon: BookOpen },

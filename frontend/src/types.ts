@@ -35,6 +35,8 @@ export interface ColorantPaste {
 export interface Letdown {
   concentration: number;
   reflectance: number[];
+  lab?: { L: number; a: number; b: number };
+  hex?: string;
 }
 
 export interface BackPrediction {

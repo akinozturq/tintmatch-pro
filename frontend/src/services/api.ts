@@ -126,6 +126,7 @@ export async function saveCharacterization(payload: {
   k2?: number;
   instrument?: string;
   geometry?: string;
+  measurement_mode?: string;
   characterization_version?: number;
   is_simulation?: boolean;
   allow_simulation_save?: boolean;
