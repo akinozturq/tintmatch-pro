@@ -45,6 +45,165 @@ export interface BackPrediction {
   status: string;
 }
 
+export type DeviceConnectionState = 'CONNECTED_REAL' | 'CONNECTED_MOCK' | 'DISCONNECTED' | 'ERROR';
+
+export interface InstrumentItem {
+  id: number;
+  model: string;
+  serial_number: string;
+  port: string | null;
+  is_connected: boolean;
+  geometry: string;
+  aperture: string;
+  standard_observer: string;
+  standard_illuminant: string;
+  created_at: string;
+}
+
+export interface ChnspecStatusInfo {
+  instrument: string;
+  connected: boolean;
+  connection_state: DeviceConnectionState;
+  port: string | null;
+  is_mock: boolean;
+  geometry: string;
+  measurement_modes: string[];
+  native_channels: number;
+  native_range_nm: [number, number];
+  canonical_channels: number;
+  canonical_range_nm: [number, number];
+  available_ports?: Array<{
+    port: string;
+    description: string;
+    is_recommended: boolean;
+  }>;
+}
+
+export interface Rm400StatusInfo {
+  instrument: string;
+  driver_available: boolean;
+  is_mock: boolean;
+  connection_state: DeviceConnectionState;
+  dll_path: string;
+  interface_version: string;
+  connected: boolean;
+  serial_number: string;
+  calibration: {
+    calibrated: boolean;
+    timestamp?: string;
+  } | null;
+}
+
+export interface MeasurementRecord {
+  id?: number;
+  measurement_id?: number;
+  instrument?: string;
+  mode?: string;
+  geometry?: string;
+  wavelengths: number[];
+  reflectance: number[];
+  raw_reflectance?: number[];
+  lab: { L: number; a: number; b: number } | [number, number, number];
+  hex: string;
+  sci_spectrum?: number[];
+  sce_spectrum?: number[];
+  sample_name?: string;
+  timestamp?: string;
+}
+
+export interface InstrumentComparisonRequest {
+  ref_reflectance: number[];
+  target_reflectance: number[];
+  ref_geometry?: string;
+  target_geometry?: string;
+  ref_name?: string;
+  target_name?: string;
+  ref_mode?: string;
+  target_mode?: string;
+  illuminant?: string;
+  observer?: string;
+}
+
+export interface InstrumentComparisonResult {
+  success: boolean;
+  reference: {
+    instrument: string;
+    geometry: string;
+    mode: string;
+    reflectance: number[];
+    lab: { L: number; a: number; b: number };
+    hex: string;
+  };
+  target: {
+    instrument: string;
+    geometry: string;
+    mode: string;
+    reflectance: number[];
+    lab: { L: number; a: number; b: number };
+    hex: string;
+  };
+  wavelengths: number[];
+  delta_reflectance: number[];
+  statistics: {
+    mean_spectral_bias: number;
+    spectral_rmse: number;
+    max_absolute_difference: number;
+    max_difference_wavelength_nm: number;
+    pearson_r: number;
+    r_squared: number;
+  };
+  colorimetric_difference: {
+    delta_e00: number;
+    delta_L: number;
+    delta_a: number;
+    delta_b: number;
+    delta_C: number;
+    delta_H: number;
+    illuminant: string;
+    observer: string;
+  };
+  diagnostics: {
+    same_geometry: boolean;
+    agreement_classification: string;
+    notes: string[];
+  };
+}
+
+export interface LoocvFoldResult {
+  omitted_index: number;
+  omitted_concentration: number;
+  delta_e00: number;
+  predicted_lab: [number, number, number];
+  measured_lab: [number, number, number];
+}
+
+export interface LoocvResult {
+  status: 'LOOCV_EVALUATED' | 'SKIPPED_INSUFFICIENT_LETDOWNS' | 'FAILED' | string;
+  n_folds: number;
+  mean_delta_e00: number | null;
+  max_delta_e00: number | null;
+  fold_results?: LoocvFoldResult[];
+  message?: string;
+  passed?: boolean;
+}
+
+export interface QualityGateCheck {
+  metric: string;
+  label: string;
+  actual: number | string | null;
+  limit: number | string;
+  operator: string;
+  status: 'PASS' | 'WARN' | 'FAIL' | 'PARTIAL';
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+}
+
+export interface QualityGateResult {
+  status: 'PASS' | 'FAIL' | 'WARN';
+  checks: QualityGateCheck[];
+  timestamp: string;
+  score: number;
+}
+
 export interface CharacterizationResult {
   unit_k: number[];
   unit_s: number[];
@@ -58,6 +217,26 @@ export interface CharacterizationResult {
   validation_threshold: number;
   model_type: string;
   summary: string;
+  spectral_rmse?: number;
+  max_spectral_residual?: number;
+  jacobian_condition_number?: number;
+  jacobian_diagnostics?: {
+    raw_condition_number: number;
+    scaled_condition_number: number;
+    raw_condition_status: string;
+    scaled_condition_status: string;
+    is_well_conditioned: boolean;
+    message: string;
+  };
+  concentration_span_ratio?: number;
+  condition_index?: number;
+  identifiability?: string;
+  loocv?: LoocvResult;
+  loocv_mean_delta_e00?: number | null;
+  loocv_max_delta_e00?: number | null;
+  loocv_status?: string;
+  characterization_gate?: QualityGateResult;
+  quality_gate?: QualityGateResult;
 }
 
 export interface MetamerismData {

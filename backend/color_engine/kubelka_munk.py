@@ -142,16 +142,24 @@ def calculate_km_jacobian_condition(
     unit_s: np.ndarray,
     k1: float = 0.04,
     k2: float = 0.60
-) -> float:
+) -> dict:
     """
-    Computes the 2-constant Kubelka-Munk Jacobian condition number kappa(J).
+    Computes both scaled and raw 2-constant Kubelka-Munk Jacobian condition numbers.
     Evaluates J = [∂R_m/∂K_p, ∂R_m/∂S_p] across letdown concentrations and wavelengths.
+    Returns:
+        dict with 'scaled_condition_number', 'raw_condition_number', 'condition_number', and 'status'.
     """
     c_arr = np.asarray(concs, dtype=float)
     if len(c_arr) < 2:
-        return 999.0
+        return {
+            "scaled_condition_number": 999.0,
+            "raw_condition_number": 999.0,
+            "condition_number": 999.0,
+            "status": "SEVERELY_ILL_CONDITIONED"
+        }
 
-    cond_numbers = []
+    scaled_conds = []
+    raw_conds = []
     n_wl = len(base_k)
 
     for wl_idx in range(n_wl):
@@ -160,7 +168,9 @@ def calculate_km_jacobian_condition(
         uk = float(unit_k[wl_idx])
         us = float(unit_s[wl_idx])
 
-        J_wl = np.zeros((len(c_arr), 2), dtype=float)
+        J_scaled = np.zeros((len(c_arr), 2), dtype=float)
+        J_raw = np.zeros((len(c_arr), 2), dtype=float)
+
         for i, c in enumerate(c_arr):
             K = max(bk + c * uk, 1e-6)
             S = max(bs + c * us, 1e-6)
@@ -169,37 +179,104 @@ def calculate_km_jacobian_condition(
             b = np.sqrt(max(a * a - 1.0, 1e-8))
             R_i = max(a - b, 1e-6)
 
-            # dR_i / dtheta
             dRi_dtheta = 1.0 - a / b
-
-            # dR_m / dR_i
             denom = max((1.0 - k2 * R_i) ** 2, 1e-6)
             dRm_dRi = (1.0 - k1) * (1.0 - k2) / denom
-
             factor = dRm_dRi * dRi_dtheta
 
-            # dtheta / dKp = c / S
             dtheta_dKp = c / S
-            # dtheta / dSp = -c * theta / S
             dtheta_dSp = -c * theta / S
 
             scale_k = max(uk, 0.01)
             scale_s = max(us, 0.01)
 
-            J_wl[i, 0] = factor * dtheta_dKp * scale_k
-            J_wl[i, 1] = factor * dtheta_dSp * scale_s
+            J_raw[i, 0] = factor * dtheta_dKp
+            J_raw[i, 1] = factor * dtheta_dSp
+
+            J_scaled[i, 0] = factor * dtheta_dKp * scale_k
+            J_scaled[i, 1] = factor * dtheta_dSp * scale_s
 
         try:
-            cond = np.linalg.cond(J_wl)
-            if not np.isnan(cond) and not np.isinf(cond):
-                cond_numbers.append(cond)
+            c_s = np.linalg.cond(J_scaled)
+            if not np.isnan(c_s) and not np.isinf(c_s):
+                scaled_conds.append(c_s)
         except Exception:
-            continue
+            pass
 
-    if not cond_numbers:
-        return 999.0
+        try:
+            c_r = np.linalg.cond(J_raw)
+            if not np.isnan(c_r) and not np.isinf(c_r):
+                raw_conds.append(c_r)
+        except Exception:
+            pass
 
-    return round(float(np.median(cond_numbers)), 2)
+    scaled_val = round(float(np.median(scaled_conds)), 2) if scaled_conds else 999.0
+    raw_val = round(float(np.median(raw_conds)), 2) if raw_conds else 999.0
+
+    if scaled_val <= 250.0:
+        status_str = "WELL_CONDITIONED"
+    elif scaled_val <= 1000.0:
+        status_str = "MODERATELY_ILL_CONDITIONED"
+    else:
+        status_str = "SEVERELY_ILL_CONDITIONED"
+
+    return {
+        "scaled_condition_number": scaled_val,
+        "raw_condition_number": raw_val,
+        "condition_number": scaled_val,
+        "status": status_str
+    }
+
+
+def _fit_spectral_ks(
+    concs: np.ndarray,
+    r_int_list: list[np.ndarray],
+    ks_meas_list: list[np.ndarray],
+    base_k: np.ndarray,
+    base_s: np.ndarray,
+    base_ks_calc: np.ndarray,
+    use_two_constant: bool = True
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Fits unit_k, unit_s, and unit_ks across wavelengths using non-negative least squares and L-BFGS-B."""
+    n_samples = len(concs)
+    unit_k = np.zeros(N_WAVELENGTHS, dtype=float)
+    unit_s = np.zeros(N_WAVELENGTHS, dtype=float)
+    unit_ks = np.zeros(N_WAVELENGTHS, dtype=float)
+
+    for i in range(N_WAVELENGTHS):
+        ks_obs = np.array([ks_meas_list[j][i] for j in range(n_samples)])
+        delta_ks = ks_obs - base_ks_calc[i]
+
+        slope, _ = nnls(concs[:, np.newaxis], delta_ks)
+        unit_ks[i] = max(0.0, float(slope[0]))
+
+        if use_two_constant and n_samples >= 2:
+            k_base_i = base_k[i]
+            s_base_i = base_s[i]
+            r_target_i = np.array([r_int_list[j][i] for j in range(n_samples)])
+
+            def obj_wl(params):
+                kp, sp = params
+                pred_ks = (k_base_i + concs * kp) / np.maximum(s_base_i + concs * sp, 1e-6)
+                r_pred = ks_to_reflectance(pred_ks)
+                return np.sum((r_pred - r_target_i) ** 2)
+
+            init_kp = unit_ks[i] * s_base_i
+            init_sp = 0.02
+            bounds = [(0.0, 60.0), (0.0, 10.0)]
+
+            res = minimize(obj_wl, [init_kp, init_sp], method="L-BFGS-B", bounds=bounds, options={"maxiter": 300, "ftol": 1e-9})
+            if res.success:
+                unit_k[i] = max(0.0, float(res.x[0]))
+                unit_s[i] = max(0.0, float(res.x[1]))
+            else:
+                unit_k[i] = max(0.0, float(init_kp))
+                unit_s[i] = max(0.0, float(init_sp))
+        else:
+            unit_k[i] = unit_ks[i] * base_s[i]
+            unit_s[i] = 0.0
+
+    return unit_k, unit_s, unit_ks
 
 
 def characterize_letdown_series(
@@ -292,42 +369,11 @@ def characterize_letdown_series(
 
     # 3. Solve for each wavelength across all concentrations
     # Model: (K/S)_mix(c) = (K_base + c * K_paste) / (S_base + c * S_paste)
-    for i in range(N_WAVELENGTHS):
-        ks_obs = np.array([ks_meas_list[j][i] for j in range(n_letdowns)])
-        delta_ks = ks_obs - base_ks_calc[i]
-
-        # Initial estimate of unit K/S via non-negative least squares: delta_ks ~= c * (K/S)_paste
-        slope, _ = nnls(concs[:, np.newaxis], delta_ks)
-        unit_ks[i] = max(0.0, float(slope[0]))
-
-        if use_two_constant and n_letdowns >= 2:
-            # Non-linear optimization for K_p and S_p at this wavelength
-            # We want to minimize sum_j [( (K_base + c_j * K_p) / (S_base + c_j * S_p) - ks_obs_j )^2]
-            k_base_i = base_k[i]
-            s_base_i = base_s[i]
-
-            r_target_i = np.array([r_int_list[j][i] for j in range(n_letdowns)])
-
-            def obj_wl(params):
-                kp, sp = params
-                pred_ks = (k_base_i + concs * kp) / np.maximum(s_base_i + concs * sp, 1e-6)
-                r_pred = ks_to_reflectance(pred_ks)
-                return np.sum((r_pred - r_target_i) ** 2)
-
-            init_kp = unit_ks[i] * s_base_i
-            init_sp = 0.02
-            bounds = [(0.0, 60.0), (0.0, 10.0)]
-
-            res = minimize(obj_wl, [init_kp, init_sp], method="L-BFGS-B", bounds=bounds, options={"maxiter": 300, "ftol": 1e-9})
-            if res.success:
-                unit_k[i] = max(0.0, float(res.x[0]))
-                unit_s[i] = max(0.0, float(res.x[1]))
-            else:
-                unit_k[i] = max(0.0, float(init_kp))
-                unit_s[i] = max(0.0, float(init_sp))
-        else:
-            unit_k[i] = unit_ks[i] * base_s[i]
-            unit_s[i] = 0.0
+    unit_k, unit_s, unit_ks = _fit_spectral_ks(
+        concs, r_int_list, ks_meas_list,
+        base_k, base_s, base_ks_calc,
+        use_two_constant=use_two_constant
+    )
 
     # 4. Back-Prediction and CIEDE2000 Validation
     back_predictions = []
@@ -396,10 +442,63 @@ def characterize_letdown_series(
         "delta_H": round(float(np.mean([bp["delta_H"] for bp in back_predictions])), 2)
     }
 
+    # 5. Out-of-sample Leave-One-Out Cross-Validation (LOOCV)
+    # Minimum 4 letdown concentrations required so each fold retains at least 3 points with df > 0
+    if n_letdowns >= 4:
+        loocv_errors = []
+        for h in range(n_letdowns):
+            train_idx = [idx for idx in range(n_letdowns) if idx != h]
+            train_concs = concs[train_idx]
+            train_r_int = [r_int_list[idx] for idx in train_idx]
+            train_ks_meas = [ks_meas_list[idx] for idx in train_idx]
+
+            fold_k, fold_s, fold_ks = _fit_spectral_ks(
+                train_concs, train_r_int, train_ks_meas,
+                base_k, base_s, base_ks_calc,
+                use_two_constant=use_two_constant
+            )
+
+            # Predict held-out sample
+            c_held = concs[h]
+            if use_two_constant and np.any(fold_s > 0):
+                held_mix_k = base_k + c_held * fold_k
+                held_mix_s = base_s + c_held * fold_s
+                held_pred_ks = held_mix_k / np.maximum(held_mix_s, 1e-6)
+            else:
+                held_pred_ks = base_ks_calc + c_held * fold_ks
+
+            held_pred_r_int = ks_to_reflectance(held_pred_ks)
+            held_pred_r_meas = inverse_saunderson(held_pred_r_int, k1=k1, k2=k2)
+
+            lab_held_meas = reflectance_to_lab(r_meas_list[h], illuminant="D65", observer="10")
+            lab_held_pred = reflectance_to_lab(held_pred_r_meas, illuminant="D65", observer="10")
+            diff_h = ciede2000(lab_held_meas, lab_held_pred)
+            loocv_errors.append(round(float(diff_h["delta_e00"]), 3))
+
+        loocv_mean_de00 = float(np.mean(loocv_errors))
+        loocv_max_de00 = float(np.max(loocv_errors))
+        loocv_result = {
+            "status": "LOOCV_EVALUATED",
+            "samples_count": n_letdowns,
+            "mean_delta_e00": round(loocv_mean_de00, 3),
+            "max_delta_e00": round(loocv_max_de00, 3),
+            "errors": loocv_errors
+        }
+    else:
+        loocv_result = {
+            "status": "LOOCV_SKIPPED_INSUFFICIENT_LETDOWNS",
+            "samples_count": n_letdowns,
+            "mean_delta_e00": None,
+            "max_delta_e00": None,
+            "errors": [],
+            "message": f"LOOCV requires n >= 4 letdown concentrations (provided: {n_letdowns})."
+        }
+
     # Numerical conditioning & parameter identifiability
     pos_concs = concs[concs > 0]
     span_ratio = float(np.max(pos_concs) / max(np.min(pos_concs), 1e-4)) if len(pos_concs) > 0 else 1.0
-    jac_cond = calculate_km_jacobian_condition(pos_concs, base_k, base_s, unit_k, unit_s, k1=k1, k2=k2)
+    jac_res = calculate_km_jacobian_condition(pos_concs, base_k, base_s, unit_k, unit_s, k1=k1, k2=k2)
+    jac_cond = jac_res["scaled_condition_number"]
 
     if n_letdowns >= 3 and jac_cond <= 250.0 and span_ratio >= 10.0:
         identifiability = "ROBUST - Well Conditioned"
@@ -421,7 +520,8 @@ def characterize_letdown_series(
         contrast_ratio=base_cr,
         letdown_count=n_letdowns,
         max_spectral_residual=max_spec_res,
-        directional_residuals=mean_dir_res
+        directional_residuals=mean_dir_res,
+        loocv_result=loocv_result
     )
 
     return {
@@ -435,9 +535,14 @@ def characterize_letdown_series(
         "spectral_rmse": round(spectral_rmse, 4),
         "max_spectral_residual": round(max_spec_res, 4),
         "jacobian_condition_number": jac_cond,
+        "jacobian_diagnostics": jac_res,
         "concentration_span_ratio": round(span_ratio, 2),
         "condition_index": round(span_ratio, 2),
         "identifiability": identifiability,
+        "loocv": loocv_result,
+        "loocv_mean_delta_e00": loocv_result.get("mean_delta_e00"),
+        "loocv_max_delta_e00": loocv_result.get("max_delta_e00"),
+        "loocv_status": loocv_result.get("status"),
         "passed_validation": qg_result["status"] == "PASS",
         "r_squared": round(r_squared, 4),
         "validation_threshold": 0.3,

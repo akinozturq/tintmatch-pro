@@ -42,7 +42,7 @@ class CHNSpecDriver:
         self.dll_dir = None
         self._is_mock = False
         self._dev = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._connected = False
         self._current_port = None
         self._clr_initialized = False
@@ -103,12 +103,15 @@ class CHNSpecDriver:
 
         # Static Measurement Callback
         def on_device_measure(ok: bool, spectral_infos):
-            self._meas_success = bool(ok)
-            self._meas_result = []
-            if ok and spectral_infos:
-                for arr in spectral_infos:
-                    self._meas_result.append(list(arr))
-            self._meas_event.set()
+            if ok and spectral_infos and len(spectral_infos) > 0:
+                if self._dev:
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
+                self._meas_success = True
+                self._meas_result = [list(arr) for arr in spectral_infos]
+                self._meas_event.set()
 
         T_meas = self._System.Action[
             self._System.Boolean,
@@ -118,6 +121,11 @@ class CHNSpecDriver:
 
         # Static Calibration Callback
         def on_device_calibration(ok: bool):
+            if self._dev:
+                try:
+                    self._dev.IsWorking = False
+                except Exception:
+                    pass
             self._cal_success = bool(ok)
             self._cal_event.set()
 
@@ -130,6 +138,13 @@ class CHNSpecDriver:
     def is_mock(self) -> bool:
         """Returns True if the driver is operating in mock/simulation mode."""
         return self._is_mock
+
+    @property
+    def connection_state(self) -> str:
+        """Returns 4-state connection status: CONNECTED_REAL, CONNECTED_MOCK, DISCONNECTED, ERROR."""
+        if self.is_connected():
+            return "CONNECTED_MOCK" if self._is_mock else "CONNECTED_REAL"
+        return "DISCONNECTED"
 
     @staticmethod
     def list_ports() -> List[Dict[str, Any]]:
@@ -184,9 +199,17 @@ class CHNSpecDriver:
                 self._dev.ConnectedId = target_port
                 self._dev.ConnectType = self._ConnectMethod.usb
                 ok = bool(self._dev.connect())
+                if not ok:
+                    # Retry once in case serial port handle is settling after disconnect
+                    time.sleep(0.3)
+                    ok = bool(self._dev.connect())
                 if ok:
                     self._connected = True
                     self._current_port = target_port
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
                     logger.info(f"Connected to CHNSpec DS-36D on {target_port}")
                     return True
                 else:
@@ -208,6 +231,10 @@ class CHNSpecDriver:
 
             try:
                 if self._dev:
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
                     self._dev.close()
                 self._connected = False
                 self._current_port = None
@@ -281,25 +308,36 @@ class CHNSpecDriver:
 
     def measure(self, mode: str = "SCI", timeout_sec: float = 12.0) -> Dict[str, Any]:
         """
-        Triggers a measurement sweep (SCI or SCE).
+        Triggers a measurement sweep (SCI, SCE, or SCI_SCE).
         Returns normalized 31-channel reflectance [400..700 nm @ 10 nm], Lab coordinates, and Hex.
+        When mode is 'SCI_SCE', returns both 'sci' and 'sce' normalized sub-dictionaries.
         """
         norm_mode = mode.upper().strip()
         if norm_mode not in ("SCI", "SCE", "SCI_SCE"):
             norm_mode = "SCI"
 
-        with self._lock:
-            if self._is_mock:
-                raw_curve = self._generate_simulated_spectrum(raw_43=True)
-                raw_wls = CHNSPEC_RAW_WAVELENGTHS
-                normalized_spectrum = [round(float(v), 5) for v in normalize_spectrum(raw_curve, raw_wls)]
-                is_mock_flag = True
-            else:
-                if not self.is_connected():
-                    # Attempt auto-connect
-                    if not self.connect():
-                        raise ConnectionError("CHNSpec DS-36D is not connected and could not be auto-connected.")
+        # Check and auto-connect outside the lock to prevent deadlock
+        if not self._is_mock and not self.is_connected():
+            if not self.connect():
+                raise ConnectionError("CHNSpec DS-36D is not connected and could not be auto-connected.")
 
+        with self._lock:
+            raw_wls = CHNSPEC_RAW_WAVELENGTHS
+            if self._is_mock:
+                is_mock_flag = True
+                if norm_mode == "SCI_SCE":
+                    raw_sci = self._generate_simulated_spectrum(raw_43=True, gloss_offset=4.0)
+                    raw_sce = self._generate_simulated_spectrum(raw_43=True, gloss_offset=0.0)
+                    sci_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sci, raw_wls)]
+                    sce_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sce, raw_wls)]
+                elif norm_mode == "SCE":
+                    raw_curve = self._generate_simulated_spectrum(raw_43=True, gloss_offset=0.0)
+                    normalized_spectrum = [round(float(v), 5) for v in normalize_spectrum(raw_curve, raw_wls)]
+                else:  # SCI
+                    raw_curve = self._generate_simulated_spectrum(raw_43=True, gloss_offset=4.0)
+                    normalized_spectrum = [round(float(v), 5) for v in normalize_spectrum(raw_curve, raw_wls)]
+            else:
+                is_mock_flag = False
                 self._meas_event.clear()
                 self._meas_result = []
                 self._meas_success = False
@@ -322,45 +360,95 @@ class CHNSpecDriver:
                 if not self._meas_success or not self._meas_result:
                     raise RuntimeError("CHNSpec measurement completed with error status.")
 
-                # Raw 43-channel float array
-                raw_curve = self._meas_result[0]
-                raw_wls = CHNSPEC_RAW_WAVELENGTHS
-                # Centralized monotonic PCHIP normalizer converts 43 channels -> standard 31 channels [400..700 nm]
-                normalized_spectrum = [round(float(v), 5) for v in normalize_spectrum(raw_curve, raw_wls)]
-                is_mock_flag = False
+                if norm_mode == "SCI_SCE":
+                    # Physically confirmed on CHNSpec DS-36D:
+                    # spectral_infos[0] is SCI, spectral_infos[1] is SCE
+                    raw_sci = self._meas_result[0]
+                    raw_sce = self._meas_result[1] if len(self._meas_result) > 1 else self._meas_result[0]
+                    sci_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sci, raw_wls)]
+                    sce_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sce, raw_wls)]
+                else:
+                    raw_curve = self._meas_result[0]
+                    normalized_spectrum = [round(float(v), 5) for v in normalize_spectrum(raw_curve, raw_wls)]
 
-            lab = reflectance_to_lab(normalized_spectrum, illuminant="D65", observer="10")
-            hex_color = reflectance_to_hex(normalized_spectrum)
+            if norm_mode == "SCI_SCE":
+                sci_lab = reflectance_to_lab(sci_norm, illuminant="D65", observer="10")
+                sci_hex = reflectance_to_hex(sci_norm)
+                sce_lab = reflectance_to_lab(sce_norm, illuminant="D65", observer="10")
+                sce_hex = reflectance_to_hex(sce_norm)
 
-            return {
-                "success": True,
-                "instrument": "CHNSpec DS-36D (d/8°)",
-                "mode": norm_mode,
-                "port": self._current_port,
-                "is_mock": is_mock_flag,
-                "wavelengths": [int(w) for w in WAVELENGTHS],
-                "reflectance": normalized_spectrum,
-                "raw_wavelengths": raw_wls,
-                "raw_reflectance": [round(float(v), 4) for v in raw_curve],
-                "lab": {
-                    "L": round(lab[0], 2),
-                    "a": round(lab[1], 2),
-                    "b": round(lab[2], 2)
-                },
-                "hex": hex_color,
-                "geometry": "d/8° (SCI/SCE)",
-                "timestamp": time.time()
-            }
+                sci_data = {
+                    "reflectance": sci_norm,
+                    "raw_reflectance": [round(float(v), 4) for v in raw_sci],
+                    "lab": {"L": round(sci_lab[0], 2), "a": round(sci_lab[1], 2), "b": round(sci_lab[2], 2)},
+                    "hex": sci_hex
+                }
+                sce_data = {
+                    "reflectance": sce_norm,
+                    "raw_reflectance": [round(float(v), 4) for v in raw_sce],
+                    "lab": {"L": round(sce_lab[0], 2), "a": round(sce_lab[1], 2), "b": round(sce_lab[2], 2)},
+                    "hex": sce_hex
+                }
+
+                return {
+                    "success": True,
+                    "instrument": "CHNSpec DS-36D (d/8°)",
+                    "mode": norm_mode,
+                    "port": self._current_port,
+                    "is_mock": is_mock_flag,
+                    "connection_state": self.connection_state,
+                    "wavelengths": [int(w) for w in WAVELENGTHS],
+                    "reflectance": sci_norm,
+                    "raw_wavelengths": raw_wls,
+                    "raw_reflectance": [round(float(v), 4) for v in raw_sci],
+                    "lab": {"L": round(sci_lab[0], 2), "a": round(sci_lab[1], 2), "b": round(sci_lab[2], 2)},
+                    "hex": sci_hex,
+                    "sci": sci_data,
+                    "sce": sce_data,
+                    "geometry": "d/8° (SCI/SCE)",
+                    "timestamp": time.time()
+                }
+            else:
+                lab = reflectance_to_lab(normalized_spectrum, illuminant="D65", observer="10")
+                hex_color = reflectance_to_hex(normalized_spectrum)
+                single_data = {
+                    "reflectance": normalized_spectrum,
+                    "raw_reflectance": [round(float(v), 4) for v in raw_curve],
+                    "lab": {"L": round(lab[0], 2), "a": round(lab[1], 2), "b": round(lab[2], 2)},
+                    "hex": hex_color
+                }
+                res = {
+                    "success": True,
+                    "instrument": "CHNSpec DS-36D (d/8°)",
+                    "mode": norm_mode,
+                    "port": self._current_port,
+                    "is_mock": is_mock_flag,
+                    "connection_state": self.connection_state,
+                    "wavelengths": [int(w) for w in WAVELENGTHS],
+                    "reflectance": normalized_spectrum,
+                    "raw_wavelengths": raw_wls,
+                    "raw_reflectance": [round(float(v), 4) for v in raw_curve],
+                    "lab": {"L": round(lab[0], 2), "a": round(lab[1], 2), "b": round(lab[2], 2)},
+                    "hex": hex_color,
+                    "geometry": "d/8° (SCI/SCE)",
+                    "timestamp": time.time()
+                }
+                if norm_mode == "SCI":
+                    res["sci"] = single_data
+                elif norm_mode == "SCE":
+                    res["sce"] = single_data
+                return res
 
     def get_status(self) -> Dict[str, Any]:
         """Returns comprehensive device status."""
         return {
             "instrument": "CHNSpec DS-36D",
             "connected": self.is_connected(),
+            "connection_state": self.connection_state,
             "port": self._current_port,
             "is_mock": self._is_mock,
             "geometry": "d/8° Integrating Sphere",
-            "measurement_modes": ["SCI", "SCE"],
+            "measurement_modes": ["SCI", "SCE", "SCI_SCE"],
             "native_channels": 43,
             "native_range_nm": [360, 780],
             "canonical_channels": 31,
@@ -368,7 +456,7 @@ class CHNSpecDriver:
             "available_ports": self.list_ports()
         }
 
-    def _generate_simulated_spectrum(self, raw_43: bool = False) -> List[float]:
+    def _generate_simulated_spectrum(self, raw_43: bool = False, gloss_offset: float = 0.0) -> List[float]:
         """Generates realistic synthetic reflectance curve for simulation mode."""
         import numpy as np
         wls = np.array(CHNSPEC_RAW_WAVELENGTHS if raw_43 else WAVELENGTHS, dtype=float)
@@ -376,11 +464,14 @@ class CHNSpecDriver:
         R = 0.08 + 0.60 / (1.0 + np.exp(-(wls - 520) / 40.0))
         # Add slight natural spectral curve variation
         R += 0.03 * np.sin((wls - 400) / 50.0)
-        R = np.clip(R, 0.01, 0.95)
-        # Return percentage scale (0..100%) like raw CHNSpec hardware does
+        # Add gloss offset (for SCI vs SCE specular difference)
         if raw_43:
-            return [round(float(v * 100.0), 3) for v in R]
-        return [round(float(v), 5) for v in R]
+            # R is scaled 0..100 in raw_43
+            R_pct = np.clip(R * 100.0 + gloss_offset, 0.5, 98.0)
+            return [round(float(v), 3) for v in R_pct]
+        else:
+            R_norm = np.clip(R + gloss_offset / 100.0, 0.005, 0.98)
+            return [round(float(v), 5) for v in R_norm]
 
 
 # Global singleton instance

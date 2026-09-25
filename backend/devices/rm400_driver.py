@@ -89,22 +89,42 @@ class RM400Driver:
                 return "1.0"
         return "1.2 (Mock Mode)"
 
+    @property
+    def is_mock(self) -> bool:
+        """True if operating in mock/simulation mode."""
+        return self._is_mock
+
+    @property
+    def connection_state(self) -> str:
+        """Returns 4-state connection status: CONNECTED_REAL, CONNECTED_MOCK, DISCONNECTED, ERROR."""
+        if self.is_connected():
+            return "CONNECTED_MOCK" if self._is_mock else "CONNECTED_REAL"
+        return "DISCONNECTED"
+
     def connect(self) -> bool:
         """Connects to RM400 over USB/FTDI interface."""
         if self.dll:
             try:
-                return bool(self.dll.Connect())
+                ok = bool(self.dll.Connect())
+                self._connected = ok
+                return ok
             except Exception:
+                self._connected = False
                 return False
+        self._connected = True
         return True
 
     def disconnect(self) -> bool:
         """Disconnects instrument."""
         if self.dll:
             try:
-                return bool(self.dll.Disconnect())
+                ok = bool(self.dll.Disconnect())
+                self._connected = not ok
+                return ok
             except Exception:
+                self._connected = False
                 return False
+        self._connected = False
         return True
 
     def is_connected(self) -> bool:
@@ -114,7 +134,7 @@ class RM400Driver:
                 return bool(self.dll.IsConnected())
             except Exception:
                 return False
-        return False
+        return getattr(self, "_connected", False)
 
     def get_serial_number(self) -> str:
         if self.dll and self.is_connected():

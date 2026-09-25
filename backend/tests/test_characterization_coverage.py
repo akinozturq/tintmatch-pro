@@ -442,3 +442,48 @@ def test_api_import_rm400_multipart_and_raw_text():
     # 3. Missing both file and raw_text -> 400
     resp_bad = client.post("/api/characterization/import-rm400")
     assert resp_bad.status_code == 400
+
+
+def test_loocv_validation_and_tolerance_gate():
+    """Verify LOOCV out-of-sample prediction and ToleranceProfile gate check."""
+    datasets = get_industrial_sample_datasets()
+    base_r = datasets["base_a"]["reflectance"]
+    letdowns = datasets["colorants"]["PG7"]["letdowns"]  # 6 letdowns
+
+    # 1. Full 6 letdowns -> LOOCV should be evaluated
+    char_full = characterize_letdown_series(base_r, letdowns, use_two_constant=True)
+    assert "loocv" in char_full
+    assert char_full["loocv"]["status"] == "LOOCV_EVALUATED"
+    assert char_full["loocv"]["samples_count"] == 6
+    assert isinstance(char_full["loocv"]["mean_delta_e00"], float)
+    assert char_full["loocv"]["mean_delta_e00"] <= 0.50
+    assert len(char_full["loocv"]["errors"]) == 6
+
+    # Verify quality gate includes LOOCV check
+    qg = char_full["characterization_gate"]
+    loocv_check = next((c for c in qg["checks"] if c["metric"] == "loocv_mean_delta_e00"), None)
+    assert loocv_check is not None
+    assert loocv_check["status"] == "PASS"
+    assert loocv_check["limit"] == 0.50
+
+    # 2. Subset with 3 letdowns -> LOOCV skipped due to n < 4 degrees-of-freedom constraint
+    char_short = characterize_letdown_series(base_r, letdowns[:3], use_two_constant=True)
+    assert char_short["loocv"]["status"] == "LOOCV_SKIPPED_INSUFFICIENT_LETDOWNS"
+    assert char_short["loocv"]["samples_count"] == 3
+    assert char_short["loocv"]["mean_delta_e00"] is None
+
+
+def test_dual_metric_jacobian_condition():
+    """Verify Jacobian diagnostics provides both scaled and raw condition numbers."""
+    datasets = get_industrial_sample_datasets()
+    base_r = datasets["base_a"]["reflectance"]
+    letdowns = datasets["colorants"]["PG7"]["letdowns"]
+
+    char = characterize_letdown_series(base_r, letdowns, use_two_constant=True)
+    assert "jacobian_diagnostics" in char
+    diag = char["jacobian_diagnostics"]
+    assert "scaled_condition_number" in diag
+    assert "raw_condition_number" in diag
+    assert "status" in diag
+    assert char["jacobian_condition_number"] == diag["scaled_condition_number"]
+    assert diag["status"] in ("WELL_CONDITIONED", "MODERATELY_ILL_CONDITIONED", "SEVERELY_ILL_CONDITIONED")

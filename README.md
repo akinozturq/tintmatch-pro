@@ -6,13 +6,13 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Coverage](https://img.shields.io/badge/Test%20Coverage-90%25-brightgreen)](backend/tests/)
-[![Standard](https://img.shields.io/badge/Standard-ISO%2018314%20%7C%20CIEDE2000-blue)](https://www.iso.org/standard/66597.html)
+[![Tests](https://img.shields.io/badge/Tests-83%20passed%20%7C%2085%25%20cov-brightgreen)](backend/tests/)
+[![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **B2B Spektrofotometrik Renklendirici Pasta ve Baz Karakterizasyonu & Bilgisayarlı Renk Eşleme (CCM - Computer Color Matching) Web Uygulaması**
 
-**TintMatch PRO**, boya, kaplama, otomotiv ve mürekkep sanayiine yönelik olarak tasarlanmış; **X-Rite RM400** spektrofotometre ham veri entegrasyonuna sahip, **Saunderson yüzey düzeltmesi** ile **Çift Sabitli Kubelka-Munk** modelini çalıştıran, $\Delta E_{00} < 0.30$ doğrulama eşiğiyle çalışan ve canlı reçete simülasyonu sunan profesyonel bir endüstriyel laboratuvar platformudur.
+**TintMatch PRO**, boya, kaplama, otomotiv ve mürekkep sanayiine yönelik olarak tasarlanmış; **CHNSpec DS-36D** (d/8° entegre küre) ve **X-Rite RM400** (45°:0°) spektrofotometre donanım entegrasyonuna sahip, **Saunderson yüzey düzeltmesi** ile **Çift Sabitli Kubelka-Munk** modelini çalıştıran, $\Delta E_{00} < 0.30$ self-fit ve LOOCV $\le 0.50$ dış-örneklem doğrulama kapılarıyla çalışan profesyonel bir endüstriyel laboratuvar platformudur.
 
 ---
 
@@ -20,7 +20,9 @@
 
 ### 1. Spektral Çözünürlük ve Optik Geometri
 - **Ölçüm Aralığı:** 400 nm – 700 nm, 10 nm çözünürlük (**31 spektral kanal**).
-- **Cihaz Geometrisi:** X-Rite RM400 (45°:0° dairesel aydınlatma, Speküler bileşen hariç — SPEX).
+- **Cihaz Geometrisi:** 
+  - CHNSpec DS-36D: d/8° difüz entegre küre geometrisi (SCI speküler dahil & SCE speküler hariç).
+  - X-Rite RM400: 45°:0° dairesel aydınlatma / dik algılama (SPEX).
 - **Kolorimetri Standardı:** CIE D65 Aydınlatıcı (6504 K Günışığı) & CIE 1964 10° Ek Standart Gözlemci (ASTM E308 / ISO 18314).
 
 ### 2. Saunderson Yüzey Yansıma Düzeltmesi
@@ -39,9 +41,15 @@ $$R(K, S, x, R_g) = \frac{1 - R_g [a - b \coth(b S x)]}{a + b \coth(b S x) - R_g
 
 Şeffaf limit durumunda ($S \to 0$), model otomatik ve süreklilikle **Beer-Lambert** yasasına ($R = R_g e^{-2 K x}$) geçer.
 
-### 4. Geri Tahmin Doğrulaması (Back-Prediction) & $\Delta E_{00} < 0.30$
-Seyreltme serisi (%0.1, %0.5, %1, %2.5, %5, %10) ölçümleri üzerinden türetilen $K(\lambda)$ ve $S(\lambda)$ matrisleri, model tarafından geriye dönük çalıştırılarak CIEDE2000 renk farkı hesaplanır:
-$$\Delta E_{00} < 0.30 \implies \textbf{ONAYLANDI (PASS - ISO 18314 metodolojisine dayalı hesaplama)}$$
+> [!NOTE]
+> **Kubelka-Munk Baz Saçılma Ölçekleme Notu:** Formülasyon hesaplamalarında $S_{\text{base}}(\lambda) = 1.0$ kabulü, literatürde ve endüstriyel CCM sistemlerinde standart bir *referans ölçekleme kuralıdır* (relative optical scale convention). Bu kabul, baz boyanın mutlak fiziksel saçılmasının tam olarak $1.0$ olduğunu iddia etmez; renklendirici pastaların birim $K(\lambda)$ ve $S(\lambda)$ katsayılarının baz boyaya göreli normalize edilmiş optik ölçeğini tanımlar. Farklı baz boyalar için doğrudan ölçülen $K_{\text{base}}$ ve $S_{\text{base}}$ spektrumları desteklenmektedir.
+
+### 4. Geri Tahmin (Self-Fit) & Görülmemiş Numune Tahmini (LOOCV)
+Seyreltme serisi (%0.1 - %10.0) ölçümleri üzerinden türetilen $K(\lambda)$ ve $S(\lambda)$ matrisleri iki seviyeli kalite kapısından geçer:
+- **Self-Fit Geri Tahmin Doğrulaması:** Modele eğitildiği konsantrasyonlar geri beslenir:
+  $$\Delta E_{00} < 0.30 \implies \textbf{ONAYLANDI (PASS - ISO 18314 metodolojisine dayalı hesaplama)}$$
+- **Görülmemiş Numune Tahmini (LOOCV):** $n \ge 4$ seyreltme serilerinde Leave-One-Out Cross-Validation çalıştırılarak her bir numune eğitim dışı bırakılır ve serbestlik derecesi korunarak modelin tahmin gücü test edilir:
+  $$\Delta E_{00}^{\text{LOOCV}} \le 0.50 \implies \textbf{GENELLEŞTİRİLEBİLİR (Tolerans Profili Denetimi)}$$
 
 ### 5. Metamerizm İndeksi (MI)
 Formülasyonun günışığı dışındaki aydınlatıcılar altında renk değiştirme riski çoklu aydınlatıcı matrisi ile anlık denetlenir:
@@ -141,58 +149,62 @@ TintMatch PRO
 
 ---
 
-## 🧪 Test Kapsamı (Test Coverage: %90)
+## 🧪 Test Kapsamı & Donanım Doğrulaması
 
-### 7. Çoklu Spektrofotometre Donanım Sürücüleri & Spektral Normalizasyon
+### 7. Çoklu Spektrofotometre Donanım Sürücüleri, Optik Geometri ve Güvenilirlik
 - **CHNSpec DS-36D Masaüstü Spektrofotometresi (d/8° Küre Geometrisi):**
   - PythonNET (`clr`) köprüsü ile yerel `ConnectedMeasure.dll` kütüphanesine bağlanır (`backend/devices/chnspec_driver.py`).
   - USB CDC sanal seri port (`COM4`, STMicroelectronics VID:PID `0483:5740`) üzerinden donanımla haberleşir; port otomatik algılanır.
-  - Fiziksel optik flaş patlatarak 43 spektral kanal (360–780 nm @ 10 nm) SCI veya SCE reflektansını okur.
-  - Merkezi `normalize_spectrum()` PCHIP enterpolatörü ile standart 31 kanallı (400–700 nm @ 10 nm) laboratuvar ızgarasına dönüştürülür.
-  - Donanım bağlı olmadığında otomatik simülasyon (MOCK) moduna geçerek test ve arayüz geliştirmeyi kesintisiz sürdürür.
+  - Eşzamanlı SCI ve SCE spektrum alımı (`Measure_Mode.SCI_SCE`), mekanik speküler tuzak geçişindeki geçici SDK olayları filtrelenerek tam senkronize biçimde okunur.
+  - Yeniden girişli iş parçacığı kilidi (`threading.RLock`) ve kilit dışı bağlantı kontrolü ile kilitlenme (deadlock) sıfırlanmıştır.
+  - Durum makinesi: `CONNECTED_REAL`, `CONNECTED_MOCK`, `DISCONNECTED` açıkça ayrıştırılır ve arayüzde renkli rozetlerle raporlanır.
 - **X-Rite RM400 Taşınabilir Spektrofotometresi (45°/0° Geometri):**
   - 64-bit Python `ctypes.WinDLL` köprüsü ile `RM400.dll` doğrudan yüklenir (`Connect`, `Measure`, `GetSpectralData`, `GetCalStatus`).
-- **Monotonik PCHIP Spektral Normalizasyon:**
-  - Gelen tüm spektral ölçümler (360-780 nm, 380-730 nm, 5 nm, 10 nm, 20 nm serileri) `spectrum_normalizer.py` üzerinden fiziksel $[0.0, 1.0]$ sınırlarında enterpole edilir.
-  - Aynı dalga boyundaki tekrarlanan ölçümlerin grup ortalaması (`np.mean`) alınır, `NaN`/`inf` hatalı girişler engellenir.
-- **İkili Quality Gate Mimarisi:**
-  - `evaluate_characterization_gate`: RMSE $\le 0.015$, $R^2 \ge 0.995$, max residual $\le 0.040$, letdown serisi $\ge 3$, K-M Jacobian koşul sayısı $\kappa(J)$ ve konsantrasyon aralık oranı (`concentration_span_ratio`).
-  - `evaluate_formulation_gate`: D65 $\Delta E_{00}$, yönsel kalıntılar ($\Delta L^*, \Delta a^*, \Delta b^*, \Delta C^*, \Delta H^*$), DIN 6172 bileşik metamerizm, kütle marjı (slack $\ge 0$), SLSQP yakınsama durumu.
-- **Kanonik SHA-256 Reçete İzi & Deneme Geçmişi:** Reçetenin tüm optik parametreleri (hedef spektrum, baz K/S, Saunderson $k_1/k_2$, profil, toleranslar, aydınlatıcı) deterministik hashlenir ve `recipe_history` tablosunda laborant denemeleri adım adım arşivlenir.
+- **Optik Geometri İzolasyonu & Karşılaştırma Modülü (Instrument Comparison):**
+  - Farklı optik geometriler (45°/0° SPEX vs d/8° SCI/SCE) birbirine zorlama matematiksel formüllerle dönüştürülmez; veri tabanında ve K-M karakterizasyon kimliğinde izole tutulur.
+  - `backend/color_engine/instrument_comparison.py`: İki cihaz arasındaki $\Delta R(\lambda)$ spektral sapmasını, RMSE değerini, CIEDE2000 renk farkını ($\Delta E^*_{00}, \Delta L^*, \Delta a^*, \Delta b^*, \Delta C^*, \Delta H^*$) ve parıltı/saçılma farkını analiz eden modül.
+- **Kesin Spektral Ekstrapolasyon Bariyeri:**
+  - `spectrum_normalizer.py`: Standart [400..700 nm] hedef ızgarasını tamamen kapsamayan ham ölçümler, endüstriyel CCM güvenilirliği gereği varsayılan olarak reddedilir (`allow_extrapolation=False`). İsteğe bağlı geçersiz kılma ile `EXTRAPOLATED` olarak etiketlenebilir.
+- **Çift Metrik K-M Jacobian Koşulluluğu:**
+  - Hem ham Jacobian koşul sayısı $\kappa(J)$ hem de sütun ölçekli $\kappa(J \cdot D)$ hesaplanarak konsantrasyon ölçeği farkı ile gerçek sayısal tekillik birbirinden ayırt edilir.
+- **Leave-One-Out Cross-Validation (LOOCV):**
+  - $n \ge 4$ seyreltme serilerinde her bir numune dışarıda bırakılarak yeniden eğitilir ve görülmemiş numuneler üzerindeki genelleştirme yeteneği (`loocv_de00_limit: 0.50`) test edilir.
+- **Kanonik SHA-256 Reçete İzi & Deneme Geçmişi:** Reçetenin tüm optik parametreleri (hedef spektrum, baz K/S, Saunderson $k_1/k_2$, profil, toleranslar, aydınlatıcı, geometri, karakterizasyon versiyonu) deterministik hashlenir ve `recipe_history` tablosunda laborant denemeleri adım adım arşivlenir.
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 73 Test, %85 Kapsam)
+## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 83 Test, %85 Kapsam)
 
 ```bash
 python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices
 ```
 
 ```text
-Name                                          Stmts   Miss  Cover
------------------------------------------------------------------
-backend\color_engine\__init__.py                  6      0   100%
-backend\color_engine\colorimetry.py             126      1    99%
-backend\color_engine\constants.py                16      0   100%
-backend\color_engine\formulation.py             225     30    87%
-backend\color_engine\kubelka_munk.py            200     14    93%
-backend\color_engine\profiles.py                 57      0   100%
-backend\color_engine\quality_gate.py             61     10    84%
-backend\color_engine\rm400_parser.py            211     27    87%
-backend\color_engine\saunderson.py               31      1    97%
-backend\color_engine\spectrum_normalizer.py      41      2    95%
-backend\devices\chnspec_driver.py               231     67    71%
-backend\devices\rm400_driver.py                 140     60    57%
-backend\routes\__init__.py                        0      0   100%
-backend\routes\bases.py                          76     41    46%
-backend\routes\characterization.py              121     12    90%
-backend\routes\formulation.py                   216      6    97%
-backend\routes\instruments.py                   100     16    84%
-backend\routes\pastes.py                         42     12    71%
-backend\routes\reports.py                        52      2    96%
------------------------------------------------------------------
-TOTAL                                          1952    301    85%
-============================= 73 passed in 16.56s =============================
+Name                                            Stmts   Miss  Cover
+-------------------------------------------------------------------
+backend\color_engine\__init__.py                    6      0   100%
+backend\color_engine\colorimetry.py               126      1    99%
+backend\color_engine\constants.py                  16      0   100%
+backend\color_engine\formulation.py               225     30    87%
+backend\color_engine\instrument_comparison.py      57      4    93%
+backend\color_engine\kubelka_munk.py              247     18    93%
+backend\color_engine\profiles.py                   59      0   100%
+backend\color_engine\quality_gate.py               69     10    86%
+backend\color_engine\rm400_parser.py              211     27    87%
+backend\color_engine\saunderson.py                 31      1    97%
+backend\color_engine\spectrum_normalizer.py        48      2    96%
+backend\devices\chnspec_driver.py                 282     76    73%
+backend\devices\rm400_driver.py                   156     69    56%
+backend\routes\__init__.py                          0      0   100%
+backend\routes\bases.py                            76     41    46%
+backend\routes\characterization.py                121     12    90%
+backend\routes\formulation.py                     218      7    97%
+backend\routes\instruments.py                     122     18    85%
+backend\routes\pastes.py                           42     12    71%
+backend\routes\reports.py                          52      2    96%
+-------------------------------------------------------------------
+TOTAL                                            2164    330    85%
+============================= 83 passed in 44.57s =============================
 ```
 
 ---

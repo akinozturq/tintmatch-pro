@@ -17,7 +17,8 @@ from .constants import WAVELENGTHS, N_WAVELENGTHS
 def normalize_spectrum(
     reflectances: list[float] | np.ndarray,
     wavelengths: list[float] | np.ndarray | None = None,
-    target_grid: np.ndarray = WAVELENGTHS
+    target_grid: np.ndarray = WAVELENGTHS,
+    allow_extrapolation: bool = False
 ) -> np.ndarray:
     """
     Normalizes an arbitrary spectral measurement curve onto the standard 400-700 nm @ 10 nm grid (31 points).
@@ -26,12 +27,13 @@ def normalize_spectrum(
         reflectances: Measured reflectance values (fractional 0.0-1.0 or percentage 0-100%).
         wavelengths: Corresponding wavelength values in nm. If None, reflectances must be exactly 31 points.
         target_grid: Target wavelength array (default: 400-700 nm, 10 nm step, 31 points).
+        allow_extrapolation: If False (default), raises ValueError when source range does not fully cover target_grid.
 
     Returns:
         31-point numpy array clamped strictly to [0.0, 1.0].
 
     Raises:
-        ValueError: If array lengths do not match or if length is ambiguous without wavelength data.
+        ValueError: If array lengths do not match, values are invalid, or source range does not cover target_grid.
     """
     refl = np.asarray(reflectances, dtype=float)
     if len(refl) == 0:
@@ -89,9 +91,25 @@ def normalize_spectrum(
     if len(unique_wls) < 2:
         raise ValueError("At least 2 unique wavelength points are required for spectral interpolation.")
 
+    # Strict coverage barrier: Source range must completely cover the target grid unless explicitly permitted
+    min_src = float(np.min(unique_wls))
+    max_src = float(np.max(unique_wls))
+    min_tgt = float(np.min(target_grid))
+    max_tgt = float(np.max(target_grid))
+
+    if min_src > min_tgt or max_src < max_tgt:
+        if not allow_extrapolation:
+            raise ValueError(
+                f"Spectral range [{min_src:.1f}..{max_src:.1f} nm] does not fully cover "
+                f"the target canonical grid [{min_tgt:.1f}..{max_tgt:.1f} nm]. "
+                "Uncontrolled extrapolation is rejected by default to prevent unphysical CCM formulation errors. "
+                "Provide measurements covering at least [400..700 nm] or set allow_extrapolation=True."
+            )
+
     # 3. PCHIP Shape-Preserving Hermite Interpolation (prevents Runge oscillations)
-    pchip = PchipInterpolator(unique_wls, sorted_refl, extrapolate=True)
+    pchip = PchipInterpolator(unique_wls, sorted_refl, extrapolate=allow_extrapolation)
     interpolated = pchip(target_grid)
 
     # 4. Strict physical reflectance boundaries
     return np.clip(interpolated, 0.0, 1.0)
+

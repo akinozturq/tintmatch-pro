@@ -5,7 +5,14 @@ import type {
   RecipeSimulation,
   Iso18314Report,
   MatchResponse,
-  OptimizationProfileInfo
+  OptimizationProfileInfo,
+  DeviceConnectionState,
+  InstrumentItem,
+  ChnspecStatusInfo,
+  Rm400StatusInfo,
+  MeasurementRecord,
+  InstrumentComparisonRequest,
+  InstrumentComparisonResult
 } from '../types';
 
 const BASE_URL = '/api';
@@ -194,7 +201,7 @@ export function getDownloadCsvUrl(charId: number): string {
   return `${BASE_URL}/reports/characterization/${charId}/csv`;
 }
 
-export async function fetchInstruments(): Promise<any[]> {
+export async function fetchInstruments(): Promise<InstrumentItem[]> {
   const res = await fetch(`${BASE_URL}/instruments`);
   if (!res.ok) throw new Error('Cihazlar listesi alınamadı');
   return res.json();
@@ -210,7 +217,7 @@ export async function fetchPorts(): Promise<{
   return res.json();
 }
 
-export async function getChnspecStatus(): Promise<any> {
+export async function getChnspecStatus(): Promise<ChnspecStatusInfo> {
   const res = await fetch(`${BASE_URL}/instruments/chnspec/status`);
   if (!res.ok) throw new Error('CHNSpec durumu alınamadı');
   return res.json();
@@ -219,6 +226,7 @@ export async function getChnspecStatus(): Promise<any> {
 export async function connectChnspec(port?: string): Promise<{
   success: boolean;
   connected: boolean;
+  connection_state: DeviceConnectionState;
   port: string;
   is_mock: boolean;
   message: string;
@@ -255,7 +263,10 @@ export async function calibrateChnspec(type: 'White' | 'Black' = 'White'): Promi
   return res.json();
 }
 
-export async function measureChnspec(mode: 'SCI' | 'SCE' = 'SCI', sampleName: string = 'Lab Sample'): Promise<any> {
+export async function measureChnspec(
+  mode: 'SCI' | 'SCE' | 'SCI_SCE' = 'SCI',
+  sampleName: string = 'Lab Sample'
+): Promise<MeasurementRecord> {
   const res = await fetch(`${BASE_URL}/instruments/chnspec/measure`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -264,6 +275,75 @@ export async function measureChnspec(mode: 'SCI' | 'SCE' = 'SCI', sampleName: st
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'CHNSpec ölçüm hatası');
+  }
+  return res.json();
+}
+
+export async function getRm400Status(): Promise<Rm400StatusInfo> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/status`);
+  if (!res.ok) throw new Error('RM400 durumu alınamadı');
+  return res.json();
+}
+
+export async function connectRm400(): Promise<{
+  success: boolean;
+  connected: boolean;
+  is_mock: boolean;
+  connection_state: DeviceConnectionState;
+  message: string;
+}> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/connect`, { method: 'POST' });
+  if (!res.ok) throw new Error('RM400 bağlantı hatası');
+  return res.json();
+}
+
+export async function disconnectRm400(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/disconnect`, { method: 'POST' });
+  if (!res.ok) throw new Error('RM400 bağlantısı kesilemedi');
+  return res.json();
+}
+
+export async function calibrateRm400(step: 'White' | 'Black' = 'White'): Promise<{
+  success: boolean;
+  step: string;
+  message: string;
+}> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/calibrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'RM400 kalibrasyon hatası');
+  }
+  return res.json();
+}
+
+export async function measureRm400(sampleName: string = 'Lab Sample'): Promise<MeasurementRecord> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/measure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample_name: sampleName, save_to_archive: true }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'RM400 ölçüm hatası');
+  }
+  return res.json();
+}
+
+export async function compareInstruments(
+  payload: InstrumentComparisonRequest
+): Promise<InstrumentComparisonResult> {
+  const res = await fetch(`${BASE_URL}/instruments/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Cihaz karşılaştırma hatası');
   }
   return res.json();
 }

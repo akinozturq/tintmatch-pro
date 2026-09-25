@@ -40,6 +40,7 @@ def evaluate_characterization_gate(
     letdown_count: int = 4,
     max_spectral_residual: float | None = None,
     directional_residuals: dict | None = None,
+    loocv_result: dict | None = None,
     profile: ColorScienceProfile = DEFAULT_SCIENCE_PROFILE,
     tolerance: ToleranceProfile = DEFAULT_TOLERANCE_PROFILE
 ) -> dict:
@@ -150,8 +151,35 @@ def evaluate_characterization_gate(
         "severity": "INFO" if cr_pass else "INFO"
     })
 
+    # 8. Out-of-Sample Prediction Validation (LOOCV)
+    loocv_pass = True
+    if loocv_result is not None:
+        if loocv_result.get("status") == "LOOCV_EVALUATED":
+            loocv_mean = loocv_result.get("mean_delta_e00", 0.0)
+            loocv_limit = getattr(tolerance, "loocv_de00_limit", 0.50)
+            loocv_pass = (loocv_mean is not None and loocv_mean <= loocv_limit)
+            checks.append({
+                "metric": "loocv_mean_delta_e00",
+                "label": "Görülmemiş Numune Tahmin Hatası (LOOCV Mean ΔE00)",
+                "actual": round(float(loocv_mean), 3) if loocv_mean is not None else None,
+                "limit": loocv_limit,
+                "operator": "<=",
+                "status": "PASS" if loocv_pass else "FAIL",
+                "severity": "INFO" if loocv_pass else "WARNING"
+            })
+        else:
+            checks.append({
+                "metric": "loocv_mean_delta_e00",
+                "label": "Görülmemiş Numune Tahmin Hatası (LOOCV)",
+                "actual": "SKIPPED",
+                "limit": getattr(tolerance, "loocv_de00_limit", 0.50),
+                "operator": "<=",
+                "status": "SKIPPED",
+                "severity": "INFO"
+            })
+
     # Overall verdict
-    is_fully_passed = mean_pass and max_pass and r2_pass and rmse_pass and count_pass
+    is_fully_passed = mean_pass and max_pass and r2_pass and rmse_pass and count_pass and loocv_pass
     if not is_fully_passed:
         overall_status = "FAIL"
         overall_severity = "CRITICAL"
@@ -168,6 +196,7 @@ def evaluate_characterization_gate(
         "tolerance_profile": tolerance.name,
         "overall_severity": overall_severity,
         "checks": checks,
+        "loocv_result": loocv_result,
         "directional_residuals": directional_residuals or {
             "delta_L": 0.0,
             "delta_a": 0.0,

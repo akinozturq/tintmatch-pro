@@ -140,3 +140,62 @@ def test_api_chnspec_endpoints():
     disc_resp = client.post("/api/instruments/chnspec/disconnect")
     assert disc_resp.status_code == 200
     assert disc_resp.json()["success"] is True
+
+
+def test_chnspec_sci_sce_dual_mode():
+    """Verify CHNSpec driver supports simultaneous SCI_SCE acquisition returning both curves."""
+    driver = CHNSpecDriver(dll_dir="C:/non_existent_path_to_force_mock")
+    driver.connect("COM99")
+
+    res = driver.measure(mode="SCI_SCE")
+    assert res["success"] is True
+    assert res["mode"] == "SCI_SCE"
+    assert "sci" in res
+    assert "sce" in res
+    assert len(res["sci"]["reflectance"]) == N_WAVELENGTHS
+    assert len(res["sce"]["reflectance"]) == N_WAVELENGTHS
+    # In physical sphere, SCI reflectance is higher than SCE due to surface gloss
+    assert sum(res["sci"]["reflectance"]) > sum(res["sce"]["reflectance"])
+    assert res["sci"]["lab"]["L"] >= res["sce"]["lab"]["L"]
+
+    # Also test via API (give serial port time to settle if recently disconnected)
+    import time
+    time.sleep(0.5)
+    api_resp = client.post("/api/instruments/chnspec/measure", json={
+        "mode": "SCI_SCE",
+        "sample_name": "Pytest Dual SCI/SCE Sample",
+        "save_to_archive": False
+    })
+    assert api_resp.status_code == 200, f"Measure API failed: {api_resp.text}"
+    api_data = api_resp.json()
+    assert "sci" in api_data
+    assert "sce" in api_data
+    assert api_data["mode"] == "SCI_SCE"
+
+
+def test_chnspec_connection_state_machine():
+    """Verify explicit 4-state connection state machine transitions."""
+    driver = CHNSpecDriver(dll_dir="C:/non_existent_path_to_force_mock")
+    assert driver.connection_state == "DISCONNECTED"
+
+    driver.connect("COM99")
+    assert driver.connection_state == "CONNECTED_MOCK"
+
+    st = driver.get_status()
+    assert st["connection_state"] == "CONNECTED_MOCK"
+
+    driver.disconnect()
+    assert driver.connection_state == "DISCONNECTED"
+
+
+def test_chnspec_auto_connect_deadlock_free():
+    """Verify calling measure on disconnected driver does not deadlock."""
+    driver = CHNSpecDriver(dll_dir="C:/non_existent_path_to_force_mock")
+    assert not driver.is_connected()
+
+    # In mock mode, measure when disconnected should auto-connect without deadlocking
+    driver.connect()
+    res = driver.measure(mode="SCI")
+    assert res["success"] is True
+    assert driver.is_connected()
+    driver.disconnect()

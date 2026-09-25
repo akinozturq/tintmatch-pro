@@ -117,3 +117,20 @@ def test_nan_inf_and_invalid_wavelength_rejection():
     # Empty array
     with pytest.raises(ValueError, match="cannot be empty"):
         normalize_spectrum([])
+
+
+def test_extrapolation_barrier_rejection_and_override():
+    """Wavelengths that do not span [400..700 nm] must be rejected unless allow_extrapolation=True."""
+    # Spectrum only covers 420..680 nm (missing 400, 410, 690, 700 nm)
+    wls_narrow = list(range(420, 690, 10))
+    refl_narrow = [0.4] * len(wls_narrow)
+
+    # 1. Default must reject incomplete coverage
+    with pytest.raises(ValueError, match="does not fully cover"):
+        normalize_spectrum(refl_narrow, wavelengths=wls_narrow)
+
+    # 2. Explicit allow_extrapolation=True must permit controlled extrapolation
+    res = normalize_spectrum(refl_narrow, wavelengths=wls_narrow, allow_extrapolation=True)
+    assert len(res) == 31
+    assert np.all(res >= 0.0) and np.all(res <= 1.0)
+    assert np.isclose(res[0], 0.4, atol=1e-2)

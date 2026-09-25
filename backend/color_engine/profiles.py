@@ -23,6 +23,7 @@ class ToleranceProfile:
     description: str
     mean_de00_limit: float = 0.30
     single_de00_limit: float = 0.50
+    loocv_de00_limit: float = 0.50
     min_r_squared: float = 0.9950
     max_spectral_rmse: float = 0.0150
     opacity_limit: float = 98.0
@@ -32,9 +33,10 @@ class ToleranceProfile:
 TOLERANCE_STRICT_LAB = ToleranceProfile(
     id="strict_lab",
     name="Strict Laboratory Standard",
-    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50)",
+    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50, LOOCV ≤ 0.50)",
     mean_de00_limit=0.30,
     single_de00_limit=0.50,
+    loocv_de00_limit=0.50,
     min_r_squared=0.9950,
     max_spectral_rmse=0.0150,
     opacity_limit=98.0,
@@ -44,9 +46,10 @@ TOLERANCE_STRICT_LAB = ToleranceProfile(
 TOLERANCE_INDUSTRIAL = ToleranceProfile(
     id="industrial",
     name="Industrial Production Standard",
-    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80)",
+    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80, LOOCV ≤ 0.80)",
     mean_de00_limit=0.50,
     single_de00_limit=0.80,
+    loocv_de00_limit=0.80,
     min_r_squared=0.9900,
     max_spectral_rmse=0.0250,
     opacity_limit=97.0,
@@ -56,9 +59,10 @@ TOLERANCE_INDUSTRIAL = ToleranceProfile(
 TOLERANCE_COMMERCIAL = ToleranceProfile(
     id="commercial",
     name="Commercial Tinting Standard",
-    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20)",
+    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20, LOOCV ≤ 1.20)",
     mean_de00_limit=0.80,
     single_de00_limit=1.20,
+    loocv_de00_limit=1.20,
     min_r_squared=0.9850,
     max_spectral_rmse=0.0350,
     opacity_limit=96.0,
@@ -97,6 +101,7 @@ class ColorScienceProfile:
     # Quality Gate Acceptance Limits (ISO 18314 conformance)
     char_mean_de00_max: float = 0.30
     char_single_de00_max: float = 0.50
+    char_loocv_de00_max: float = 0.50
     char_min_r_squared: float = 0.9950
     char_max_spectral_rmse: float = 0.0150
     opacity_hiding_threshold: float = 98.0

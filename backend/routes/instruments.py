@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..devices.rm400_driver import rm400_driver
 from ..devices.chnspec_driver import chnspec_driver, CHNSpecDriver
+from ..color_engine.instrument_comparison import compare_spectral_measurements
 from ..database.db import get_db_connection
 
 router = APIRouter(prefix="/api/instruments", tags=["instruments"])
@@ -78,6 +79,7 @@ def connect_chnspec(req: CHNSpecConnectRequest = CHNSpecConnectRequest()):
     return {
         "success": success,
         "connected": chnspec_driver.is_connected(),
+        "connection_state": chnspec_driver.connection_state,
         "port": port,
         "is_mock": chnspec_driver.is_mock,
         "message": f"Connected to CHNSpec DS-36D on {port}" if success else f"Unable to establish connection on {port or 'auto-detect'}."
@@ -121,14 +123,17 @@ def measure_chnspec(req: CHNSpecMeasureRequest):
         inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%DS-36D%' LIMIT 1").fetchone()
         inst_id = inst_row["id"] if inst_row else 2
 
+        spec_inc = 0 if req.mode.upper() == "SCE" else 1
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json)
-        VALUES (?, 'CHNSpec Operator', ?, ?, ?)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included)
+        VALUES (?, 'CHNSpec Operator', ?, ?, ?, 'd/8°', ?, ?)
         """, (
             inst_id,
             req.sample_name or "Lab Sample",
             json.dumps(meas["raw_reflectance"]),
-            json.dumps(meas)
+            json.dumps(meas),
+            req.mode,
+            spec_inc
         ))
         conn.commit()
         meas["measurement_id"] = cur.lastrowid
@@ -152,6 +157,8 @@ def get_rm400_status():
     return {
         "instrument": "X-Rite RM400",
         "driver_available": rm400_driver.is_available,
+        "is_mock": rm400_driver.is_mock,
+        "connection_state": rm400_driver.connection_state,
         "dll_path": rm400_driver.dll_path,
         "interface_version": version,
         "connected": connected,
@@ -167,6 +174,8 @@ def connect_rm400():
     return {
         "success": success,
         "connected": rm400_driver.is_connected(),
+        "is_mock": rm400_driver.is_mock,
+        "connection_state": rm400_driver.connection_state,
         "message": "Connected to X-Rite RM400" if success else "Unable to establish connection to RM400."
     }
 
@@ -201,10 +210,14 @@ def measure_sample(req: MeasureRequest):
     if req.save_to_archive:
         conn = get_db_connection()
         cur = conn.cursor()
+        inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%RM400%' LIMIT 1").fetchone()
+        inst_id = inst_row["id"] if inst_row else 1
+
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json)
-        VALUES (1, 'RM400 Operator', ?, ?, ?)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included)
+        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0)
         """, (
+            inst_id,
             req.sample_name or "Lab Sample",
             json.dumps(meas["reflectance"]),
             json.dumps(meas)
@@ -214,3 +227,37 @@ def measure_sample(req: MeasureRequest):
         conn.close()
 
     return meas
+
+
+# =========================================================================
+# Inter-Instrument Comparison & Empirical Bias Analysis
+# =========================================================================
+
+class InstrumentCompareRequest(BaseModel):
+    ref_reflectance: list[float] = Field(..., description="Reference 31-point spectral reflectance [400..700 nm]")
+    target_reflectance: list[float] = Field(..., description="Target 31-point spectral reflectance [400..700 nm]")
+    ref_geometry: str | None = Field("45°/0°", description="Geometry of reference instrument (e.g. '45°/0°')")
+    target_geometry: str | None = Field("d/8°", description="Geometry of target instrument (e.g. 'd/8°')")
+    ref_name: str | None = Field("X-Rite RM400 (45°/0°)", description="Reference instrument name")
+    target_name: str | None = Field("CHNSpec DS-36D (d/8°)", description="Target instrument name")
+    ref_mode: str | None = Field(None, description="Reference mode (e.g. 'SPEX', 'SCI', 'SCE')")
+    target_mode: str | None = Field(None, description="Target mode (e.g. 'SCI', 'SCE')")
+    illuminant: str = Field("D65", description="CIE Illuminant")
+    observer: str = Field("10", description="CIE Standard Observer")
+
+
+@router.post("/compare")
+def compare_spectrophotometers(req: InstrumentCompareRequest):
+    """Compares spectra from two spectrophotometers (e.g. 45°/0° vs d/8° SCI/SCE)."""
+    try:
+        res = compare_spectral_measurements(
+            ref_spectrum=req.ref_reflectance,
+            target_spectrum=req.target_reflectance,
+            ref_meta={"instrument": req.ref_name, "geometry": req.ref_geometry, "mode": req.ref_mode},
+            target_meta={"instrument": req.target_name, "geometry": req.target_geometry, "mode": req.target_mode},
+            illuminant=req.illuminant,
+            observer=req.observer
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

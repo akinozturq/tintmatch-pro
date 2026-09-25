@@ -583,20 +583,22 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({ bases, onComplet
                 Kubelka-Munk modeli ile seyreltme serisi artık hata analizi
               </p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-emerald-400">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>ΔE00 &lt; 0.30 Onaylandı</span>
+            <div className="flex items-center gap-1.5 text-xs font-mono font-medium">
+              <CheckCircle2 className={`h-4 w-4 ${results.passed_validation ? 'text-emerald-400' : 'text-amber-400'}`} />
+              <span className={results.passed_validation ? 'text-emerald-400' : 'text-amber-400'}>
+                {results.passed_validation ? 'Kalite Kapısı: ONAYLANDI' : 'Kalite Kapısı: İNCELEME GEREKLİ'}
+              </span>
             </div>
           </div>
 
           {/* KPI metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs font-mono">
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
               <span className="text-[10px] text-zinc-400 block uppercase">Ortalama ΔE00</span>
               <span className="text-base font-bold text-emerald-400 mt-0.5 block">
                 {results.mean_delta_e00.toFixed(3)}
               </span>
-              <span className="text-[10px] text-zinc-400">Eşik &lt; 0.300</span>
+              <span className="text-[10px] text-zinc-400">Self-Fit &lt; 0.300</span>
             </div>
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
               <span className="text-[10px] text-zinc-400 block uppercase">Maksimum ΔE00</span>
@@ -611,6 +613,28 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({ bases, onComplet
                 {(results.r_squared * 100).toFixed(2)}%
               </span>
               <span className="text-[10px] text-zinc-400">Uyum Oranı</span>
+            </div>
+            <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+              <span className="text-[10px] text-zinc-400 block uppercase">LOOCV Tahmin</span>
+              <span className={`text-base font-bold mt-0.5 block ${
+                results.loocv?.status === 'LOOCV_EVALUATED'
+                  ? (results.loocv.mean_delta_e00 ?? 1) <= 0.50 ? 'text-cyan-400' : 'text-amber-400'
+                  : 'text-zinc-500'
+              }`}>
+                {results.loocv?.status === 'LOOCV_EVALUATED' && results.loocv.mean_delta_e00 != null
+                  ? results.loocv.mean_delta_e00.toFixed(3)
+                  : 'N/A (n<4)'}
+              </span>
+              <span className="text-[10px] text-zinc-400">Eşik &le; 0.500</span>
+            </div>
+            <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
+              <span className="text-[10px] text-zinc-400 block uppercase">Jacobian Cond</span>
+              <span className="text-xs font-bold text-zinc-200 mt-1 block truncate">
+                {results.jacobian_diagnostics?.scaled_condition_status || 'WELL_CONDITIONED'}
+              </span>
+              <span className="text-[10px] text-zinc-400">
+                {results.jacobian_condition_number ? `κ ≈ ${results.jacobian_condition_number.toFixed(1)}` : 'Identifiable'}
+              </span>
             </div>
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
               <span className="text-[10px] text-zinc-400 block uppercase">Model</span>

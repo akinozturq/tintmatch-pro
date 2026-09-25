@@ -64,6 +64,7 @@ def init_db():
         unit_k TEXT NOT NULL,
         unit_s TEXT NOT NULL,
         unit_ks TEXT NOT NULL,
+        geometry TEXT DEFAULT '45°/0°',
         mean_delta_e00 REAL NOT NULL DEFAULT 0.0,
         passed_validation BOOLEAN NOT NULL DEFAULT 1,
         characterization_base_id INTEGER,
@@ -80,6 +81,9 @@ def init_db():
         base_id INTEGER,
         base_name TEXT,
         instrument TEXT DEFAULT 'X-Rite RM400 (45°/0°)',
+        instrument_id INTEGER,
+        geometry TEXT DEFAULT '45°/0°',
+        measurement_mode TEXT DEFAULT 'SCI',
         k1 REAL DEFAULT 0.04,
         k2 REAL DEFAULT 0.60,
         letdowns_json TEXT NOT NULL,
@@ -130,6 +134,9 @@ def init_db():
         instrument_id INTEGER,
         operator TEXT DEFAULT 'Laboratory Technician',
         sample_name TEXT NOT NULL,
+        geometry TEXT DEFAULT '45°/0°',
+        measurement_mode TEXT DEFAULT 'SCI',
+        specular_included BOOLEAN DEFAULT 1,
         file_sha256 TEXT,
         raw_content TEXT,
         parsed_json TEXT,
@@ -165,6 +172,32 @@ def init_db():
         cur.execute("ALTER TABLE recipes ADD COLUMN profile_id TEXT DEFAULT 'color_match'")
     if "quality_gate_json" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN quality_gate_json TEXT")
+
+    # Migrate measurements table columns
+    cur.execute("PRAGMA table_info(measurements)")
+    meas_cols = [row[1] for row in cur.fetchall()]
+    if "geometry" not in meas_cols:
+        cur.execute("ALTER TABLE measurements ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "measurement_mode" not in meas_cols:
+        cur.execute("ALTER TABLE measurements ADD COLUMN measurement_mode TEXT DEFAULT 'SCI'")
+    if "specular_included" not in meas_cols:
+        cur.execute("ALTER TABLE measurements ADD COLUMN specular_included BOOLEAN DEFAULT 1")
+
+    # Migrate characterizations table columns
+    cur.execute("PRAGMA table_info(characterizations)")
+    char_cols = [row[1] for row in cur.fetchall()]
+    if "geometry" not in char_cols:
+        cur.execute("ALTER TABLE characterizations ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "measurement_mode" not in char_cols:
+        cur.execute("ALTER TABLE characterizations ADD COLUMN measurement_mode TEXT DEFAULT 'SCI'")
+    if "instrument_id" not in char_cols:
+        cur.execute("ALTER TABLE characterizations ADD COLUMN instrument_id INTEGER")
+
+    # Migrate pastes table columns
+    cur.execute("PRAGMA table_info(pastes)")
+    paste_cols = [row[1] for row in cur.fetchall()]
+    if "geometry" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
 
     # Seed default instrument if empty
     cur.execute("SELECT COUNT(*) FROM instruments")

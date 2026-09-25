@@ -267,6 +267,8 @@ def compute_canonical_execution_hash(
     tolerance_profile_id: str | None = None,
     max_pastes: int | None = None,
     max_total_load: float | None = None,
+    geometry: str = "45°/0°",
+    characterization_version: str | None = None,
 ) -> str:
     """Computes a canonical SHA-256 execution context hash capturing all optical, formulation, and solver parameters."""
     def paste_sort_key(p):
@@ -289,6 +291,7 @@ def compute_canonical_execution_hash(
         "algorithm_version": algorithm,
         "base_hash": base_hash,
         "base_id": base_id,
+        "geometry": geometry,
         "illuminant": illuminant,
         "observer": observer,
         "pastes": sorted_pastes,
@@ -297,6 +300,9 @@ def compute_canonical_execution_hash(
         "saunderson_k2": round(float(k2), 4),
         "total_load": round(float(calc_total_load), 6),
     }
+
+    if characterization_version:
+        payload["characterization_version"] = str(characterization_version)
 
     if target_reflectance is not None and len(target_reflectance) > 0:
         target_rounded = [round(float(v), 5) for v in target_reflectance]
