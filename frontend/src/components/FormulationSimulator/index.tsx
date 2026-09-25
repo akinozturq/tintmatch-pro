@@ -8,6 +8,7 @@ import type {
 } from '../../types';
 import { predictRecipe, matchColor } from '../../services/api';
 import { RecipeCards } from './RecipeCards';
+import { RecipeComparisonMatrix } from './RecipeComparisonMatrix';
 import { ConcentrationSliders } from './ConcentrationSliders';
 import { SpectralPreview } from './SpectralPreview';
 import { ColorMetrics } from './ColorMetrics';
@@ -359,6 +360,12 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
           />
 
           <ColorMetrics simulation={simulation} />
+
+          <RecipeComparisonMatrix
+            allRecipes={allRecipes}
+            activeRecipeKey={activeRecipeKey}
+            onSelectRecipe={handleSelectRecipe}
+          />
 
           <SolverDiagnosticsView diagnostics={diagnostics} />
 

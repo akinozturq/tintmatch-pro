@@ -54,6 +54,9 @@ class CHNSpecDriver:
         self._cal_event = threading.Event()
         self._cal_success = False
 
+        self._last_calibrated_at: Optional[float] = None
+        self._calibration_expiry_hours: float = 8.0
+
         self._connection_state = "DISCONNECTED"
         self._last_error = None
 
@@ -278,6 +281,7 @@ class CHNSpecDriver:
         with self._lock:
             if self._is_mock:
                 time.sleep(0.5)
+                self._last_calibrated_at = time.time()
                 return {"success": True, "type": "White", "message": "White calibration completed (Mock)"}
 
             if not self.is_connected():
@@ -295,6 +299,9 @@ class CHNSpecDriver:
             if not finished:
                 raise TimeoutError("White calibration timed out waiting for device response.")
 
+            if self._cal_success:
+                self._last_calibrated_at = time.time()
+
             return {
                 "success": self._cal_success,
                 "type": "White",
@@ -306,6 +313,7 @@ class CHNSpecDriver:
         with self._lock:
             if self._is_mock:
                 time.sleep(0.5)
+                self._last_calibrated_at = time.time()
                 return {"success": True, "type": "Black", "message": "Black calibration completed (Mock)"}
 
             if not self.is_connected():
@@ -323,11 +331,60 @@ class CHNSpecDriver:
             if not finished:
                 raise TimeoutError("Black calibration timed out waiting for device response.")
 
+            if self._cal_success:
+                self._last_calibrated_at = time.time()
+
             return {
                 "success": self._cal_success,
                 "type": "Black",
                 "message": "Black calibration successful" if self._cal_success else "Black calibration failed"
             }
+
+    def get_calibration_health(self) -> Dict[str, Any]:
+        """
+        Evaluates spectrophotometer calibration freshness against shift limits (default 8 hours).
+        Status values: 'VALID', 'EXPIRING_SOON' (within 1 hour of expiry), 'EXPIRED', 'UNCALIBRATED'.
+        """
+        if self._last_calibrated_at is None:
+            if self._is_mock:
+                return {
+                    "status": "VALID",
+                    "last_calibrated_at": time.time(),
+                    "elapsed_hours": 0.1,
+                    "remaining_hours": 7.9,
+                    "expiry_hours": self._calibration_expiry_hours,
+                    "message": "Instrument calibrated (Mock Ready)."
+                }
+            return {
+                "status": "UNCALIBRATED",
+                "last_calibrated_at": None,
+                "elapsed_hours": None,
+                "remaining_hours": 0.0,
+                "expiry_hours": self._calibration_expiry_hours,
+                "message": "Instrument has not been calibrated in current session."
+            }
+
+        elapsed = (time.time() - self._last_calibrated_at) / 3600.0
+        remaining = max(0.0, self._calibration_expiry_hours - elapsed)
+
+        if elapsed >= self._calibration_expiry_hours:
+            status = "EXPIRED"
+            msg = f"Calibration expired {elapsed - self._calibration_expiry_hours:.1f} hours ago. Recalibration required."
+        elif remaining <= 1.0:
+            status = "EXPIRING_SOON"
+            msg = f"Calibration will expire in {int(remaining * 60)} minutes."
+        else:
+            status = "VALID"
+            msg = f"Calibration valid ({remaining:.1f} hours remaining)."
+
+        return {
+            "status": status,
+            "last_calibrated_at": self._last_calibrated_at,
+            "elapsed_hours": round(elapsed, 2),
+            "remaining_hours": round(remaining, 2),
+            "expiry_hours": self._calibration_expiry_hours,
+            "message": msg
+        }
 
     def measure(self, mode: str = "SCI", timeout_sec: float = 12.0) -> Dict[str, Any]:
         """

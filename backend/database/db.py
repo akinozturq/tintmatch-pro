@@ -112,6 +112,8 @@ def init_db():
         delta_e00 REAL,
         contrast_ratio REAL,
         calculation_hash TEXT,
+        calculation_id TEXT,
+        engine_version TEXT DEFAULT '2.2.0',
         profile_id TEXT DEFAULT 'color_match',
         geometry TEXT DEFAULT '45°/0°',
         characterization_version INTEGER DEFAULT 1,
@@ -131,6 +133,8 @@ def init_db():
         geometry TEXT NOT NULL DEFAULT '45°/0°',
         aperture_mm REAL NOT NULL DEFAULT 4.0,
         calibration_date TIMESTAMP,
+        calibration_expiry_hours INTEGER DEFAULT 8,
+        last_calibrated_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -146,6 +150,7 @@ def init_db():
         measurement_mode TEXT DEFAULT 'SCI',
         specular_included BOOLEAN DEFAULT 1,
         is_simulation BOOLEAN DEFAULT 0,
+        calibration_status TEXT DEFAULT 'VALID',
         file_sha256 TEXT,
         raw_content TEXT,
         parsed_json TEXT,
@@ -166,6 +171,7 @@ def init_db():
         composite_mi REAL,
         total_load REAL,
         calculation_hash TEXT,
+        calculation_id TEXT,
         geometry TEXT DEFAULT '45°/0°',
         characterization_ids_json TEXT,
         operator_notes TEXT,
@@ -179,6 +185,10 @@ def init_db():
     recipe_cols = [row[1] for row in cur.fetchall()]
     if "calculation_hash" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN calculation_hash TEXT")
+    if "calculation_id" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN calculation_id TEXT")
+    if "engine_version" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN engine_version TEXT DEFAULT '2.2.0'")
     if "profile_id" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN profile_id TEXT DEFAULT 'color_match'")
     if "quality_gate_json" not in recipe_cols:
@@ -197,6 +207,16 @@ def init_db():
         cur.execute("ALTER TABLE recipe_history ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
     if "characterization_ids_json" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN characterization_ids_json TEXT")
+    if "calculation_id" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN calculation_id TEXT")
+
+    # Migrate instruments table columns
+    cur.execute("PRAGMA table_info(instruments)")
+    inst_cols = [row[1] for row in cur.fetchall()]
+    if "calibration_expiry_hours" not in inst_cols:
+        cur.execute("ALTER TABLE instruments ADD COLUMN calibration_expiry_hours INTEGER DEFAULT 8")
+    if "last_calibrated_at" not in inst_cols:
+        cur.execute("ALTER TABLE instruments ADD COLUMN last_calibrated_at TIMESTAMP")
 
     # Migrate bases table columns
     cur.execute("PRAGMA table_info(bases)")
@@ -215,6 +235,8 @@ def init_db():
         cur.execute("ALTER TABLE measurements ADD COLUMN specular_included BOOLEAN DEFAULT 1")
     if "is_simulation" not in meas_cols:
         cur.execute("ALTER TABLE measurements ADD COLUMN is_simulation BOOLEAN DEFAULT 0")
+    if "calibration_status" not in meas_cols:
+        cur.execute("ALTER TABLE measurements ADD COLUMN calibration_status TEXT DEFAULT 'VALID'")
 
     # Migrate characterizations table columns
     cur.execute("PRAGMA table_info(characterizations)")

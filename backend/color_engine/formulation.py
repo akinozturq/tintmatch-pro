@@ -12,6 +12,7 @@ Industrial-grade multi-illuminant CCM solver and live recipe simulation engine:
 - Finite-Difference Numerical Sensitivity Matrix (What-If partial derivatives: d(dE00)/dc, dL/dc, da/dc, db/dc, dC/dc, dH/dc)
 """
 
+import uuid
 import numpy as np
 from scipy.optimize import minimize, nnls
 from .constants import WAVELENGTHS, N_WAVELENGTHS
@@ -26,12 +27,14 @@ from .colorimetry import (
     compute_metamerism_index,
 )
 from .profiles import (
+    ENGINE_VERSION,
     OptimizationProfile,
     PROFILE_COLOR_MATCH,
     PROFILE_LIGHT_STABILITY,
     PROFILE_ECONOMY,
     STANDARD_OPTIMIZATION_PROFILES,
 )
+from .constraints import FormulationConstraints, ConstraintEngine
 
 
 def predict_recipe(
@@ -229,6 +232,71 @@ def calculate_pigment_sensitivity_matrix(
         if target_reflectance is not None and "comparison" in sim_pert:
             d_de00 = (sim_pert["comparison"]["delta_e00"] - base_de00) / delta
 
+        # Concrete discrete step +0.10%
+        step_plus_pastes = []
+        for p in matched_pastes:
+            p_copy = dict(p)
+            if p.get("id") == paste.get("id"):
+                p_copy["concentration"] = c_orig + 0.10
+            step_plus_pastes.append(p_copy)
+
+        sim_plus = predict_recipe(
+            base_k=base_k,
+            base_s=base_s,
+            pastes=step_plus_pastes,
+            k1=k1,
+            k2=k2,
+            target_reflectance=target_reflectance
+        )
+        r_plus = np.asarray(sim_plus["reflectance"], dtype=float)
+        lab_plus = reflectance_to_lab(r_plus, illuminant="D65", observer="10")
+        c_plus = np.sqrt(lab_plus[1] ** 2 + lab_plus[2] ** 2)
+        diff_ab_sq_plus = ((lab_plus[1] - lab_base[1]) ** 2) + ((lab_plus[2] - lab_base[2]) ** 2)
+        dH_plus = float(np.sqrt(max(0.0, diff_ab_sq_plus - ((c_plus - c_base) ** 2))))
+
+        step_plus_010 = {
+            "concentration": round(c_orig + 0.10, 4),
+            "delta_e00": round(float(sim_plus["comparison"]["delta_e00"]), 3) if "comparison" in sim_plus else 0.0,
+            "delta_L": round(float(lab_plus[0] - lab_base[0]), 3),
+            "delta_a": round(float(lab_plus[1] - lab_base[1]), 3),
+            "delta_b": round(float(lab_plus[2] - lab_base[2]), 3),
+            "delta_C": round(float(c_plus - c_base), 3),
+            "delta_H": round(dH_plus, 3)
+        }
+
+        # Concrete discrete step -0.10% (bounded at 0.0)
+        c_minus_target = max(0.0, c_orig - 0.10)
+        step_minus_pastes = []
+        for p in matched_pastes:
+            p_copy = dict(p)
+            if p.get("id") == paste.get("id"):
+                p_copy["concentration"] = c_minus_target
+            step_minus_pastes.append(p_copy)
+
+        sim_minus = predict_recipe(
+            base_k=base_k,
+            base_s=base_s,
+            pastes=step_minus_pastes,
+            k1=k1,
+            k2=k2,
+            target_reflectance=target_reflectance
+        )
+        r_minus = np.asarray(sim_minus["reflectance"], dtype=float)
+        lab_minus = reflectance_to_lab(r_minus, illuminant="D65", observer="10")
+        c_minus = np.sqrt(lab_minus[1] ** 2 + lab_minus[2] ** 2)
+        diff_ab_sq_minus = ((lab_minus[1] - lab_base[1]) ** 2) + ((lab_minus[2] - lab_base[2]) ** 2)
+        dH_minus = float(np.sqrt(max(0.0, diff_ab_sq_minus - ((c_minus - c_base) ** 2))))
+
+        step_minus_010 = {
+            "concentration": round(c_minus_target, 4),
+            "delta_e00": round(float(sim_minus["comparison"]["delta_e00"]), 3) if "comparison" in sim_minus else 0.0,
+            "delta_L": round(float(lab_minus[0] - lab_base[0]), 3),
+            "delta_a": round(float(lab_minus[1] - lab_base[1]), 3),
+            "delta_b": round(float(lab_minus[2] - lab_base[2]), 3),
+            "delta_C": round(float(c_minus - c_base), 3),
+            "delta_H": round(dH_minus, 3)
+        }
+
         # Interpretation text
         notes = []
         if dL < -3.0:
@@ -264,6 +332,8 @@ def calculate_pigment_sensitivity_matrix(
             "d_b_dc": round(float(db), 3),
             "d_C_dc": round(float(dC), 3),
             "d_H_dc": round(float(dH_val), 3),
+            "step_plus_010": step_plus_010,
+            "step_minus_010": step_minus_010,
             "interpretation": interp
         })
 
@@ -352,11 +422,12 @@ def _optimize_single_profile(
     max_pastes: int,
     max_total_load: float,
     k1: float,
-    k2: float
+    k2: float,
+    constraints_config: FormulationConstraints | None = None
 ) -> dict:
     """
     Executes a single constrained SLSQP optimization run for a given OptimizationProfile.
-    Enforces true linear inequality constraint: sum(c_i) <= max_total_load.
+    Enforces true linear inequality constraint: sum(c_i) <= max_total_load and group/dispensing bounds.
     """
     n_active = len(candidate_indices)
     if n_active == 0:
@@ -371,14 +442,16 @@ def _optimize_single_profile(
             "total_load": 0.0
         }
 
+    if constraints_config is None:
+        constraints_config = FormulationConstraints(max_total_load=max_total_load)
+
+    engine = ConstraintEngine(constraints_config)
+    candidate_keys = [str(available_pastes[idx].get("id", idx)) for idx in candidate_indices]
+
     # Initial guess vector
     x0 = [float(initial_sol[idx]) for idx in candidate_indices]
-    # Bound each paste between 0 and max_total_load
-    bounds = [(0.0, max_total_load) for _ in candidate_indices]
-    # True linear inequality constraint: max_total_load - sum(c_i) >= 0
-    constraints = [
-        {"type": "ineq", "fun": lambda c: max_total_load - np.sum(c)}
-    ]
+    bounds = engine.build_scipy_bounds(candidate_keys, default_upper_bound=constraints_config.max_total_load)
+    constraints = engine.build_scipy_constraints(candidate_keys)
 
     def objective(sub_concs):
         return evaluate_recipe_objective(
@@ -406,10 +479,10 @@ def _optimize_single_profile(
     )
 
     opt_raw = np.maximum(res.x, 0.0)
+    slack_info = engine.evaluate_constraint_slack(opt_raw, candidate_keys)
 
     # Diagnostic status evaluation
-    slack = max_total_load - np.sum(opt_raw)
-    if slack < -1e-4:
+    if not slack_info["is_feasible"]:
         diag_status = "CONSTRAINTS_VIOLATED"
     elif res.success:
         diag_status = "OPTIMAL_CONVERGED"
@@ -418,10 +491,11 @@ def _optimize_single_profile(
     else:
         diag_status = "FEASIBLE_LOCAL_MIN"
 
-    # Prune negligible traces (< 0.005%)
+    # Prune sub-threshold and negligible traces
+    cleaned_opt, _ = engine.post_process_solution(opt_raw, candidate_keys)
     pruned_concs = {}
     for i, p_idx in enumerate(candidate_indices):
-        c = float(opt_raw[i])
+        c = float(cleaned_opt[i])
         if c >= 0.005:
             pruned_concs[p_idx] = c
 
@@ -432,9 +506,10 @@ def _optimize_single_profile(
 
         # Quick refinement polish on final top pastes using unified objective
         sub_indices = list(pruned_concs.keys())
+        sub_keys = [str(available_pastes[idx].get("id", idx)) for idx in sub_indices]
         sub_x0 = [pruned_concs[idx] for idx in sub_indices]
-        sub_bounds = [(0.0, max_total_load) for _ in sub_indices]
-        sub_constraints = [{"type": "ineq", "fun": lambda c: max_total_load - np.sum(c)}]
+        sub_bounds = engine.build_scipy_bounds(sub_keys, default_upper_bound=constraints_config.max_total_load)
+        sub_constraints = engine.build_scipy_constraints(sub_keys)
 
         def sub_obj(c_vec):
             return evaluate_recipe_objective(
@@ -466,14 +541,15 @@ def _optimize_single_profile(
 
     # Final total load clamp verification: handle floating-point epsilon gracefully
     sum_c = sum(pruned_concs.values())
-    if sum_c > max_total_load:
-        excess = sum_c - max_total_load
+    eff_max_load = constraints_config.max_total_load
+    if sum_c > eff_max_load:
+        excess = sum_c - eff_max_load
         if excess <= 1e-3:
             # Subtle numerical epsilon: trim from largest concentration to strictly satisfy constraint
             max_p = max(pruned_concs, key=pruned_concs.get)
             pruned_concs[max_p] = max(0.0, pruned_concs[max_p] - excess)
         else:
-            scale = max_total_load / max(sum_c, 1e-6)
+            scale = eff_max_load / max(sum_c, 1e-6)
             for p_i in pruned_concs:
                 pruned_concs[p_i] *= scale
 
@@ -534,9 +610,9 @@ def _optimize_single_profile(
         delta_e00_d65=float(de00),
         composite_mi=float(comp_mi),
         total_load=float(sim["total_colorant_load"]),
-        max_total_load=max_total_load,
+        max_total_load=constraints_config.max_total_load,
         solver_status=diag_status,
-        constraint_slack=float(max_total_load - sim["total_colorant_load"]),
+        constraint_slack=float(constraints_config.max_total_load - sim["total_colorant_load"]),
         directional_residuals=dir_res
     )
 
@@ -560,7 +636,8 @@ def _optimize_single_profile(
             "success": bool(res.success),
             "message": str(res.message),
             "final_loss": round(float(res.fun), 4),
-            "constraint_slack": round(float(max_total_load - sim["total_colorant_load"]), 3)
+            "constraint_slack": round(float(constraints_config.max_total_load - sim["total_colorant_load"]), 3),
+            "slack_details": slack_info
         },
         "sensitivity_matrix": sensitivity
     }
@@ -575,7 +652,8 @@ def match_color_ccm(
     max_total_load: float = 12.0,
     k1: float = 0.04,
     k2: float = 0.60,
-    profile_id: str | None = None
+    profile_id: str | None = None,
+    constraints: FormulationConstraints | None = None
 ) -> dict:
     """
     Automated Computer Color Matching (CCM) solver.
@@ -594,13 +672,21 @@ def match_color_ccm(
         k1: Saunderson Fresnel reflection coefficient
         k2: Saunderson internal diffuse reflection coefficient
         profile_id: Optional profile preference ('color_match', 'light_stability', 'economy')
+        constraints: Optional FormulationConstraints configuration
 
     Returns:
-        Structured response with primary recipe, 3 alternative recipes, diagnostics, and sensitivity matrix.
+        Structured response with calculation_id, engine_version, primary recipe, 3 alternatives, diagnostics.
     """
     n_pastes = len(available_pastes)
     if n_pastes == 0:
         raise ValueError("No available pastes provided for matching.")
+
+    if constraints is None:
+        constraints = FormulationConstraints(max_total_load=max_total_load)
+    else:
+        max_total_load = constraints.max_total_load
+
+    calculation_id = f"calc_{uuid.uuid4().hex[:12]}"
 
     target_r = np.asarray(target_reflectance, dtype=float)
     target_r_int = saunderson_correction(target_r, k1=k1, k2=k2)
@@ -660,8 +746,11 @@ def match_color_ccm(
         max_pastes=max_pastes,
         max_total_load=max_total_load,
         k1=k1,
-        k2=k2
+        k2=k2,
+        constraints_config=constraints
     )
+    recipe_a["calculation_id"] = calculation_id
+    recipe_a["engine_version"] = ENGINE_VERSION
 
     recipe_b = _optimize_single_profile(
         profile=PROFILE_LIGHT_STABILITY,
@@ -679,8 +768,11 @@ def match_color_ccm(
         max_pastes=max_pastes,
         max_total_load=max_total_load,
         k1=k1,
-        k2=k2
+        k2=k2,
+        constraints_config=constraints
     )
+    recipe_b["calculation_id"] = calculation_id
+    recipe_b["engine_version"] = ENGINE_VERSION
 
     recipe_c = _optimize_single_profile(
         profile=PROFILE_ECONOMY,
@@ -698,8 +790,11 @@ def match_color_ccm(
         max_pastes=max_pastes,
         max_total_load=max_total_load,
         k1=k1,
-        k2=k2
+        k2=k2,
+        constraints_config=constraints
     )
+    recipe_c["calculation_id"] = calculation_id
+    recipe_c["engine_version"] = ENGINE_VERSION
 
     # Determine primary recipe
     if profile_id == "light_stability":
@@ -713,6 +808,8 @@ def match_color_ccm(
         primary_key = "recipe_a"
 
     return {
+        "calculation_id": calculation_id,
+        "engine_version": ENGINE_VERSION,
         "matched_pastes": primary["matched_pastes"],
         "prediction": primary["prediction"],
         "delta_e00": primary["delta_e00"],

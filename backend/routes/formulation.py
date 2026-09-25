@@ -60,6 +60,8 @@ class SaveRecipeRequest(BaseModel):
     contrast_ratio: float | None = None
     profile_id: str | None = Field("color_match", json_schema_extra={"example": "color_match"})
     calculation_hash: str | None = None
+    calculation_id: str | None = None
+    engine_version: str | None = None
     geometry: str | None = Field(None, description="Optical geometry of formulation (e.g. '45°/0°', 'd/8°')")
     characterization_version: int | str | None = Field(None, description="Characterization version or session ID")
     active_characterization_ids: list[int] | None = Field(None, description="Exact characterization IDs used for pastes")
@@ -81,6 +83,7 @@ class AddAttemptRequest(BaseModel):
     delta_e00: float | None = None
     composite_mi: float | None = None
     total_load: float | None = None
+    calculation_id: str | None = None
     k1: float = 0.04
     k2: float = 0.60
     profile_id: str = "color_match"
@@ -89,6 +92,19 @@ class AddAttemptRequest(BaseModel):
     max_pastes: int | None = None
     max_total_load: float | None = None
     operator_notes: str | None = None
+
+
+class AddBackCorrectionRequest(BaseModel):
+    tank_mass_kg: float = Field(..., description="Current batch mass in tank (kg)", gt=0)
+    current_pastes: list[RecipePasteInput] = Field(..., description="Current pigment concentrations in tank")
+    target_reflectance: list[float] = Field(..., description="31-point target spectral curve")
+    base_id: int = Field(1, description="Base paint ID")
+    current_reflectance: list[float] | None = Field(None, description="Optional measured reflectance of off-shade batch")
+    max_addition_pct: float = Field(25.0, description="Max allowed addition as % of tank mass")
+    allow_base_addition: bool = Field(True, description="Allow base addition for dilution/lightening")
+    k1: float = Field(0.04)
+    k2: float = Field(0.60)
+    tolerance_profile_id: str | None = Field("industrial", description="Acceptance tolerance profile: 'strict_lab', 'industrial', 'commercial'")
 
 
 @router.post("/predict")
@@ -387,21 +403,22 @@ def save_recipe(req: SaveRecipeRequest):
     tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
 
     cur.execute("""
-    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, profile_id, quality_gate_json, geometry, characterization_version, characterization_ids_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, calculation_id, engine_version, profile_id, quality_gate_json, geometry, characterization_version, characterization_ids_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.name, req.base_id, json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance), json.dumps(req.lab),
         req.hex_color, req.delta_e00, req.contrast_ratio,
-        calc_hash, req.profile_id or "color_match", qg_json,
+        calc_hash, req.calculation_id, req.engine_version or "2.2.0",
+        req.profile_id or "color_match", qg_json,
         recipe_geo, char_ver, char_ids_json
     ))
     new_id = cur.lastrowid
 
     # Automatically record Attempt #1 in recipe_history
     cur.execute("""
-    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, geometry, characterization_ids_json, operator_notes)
-    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, calculation_id, geometry, characterization_ids_json, operator_notes)
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id,
         json.dumps(req.pastes),
@@ -410,6 +427,7 @@ def save_recipe(req: SaveRecipeRequest):
         req.composite_mi,
         tot_load,
         calc_hash,
+        req.calculation_id,
         recipe_geo,
         char_ids_json,
         req.operator_notes or "Initial formulation match (Attempt #1)"
@@ -496,8 +514,8 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
 
     cur = conn.cursor()
     cur.execute("""
-    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, operator_notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, calculation_id, operator_notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         recipe_id,
         next_att,
@@ -507,6 +525,7 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
         req.composite_mi,
         tot_load,
         calc_hash,
+        req.calculation_id,
         req.operator_notes or f"Manual correction attempt #{next_att}"
     ))
 
@@ -544,6 +563,73 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
         "calculation_hash": calc_hash,
         "message": f"Attempt #{next_att} recorded for recipe {recipe_id}."
     }
+
+
+@router.post("/add-back")
+def run_add_back_correction(req: AddBackCorrectionRequest):
+    """
+    Computes optimal additions (pigment kg and base kg) to bring an off-shade batch to target.
+    Enforces plant physical constraints: Delta m_i >= 0, Delta m_base >= 0.
+    """
+    conn = get_db_connection()
+    base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (req.base_id,)).fetchone()
+    if not base_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Base ID {req.base_id} not found.")
+
+    base_k = json.loads(base_row["absorption_k"])
+    base_s = json.loads(base_row["scattering_s"])
+
+    # Fetch available pastes with their unit_k and unit_s
+    paste_rows = conn.execute("SELECT * FROM pastes").fetchall()
+    conn.close()
+
+    available_pastes = []
+    for pr in paste_rows:
+        available_pastes.append({
+            "id": pr["id"],
+            "name": pr["name"],
+            "code": pr["code"],
+            "color_hex": pr["color_hex"],
+            "unit_k": json.loads(pr["unit_k"]),
+            "unit_s": json.loads(pr["unit_s"]),
+        })
+
+    from ..color_engine.profiles import (
+        TOLERANCE_STRICT_LAB,
+        TOLERANCE_INDUSTRIAL,
+        TOLERANCE_COMMERCIAL,
+        DEFAULT_TOLERANCE_PROFILE
+    )
+    from ..color_engine.addback import calculate_production_addback
+
+    tol_map = {
+        "strict_lab": TOLERANCE_STRICT_LAB,
+        "industrial": TOLERANCE_INDUSTRIAL,
+        "commercial": TOLERANCE_COMMERCIAL
+    }
+    tolerance = tol_map.get(req.tolerance_profile_id or "industrial", DEFAULT_TOLERANCE_PROFILE)
+
+    curr_pastes_list = [p.model_dump() for p in req.current_pastes]
+
+    try:
+        result = calculate_production_addback(
+            tank_mass_kg=req.tank_mass_kg,
+            current_pastes=curr_pastes_list,
+            target_reflectance=req.target_reflectance,
+            available_pastes=available_pastes,
+            base_k=base_k,
+            base_s=base_s,
+            current_reflectance=req.current_reflectance,
+            max_addition_pct=req.max_addition_pct,
+            allow_base_addition=req.allow_base_addition,
+            k1=req.k1,
+            k2=req.k2,
+            tolerance=tolerance
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/recipes/{recipe_id}")

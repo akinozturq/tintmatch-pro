@@ -12,7 +12,10 @@ import type {
   Rm400StatusInfo,
   MeasurementRecord,
   InstrumentComparisonRequest,
-  InstrumentComparisonResult
+  InstrumentComparisonResult,
+  CalibrationHealthInfo,
+  AddBackCorrectionRequest,
+  AddBackCorrectionResponse
 } from '../types';
 
 const BASE_URL = '/api';
@@ -348,6 +351,33 @@ export async function compareInstruments(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Cihaz karşılaştırma hatası');
+  }
+  return res.json();
+}
+
+export async function getChnspecCalibrationHealth(): Promise<CalibrationHealthInfo> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/calibration-health`);
+  if (!res.ok) throw new Error('CHNSpec kalibrasyon durumu alınamadı');
+  return res.json();
+}
+
+export async function getRm400CalibrationHealth(): Promise<CalibrationHealthInfo> {
+  const res = await fetch(`${BASE_URL}/instruments/rm400/calibration-health`);
+  if (!res.ok) throw new Error('RM400 kalibrasyon durumu alınamadı');
+  return res.json();
+}
+
+export async function runAddBackCorrection(
+  payload: AddBackCorrectionRequest
+): Promise<AddBackCorrectionResponse> {
+  const res = await fetch(`${BASE_URL}/formulation/add-back`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'İlave reçete düzeltme (Add-Back) hatası');
   }
   return res.json();
 }

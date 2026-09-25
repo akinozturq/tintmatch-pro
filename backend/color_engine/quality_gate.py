@@ -154,6 +154,7 @@ def evaluate_characterization_gate(
     # 8. Out-of-Sample Prediction Validation (LOOCV)
     loocv_mean_pass = True
     loocv_max_pass = True
+    loocv_p95_pass = True
     if loocv_result is not None:
         if loocv_result.get("status") == "LOOCV_EVALUATED":
             loocv_mean = loocv_result.get("mean_delta_e00", 0.0)
@@ -181,9 +182,23 @@ def evaluate_characterization_gate(
                 "status": "PASS" if loocv_max_pass else "FAIL",
                 "severity": "INFO" if loocv_max_pass else "WARNING"
             })
+
+            loocv_p95 = loocv_result.get("p95_delta_e00", 0.0)
+            loocv_p95_limit = getattr(tolerance, "loocv_p95_de00_limit", 0.80)
+            loocv_p95_pass = (loocv_p95 is not None and loocv_p95 <= loocv_p95_limit)
+            checks.append({
+                "metric": "loocv_p95_delta_e00",
+                "label": "95. Yüzdelik Tahmin Hatası (LOOCV p95 ΔE00)",
+                "actual": round(float(loocv_p95), 3) if loocv_p95 is not None else None,
+                "limit": loocv_p95_limit,
+                "operator": "<=",
+                "status": "PASS" if loocv_p95_pass else "FAIL",
+                "severity": "INFO" if loocv_p95_pass else "WARNING"
+            })
         else:
             loocv_mean_pass = False
             loocv_max_pass = False
+            loocv_p95_pass = False
             checks.append({
                 "metric": "loocv_mean_delta_e00",
                 "label": "Görülmemiş Numune Tahmin Hatası (LOOCV)",
@@ -196,8 +211,9 @@ def evaluate_characterization_gate(
     else:
         loocv_mean_pass = False
         loocv_max_pass = False
+        loocv_p95_pass = False
 
-    loocv_pass = loocv_mean_pass and loocv_max_pass
+    loocv_pass = loocv_mean_pass and loocv_max_pass and loocv_p95_pass
 
     # Overall verdict
     is_fully_passed = mean_pass and max_pass and r2_pass and rmse_pass and count_pass and loocv_pass

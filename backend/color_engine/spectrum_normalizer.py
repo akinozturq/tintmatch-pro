@@ -113,3 +113,78 @@ def normalize_spectrum(
     # 4. Strict physical reflectance boundaries
     return np.clip(interpolated, 0.0, 1.0)
 
+
+def validate_spectrum_physicality(
+    reflectance: list[float] | np.ndarray,
+    tolerance_low: float = -0.05,
+    tolerance_high: float = 1.20
+) -> dict:
+    """
+    Validates physical plausibility of a spectral reflectance curve before or after normalization.
+    Detects sensor saturation (R > 1.20) or dark reference drift (R < -0.05).
+
+    Returns:
+        dict: {
+            "is_valid": bool,
+            "status": "OK" | "SPECTRUM_OUT_OF_RANGE" | "SENSOR_SATURATION" | "DARK_DRIFT",
+            "min_reflectance": float,
+            "max_reflectance": float,
+            "warnings": list[str]
+        }
+    """
+    refl = np.asarray(reflectance, dtype=float)
+    if len(refl) == 0:
+        return {
+            "is_valid": False,
+            "status": "SPECTRUM_OUT_OF_RANGE",
+            "min_reflectance": 0.0,
+            "max_reflectance": 0.0,
+            "warnings": ["Reflectance spectrum is empty."]
+        }
+
+    min_v = float(np.min(refl))
+    max_v = float(np.max(refl))
+    warnings = []
+    status = "OK"
+    is_valid = True
+
+    if min_v < tolerance_low:
+        is_valid = False
+        status = "DARK_DRIFT"
+        warnings.append(
+            f"SEVERE_DARK_NOISE_FLOOR: Severe negative reflectance detected (min: {min_v:.4f}). "
+            "Indicates spectrophotometer dark trap calibration drift or zero-level error."
+        )
+    elif min_v < 0.0:
+        warnings.append(
+            f"Minor negative reflectance detected (min: {min_v:.4f}). "
+            "Will be clamped to 0.0 physically."
+        )
+
+    if max_v > tolerance_high:
+        is_valid = False
+        status = "SENSOR_SATURATION"
+        warnings.append(
+            f"SEVERE_SENSOR_SATURATION: Severe reflectance overshoot detected (max: {max_v:.4f}). "
+            "Indicates spectrophotometer sensor saturation, white tile misalignment, or unscaled percentage data."
+        )
+    elif max_v > 1.0:
+        warnings.append(
+            f"Minor reflectance overshoot detected (max: {max_v:.4f}). "
+            "Will be clamped to 1.0 physically."
+        )
+
+    if not is_valid and status == "OK":
+        status = "SPECTRUM_OUT_OF_RANGE"
+
+    return {
+        "is_valid": is_valid,
+        "is_physically_plausible": is_valid,
+        "has_severe_dark_noise": (status == "DARK_DRIFT"),
+        "has_severe_saturation": (status == "SENSOR_SATURATION"),
+        "status": status,
+        "min_reflectance": round(min_v, 4),
+        "max_reflectance": round(max_v, 4),
+        "warnings": warnings
+    }
+

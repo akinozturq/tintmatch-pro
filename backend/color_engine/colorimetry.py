@@ -251,10 +251,47 @@ def ciede2000(
     }
 
 
+def calculate_composite_metamerism(
+    de_d65: float,
+    de_a: float,
+    de_f11: float,
+    de_f2: float | None = None,
+    method: str = "max"
+) -> float:
+    """
+    Computes canonical Composite Metamerism Index across illuminants.
+
+    Methods:
+    - 'max' (default, DIN 6172 / ASTM E805): Worst-case individual illuminant shift |ΔE00(ill) - ΔE00(D65)|.
+    - 'rms': Root-mean-square multi-illuminant color difference.
+
+    Args:
+        de_d65: Delta E00 under primary D65 illuminant.
+        de_a: Delta E00 under Illuminant A (incandescent).
+        de_f11: Delta E00 under TL84 / F11 (commercial store).
+        de_f2: Optional Delta E00 under F2 (cool white fluorescent).
+        method: Calculation method ('max' or 'rms').
+
+    Returns:
+        float: Composite Metamerism Index.
+    """
+    mi_a = abs(de_a - de_d65)
+    mi_f11 = abs(de_f11 - de_d65)
+    mi_f2 = abs(de_f2 - de_d65) if de_f2 is not None else 0.0
+
+    if method == "rms":
+        vals = [mi_a, mi_f11] + ([mi_f2] if de_f2 is not None else [])
+        return float(np.sqrt(np.mean([v ** 2 for v in vals])))
+
+    # Default 'max': DIN 6172 / ASTM E805 worst-case divergence
+    return float(max(mi_a, mi_f11, mi_f2))
+
+
 def compute_metamerism_index(
     reflectance_batch: np.ndarray | list[float],
     reflectance_standard: np.ndarray | list[float],
-    observer: str = "10"
+    observer: str = "10",
+    composite_method: str = "max"
 ) -> dict:
     """
     Computes Metamerism Index (MI) comparing a sample to a standard under:
@@ -265,8 +302,8 @@ def compute_metamerism_index(
 
     MI_A = |ΔE00(A) - ΔE00(D65)|
     MI_F11 = |ΔE00(F11) - ΔE00(D65)|
+    MI_composite = calculate_composite_metamerism(...)
     """
-    results = {}
     delta_e_map = {}
 
     for ill in ["D65", "A", "F11", "F2"]:
@@ -279,6 +316,12 @@ def compute_metamerism_index(
     mi_a = abs(delta_e_map["A"] - de_d65)
     mi_f11 = abs(delta_e_map["F11"] - de_d65)
     mi_f2 = abs(delta_e_map["F2"] - de_d65)
+    mi_composite = calculate_composite_metamerism(
+        de_d65, delta_e_map["A"], delta_e_map["F11"], delta_e_map["F2"], method=composite_method
+    )
+    mi_composite_rms = calculate_composite_metamerism(
+        de_d65, delta_e_map["A"], delta_e_map["F11"], delta_e_map["F2"], method="rms"
+    )
 
     return {
         "dE00_D65": round(de_d65, 4),
@@ -288,5 +331,7 @@ def compute_metamerism_index(
         "MI_A": round(mi_a, 4),
         "MI_F11": round(mi_f11, 4),
         "MI_F2": round(mi_f2, 4),
-        "rating": "Excellent" if mi_a < 0.5 and mi_f11 < 0.5 else ("Good" if mi_a < 1.0 else "Warning - High Metamerism")
+        "MI_composite": round(mi_composite, 4),
+        "MI_composite_rms": round(mi_composite_rms, 4),
+        "rating": "Excellent" if mi_composite < 0.5 else ("Good" if mi_composite < 1.0 else "Warning - High Metamerism")
     }

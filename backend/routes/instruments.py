@@ -115,6 +115,10 @@ def measure_chnspec(req: CHNSpecMeasureRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    cal_health = chnspec_driver.get_calibration_health()
+    meas["calibration_health"] = cal_health
+    cal_status = cal_health.get("status", "VALID")
+
     # Optionally archive into measurements table
     if req.save_to_archive:
         conn = get_db_connection()
@@ -131,8 +135,8 @@ def measure_chnspec(req: CHNSpecMeasureRequest):
 
         spec_inc = 0 if req.mode.upper() == "SCE" else 1
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation)
-        VALUES (?, 'CHNSpec Operator', ?, ?, ?, 'd/8°', ?, ?, ?)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation, calibration_status)
+        VALUES (?, 'CHNSpec Operator', ?, ?, ?, 'd/8°', ?, ?, ?, ?)
         """, (
             inst_id,
             req.sample_name or "Lab Sample",
@@ -140,13 +144,20 @@ def measure_chnspec(req: CHNSpecMeasureRequest):
             json.dumps(meas),
             req.mode,
             spec_inc,
-            1 if meas.get("is_mock", False) else 0
+            1 if meas.get("is_mock", False) else 0,
+            cal_status
         ))
         conn.commit()
         meas["measurement_id"] = cur.lastrowid
         conn.close()
 
     return meas
+
+
+@router.get("/chnspec/calibration-health")
+def get_chnspec_calibration_health():
+    """Returns calibration expiry and freshness health status for CHNSpec DS-36D."""
+    return chnspec_driver.get_calibration_health()
 
 
 # =========================================================================
@@ -213,6 +224,10 @@ def measure_sample(req: MeasureRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    cal_health = rm400_driver.get_calibration_health()
+    meas["calibration_health"] = cal_health
+    cal_status = cal_health.get("status", "VALID")
+
     # Optionally archive into measurements table
     if req.save_to_archive:
         conn = get_db_connection()
@@ -227,20 +242,27 @@ def measure_sample(req: MeasureRequest):
         inst_id = inst_row["id"]
 
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation)
-        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0, ?)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation, calibration_status)
+        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0, ?, ?)
         """, (
             inst_id,
             req.sample_name or "Lab Sample",
             json.dumps(meas["reflectance"]),
             json.dumps(meas),
-            1 if meas.get("is_mock", False) else 0
+            1 if meas.get("is_mock", False) else 0,
+            cal_status
         ))
         conn.commit()
         meas["measurement_id"] = cur.lastrowid
         conn.close()
 
     return meas
+
+
+@router.get("/rm400/calibration-health")
+def get_rm400_calibration_health():
+    """Returns calibration expiry and freshness health status for X-Rite RM400."""
+    return rm400_driver.get_calibration_health()
 
 
 # =========================================================================

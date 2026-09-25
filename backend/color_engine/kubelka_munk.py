@@ -493,11 +493,13 @@ def characterize_letdown_series(
 
         loocv_mean_de00 = float(np.mean(loocv_errors))
         loocv_max_de00 = float(np.max(loocv_errors))
+        loocv_p95_de00 = float(np.percentile(loocv_errors, 95))
         loocv_result = {
             "status": "LOOCV_EVALUATED",
             "samples_count": n_letdowns,
             "mean_delta_e00": round(loocv_mean_de00, 3),
             "max_delta_e00": round(loocv_max_de00, 3),
+            "p95_delta_e00": round(loocv_p95_de00, 3),
             "errors": loocv_errors,
             "fold_results": loocv_fold_results
         }
@@ -507,6 +509,7 @@ def characterize_letdown_series(
             "samples_count": n_letdowns,
             "mean_delta_e00": None,
             "max_delta_e00": None,
+            "p95_delta_e00": None,
             "errors": [],
             "fold_results": [],
             "message": f"LOOCV requires n >= 4 letdown concentrations (provided: {n_letdowns})."
@@ -558,6 +561,7 @@ def characterize_letdown_series(
         "condition_index": round(span_ratio, 2),
         "identifiability": identifiability,
         "loocv": loocv_result,
+        "loocv_result": loocv_result,
         "loocv_mean_delta_e00": loocv_result.get("mean_delta_e00"),
         "loocv_max_delta_e00": loocv_result.get("max_delta_e00"),
         "loocv_status": loocv_result.get("status"),

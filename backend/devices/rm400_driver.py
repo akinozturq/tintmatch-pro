@@ -47,6 +47,8 @@ class RM400Driver:
 
         self._connection_state = "DISCONNECTED"
         self._last_error = None
+        self._last_calibrated_at: Optional[float] = None
+        self._calibration_expiry_hours: float = 8.0
 
         if self.dll is None:
             self._is_mock = True
@@ -189,12 +191,62 @@ class RM400Driver:
         """Executes a calibration step (e.g. 'White' reference tile)."""
         if self.dll and self.is_connected():
             try:
-                return bool(self.dll.CalibrateStep(step.encode("utf-8")))
+                success = bool(self.dll.CalibrateStep(step.encode("utf-8")))
+                if success:
+                    self._last_calibrated_at = time.time()
+                return success
             except Exception as e:
                 self._connection_state = "ERROR"
                 self._last_error = str(e)
                 return False
+        self._last_calibrated_at = time.time()
         return True
+
+    def get_calibration_health(self) -> dict:
+        """
+        Evaluates spectrophotometer calibration freshness against shift limits (default 8 hours).
+        Status values: 'VALID', 'EXPIRING_SOON' (within 1 hour of expiry), 'EXPIRED', 'UNCALIBRATED'.
+        """
+        if self._last_calibrated_at is None:
+            if self._is_mock:
+                return {
+                    "status": "VALID",
+                    "last_calibrated_at": time.time(),
+                    "elapsed_hours": 0.1,
+                    "remaining_hours": 7.9,
+                    "expiry_hours": self._calibration_expiry_hours,
+                    "message": "Instrument calibrated (Mock Ready)."
+                }
+            return {
+                "status": "UNCALIBRATED",
+                "last_calibrated_at": None,
+                "elapsed_hours": None,
+                "remaining_hours": 0.0,
+                "expiry_hours": self._calibration_expiry_hours,
+                "message": "Instrument has not been calibrated in current session."
+            }
+
+        elapsed = (time.time() - self._last_calibrated_at) / 3600.0
+        remaining = max(0.0, self._calibration_expiry_hours - elapsed)
+
+        if elapsed >= self._calibration_expiry_hours:
+            status = "EXPIRED"
+            msg = f"Calibration expired {elapsed - self._calibration_expiry_hours:.1f} hours ago. Recalibration required."
+        elif remaining <= 1.0:
+            status = "EXPIRING_SOON"
+            msg = f"Calibration will expire in {int(remaining * 60)} minutes."
+        else:
+            status = "VALID"
+            msg = f"Calibration valid ({remaining:.1f} hours remaining)."
+
+        return {
+            "status": status,
+            "last_calibrated_at": self._last_calibrated_at,
+            "elapsed_hours": round(elapsed, 2),
+            "remaining_hours": round(remaining, 2),
+            "expiry_hours": self._calibration_expiry_hours,
+            "message": msg
+        }
 
     def measure(self, timeout_sec: float = 8.0) -> dict:
         """

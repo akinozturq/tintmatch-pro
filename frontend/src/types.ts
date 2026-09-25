@@ -186,6 +186,7 @@ export interface LoocvResult {
   n_folds: number;
   mean_delta_e00: number | null;
   max_delta_e00: number | null;
+  p95_delta_e00?: number | null;
   fold_results?: LoocvFoldResult[];
   message?: string;
   passed?: boolean;
@@ -344,6 +345,24 @@ export interface SensitivityItem {
   d_b_dc: number;
   d_C_dc: number;
   d_H_dc: number;
+  step_plus_010?: {
+    concentration: number;
+    delta_e00: number;
+    delta_L: number;
+    delta_a: number;
+    delta_b: number;
+    delta_C: number;
+    delta_H: number;
+  };
+  step_minus_010?: {
+    concentration: number;
+    delta_e00: number;
+    delta_L: number;
+    delta_a: number;
+    delta_b: number;
+    delta_C: number;
+    delta_H: number;
+  };
   interpretation: string;
 }
 
@@ -364,6 +383,8 @@ export interface RecipeMatch {
   profile_id: string;
   profile_name: string;
   description: string;
+  calculation_id?: string;
+  engine_version?: string;
   matched_pastes: Array<{
     id: number | string;
     name: string;
@@ -392,6 +413,8 @@ export interface RecipeMatch {
 }
 
 export interface MatchResponse {
+  calculation_id?: string;
+  engine_version?: string;
   matched_pastes: Array<{
     id: number | string;
     name: string;
@@ -423,4 +446,62 @@ export interface MatchResponse {
     recipe_b: RecipeMatch;
     recipe_c: RecipeMatch;
   };
+}
+
+export interface CalibrationHealthInfo {
+  status: 'VALID' | 'EXPIRING_SOON' | 'EXPIRED' | 'UNCALIBRATED';
+  last_calibrated_at: number | null;
+  elapsed_hours: number | null;
+  remaining_hours: number;
+  expiry_hours: number;
+  message: string;
+}
+
+export interface AddBackAdditionItem {
+  paste_id: number | string;
+  name: string;
+  code: string;
+  color_hex: string;
+  current_kg: number;
+  addition_kg: number;
+  final_kg: number;
+  current_pct: number;
+  final_pct: number;
+}
+
+export interface AddBackCorrectionRequest {
+  tank_mass_kg: number;
+  current_pastes: Array<{
+    id: number | string;
+    name?: string;
+    concentration: number;
+  }>;
+  target_reflectance: number[];
+  base_id: number;
+  current_reflectance?: number[];
+  max_addition_pct?: number;
+  allow_base_addition?: boolean;
+  k1?: number;
+  k2?: number;
+  tolerance_profile_id?: string;
+}
+
+export interface AddBackCorrectionResponse {
+  is_correctable: boolean;
+  initial_delta_e00: number;
+  final_delta_e00: number;
+  composite_metamerism_index: number;
+  tank_mass_initial_kg: number;
+  tank_mass_final_kg: number;
+  base_addition_kg: number;
+  base_addition_pct: number;
+  total_pigment_addition_kg: number;
+  additions: AddBackAdditionItem[];
+  predicted_reflectance: number[];
+  predicted_lab: [number, number, number];
+  target_lab: [number, number, number];
+  predicted_hex: string;
+  quality_gate?: any;
+  notes: string[];
+  engine_version: string;
 }
