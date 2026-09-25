@@ -367,7 +367,10 @@ class CHNSpecDriver:
         elapsed = (time.time() - self._last_calibrated_at) / 3600.0
         remaining = max(0.0, self._calibration_expiry_hours - elapsed)
 
-        if elapsed >= self._calibration_expiry_hours:
+        if time.time() < self._last_calibrated_at - 1.0:
+            status = "CALIBRATION_INVALID"
+            msg = "System clock drift detected (calibration timestamp in future). Recalibration required."
+        elif elapsed >= self._calibration_expiry_hours:
             status = "EXPIRED"
             msg = f"Calibration expired {elapsed - self._calibration_expiry_hours:.1f} hours ago. Recalibration required."
         elif remaining <= 1.0:

@@ -134,6 +134,95 @@ def calculate_opacity_contrast_ratio(
     }
 
 
+def calculate_critical_hiding_thickness(
+    K: np.ndarray | list[float],
+    S: np.ndarray | list[float],
+    target_cr: float = 98.0,
+    k1: float = 0.04,
+    k2: float = 0.60,
+    min_thickness: float = 1.0,
+    max_thickness: float = 1000.0
+) -> float:
+    """
+    Calculates the minimum dry/wet film thickness x_hiding (in micrometers)
+    required to achieve complete optical hiding (contrast ratio >= target_cr,
+    typically 98.0% per ISO 2814 / ASTM D2805).
+    """
+    K_arr = np.asarray(K, dtype=float)
+    S_arr = np.asarray(S, dtype=float)
+
+    def cr_at(x):
+        res = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=x, k1=k1, k2=k2)
+        return res["luminous_contrast_ratio"]
+
+    cr_min = cr_at(min_thickness)
+    if cr_min >= target_cr:
+        return float(min_thickness)
+
+    cr_max = cr_at(max_thickness)
+    if cr_max < target_cr:
+        return float("inf")
+
+    from scipy.optimize import brentq
+    try:
+        x_opt = brentq(lambda x: cr_at(x) - target_cr, min_thickness, max_thickness, xtol=0.1, rtol=1e-4)
+        return float(round(x_opt, 2))
+    except Exception:
+        return float(max_thickness)
+
+
+def calibrate_thickness_from_drawdown(
+    r_black: list[float] | np.ndarray,
+    r_white: list[float] | np.ndarray,
+    K: list[float] | np.ndarray,
+    S: list[float] | np.ndarray,
+    Rg_black: float = 0.04,
+    Rg_white: float = 0.82,
+    k1: float = 0.04,
+    k2: float = 0.60
+) -> dict:
+    """
+    Calibrates and estimates the effective film thickness (in micrometers) from
+    dual-substrate drawdown measurements over black and white card backgrounds.
+    """
+    rb_meas = np.asarray(r_black, dtype=float)
+    rw_meas = np.asarray(r_white, dtype=float)
+    K_arr = np.asarray(K, dtype=float)
+    S_arr = np.asarray(S, dtype=float)
+
+    def loss(thickness_val):
+        pb = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_black, k1=k1, k2=k2, apply_saunderson=True)
+        pw = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_white, k1=k1, k2=k2, apply_saunderson=True)
+        return float(np.sum((pb - rb_meas) ** 2) + np.sum((pw - rw_meas) ** 2))
+
+    from scipy.optimize import minimize_scalar
+    res = minimize_scalar(loss, bounds=(5.0, 500.0), method="bounded", options={"xatol": 0.1})
+    est_x = float(res.x)
+
+    pb_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_black, k1=k1, k2=k2)
+    pw_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_white, k1=k1, k2=k2)
+
+    tot_pts = len(rb_meas) + len(rw_meas)
+    rmse = float(np.sqrt((np.sum((pb_final - rb_meas) ** 2) + np.sum((pw_final - rw_meas) ** 2)) / max(tot_pts, 1)))
+
+    cr_info = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=est_x, k1=k1, k2=k2)
+
+    optical_x = (est_x / 100.0) * 25.0
+    mean_S = float(np.mean(S_arr))
+    optical_depth = round(mean_S * optical_x, 3)
+
+    return {
+        "estimated_thickness_um": round(est_x, 2),
+        "optical_depth_Sx": optical_depth,
+        "spectral_rmse": round(rmse, 5),
+        "predicted_reflectance_black": [round(float(v), 4) for v in pb_final],
+        "predicted_reflectance_white": [round(float(v), 4) for v in pw_final],
+        "luminous_contrast_ratio": cr_info["luminous_contrast_ratio"],
+        "is_opaque": cr_info["is_opaque"],
+        "optimization_success": bool(res.success)
+    }
+
+
 def calculate_km_jacobian_condition(
     concs: np.ndarray,
     base_k: np.ndarray,

@@ -423,10 +423,13 @@ def _optimize_single_profile(
     max_total_load: float,
     k1: float,
     k2: float,
-    constraints_config: FormulationConstraints | None = None
+    constraints_config: FormulationConstraints | None = None,
+    enable_multistart: bool = False,
+    num_starts: int = 3
 ) -> dict:
     """
-    Executes a single constrained SLSQP optimization run for a given OptimizationProfile.
+    Executes constrained SLSQP optimization run for a given OptimizationProfile.
+    Supports single-start or multi-start initialization to guard against non-convex CIEDE2000 local minima.
     Enforces true linear inequality constraint: sum(c_i) <= max_total_load and group/dispensing bounds.
     """
     n_active = len(candidate_indices)
@@ -448,8 +451,8 @@ def _optimize_single_profile(
     engine = ConstraintEngine(constraints_config)
     candidate_keys = [str(available_pastes[idx].get("id", idx)) for idx in candidate_indices]
 
-    # Initial guess vector
-    x0 = [float(initial_sol[idx]) for idx in candidate_indices]
+    # Initial guess vectors
+    x0_nnls = [float(initial_sol[idx]) for idx in candidate_indices]
     bounds = engine.build_scipy_bounds(candidate_keys, default_upper_bound=constraints_config.max_total_load)
     constraints = engine.build_scipy_constraints(candidate_keys)
 
@@ -469,14 +472,53 @@ def _optimize_single_profile(
             k2=k2
         )
 
-    res = minimize(
-        objective,
-        x0,
-        method="SLSQP",
-        bounds=bounds,
-        constraints=constraints,
-        options={"maxiter": 250, "eps": 1e-3, "ftol": 1e-6}
-    )
+    if enable_multistart and num_starts > 1:
+        # Multi-start candidate initial points
+        starts = [x0_nnls]
+        # Uniform initial point
+        x0_uniform = [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active
+        starts.append(x0_uniform)
+        # Perturbed initial point
+        x0_pert = [val * 1.25 if i == 0 else max(0.0, val * 0.75) for i, val in enumerate(x0_nnls)]
+        starts.append(x0_pert)
+
+        if num_starts > 3:
+            rng = np.random.default_rng(42)
+            for _ in range(num_starts - 3):
+                rand_start = [float(rng.uniform(0.0, constraints_config.max_total_load / max(n_active, 1))) for _ in range(n_active)]
+                starts.append(rand_start)
+
+        best_res = None
+        best_fun = float("inf")
+        best_start_idx = 0
+
+        for s_idx, st in enumerate(starts[:num_starts]):
+            st_clamped = [min(max(st[k], bounds[k][0]), bounds[k][1] if bounds[k][1] is not None else 100.0) for k in range(n_active)]
+            res_cand = minimize(
+                objective,
+                st_clamped,
+                method="SLSQP",
+                bounds=bounds,
+                constraints=constraints,
+                options={"maxiter": 250, "eps": 1e-3, "ftol": 1e-6}
+            )
+            if res_cand.fun < best_fun or best_res is None:
+                best_fun = float(res_cand.fun)
+                best_res = res_cand
+                best_start_idx = s_idx
+
+        res = best_res
+        multistart_meta = {"enabled": True, "num_starts_evaluated": len(starts[:num_starts]), "chosen_start_index": best_start_idx}
+    else:
+        res = minimize(
+            objective,
+            x0_nnls,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+            options={"maxiter": 250, "eps": 1e-3, "ftol": 1e-6}
+        )
+        multistart_meta = {"enabled": False, "num_starts_evaluated": 1, "chosen_start_index": 0}
 
     opt_raw = np.maximum(res.x, 0.0)
     slack_info = engine.evaluate_constraint_slack(opt_raw, candidate_keys)
@@ -637,7 +679,8 @@ def _optimize_single_profile(
             "message": str(res.message),
             "final_loss": round(float(res.fun), 4),
             "constraint_slack": round(float(constraints_config.max_total_load - sim["total_colorant_load"]), 3),
-            "slack_details": slack_info
+            "slack_details": slack_info,
+            "multistart": multistart_meta
         },
         "sensitivity_matrix": sensitivity
     }
@@ -653,7 +696,9 @@ def match_color_ccm(
     k1: float = 0.04,
     k2: float = 0.60,
     profile_id: str | None = None,
-    constraints: FormulationConstraints | None = None
+    constraints: FormulationConstraints | None = None,
+    enable_multistart: bool = False,
+    num_starts: int = 3
 ) -> dict:
     """
     Automated Computer Color Matching (CCM) solver.
@@ -673,6 +718,8 @@ def match_color_ccm(
         k2: Saunderson internal diffuse reflection coefficient
         profile_id: Optional profile preference ('color_match', 'light_stability', 'economy')
         constraints: Optional FormulationConstraints configuration
+        enable_multistart: Whether to run multi-start SLSQP to guard against CIEDE2000 local minima
+        num_starts: Number of initial starting points to evaluate when enable_multistart is True
 
     Returns:
         Structured response with calculation_id, engine_version, primary recipe, 3 alternatives, diagnostics.
@@ -747,7 +794,9 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints
+        constraints_config=constraints,
+        enable_multistart=enable_multistart,
+        num_starts=num_starts
     )
     recipe_a["calculation_id"] = calculation_id
     recipe_a["engine_version"] = ENGINE_VERSION
@@ -769,7 +818,9 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints
+        constraints_config=constraints,
+        enable_multistart=enable_multistart,
+        num_starts=num_starts
     )
     recipe_b["calculation_id"] = calculation_id
     recipe_b["engine_version"] = ENGINE_VERSION
@@ -791,7 +842,9 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints
+        constraints_config=constraints,
+        enable_multistart=enable_multistart,
+        num_starts=num_starts
     )
     recipe_c["calculation_id"] = calculation_id
     recipe_c["engine_version"] = ENGINE_VERSION

@@ -26,6 +26,7 @@ class CalibrateRequest(BaseModel):
 class MeasureRequest(BaseModel):
     sample_name: str | None = Field("Lab Sample", description="Sample identification")
     save_to_archive: bool = Field(True, description="Whether to record measurement in measurements table")
+    force_measure: bool = Field(False, description="Emergency override to bypass calibration hard-gate (records EXPIRED_FORCED in audit)")
 
 
 class CHNSpecConnectRequest(BaseModel):
@@ -40,6 +41,7 @@ class CHNSpecMeasureRequest(BaseModel):
     mode: str = Field("SCI", description="Measurement mode: 'SCI', 'SCE', 'SCI_SCE'")
     sample_name: str | None = Field("Lab Sample", description="Sample identification")
     save_to_archive: bool = Field(True, description="Whether to record measurement in measurements table")
+    force_measure: bool = Field(False, description="Emergency override to bypass calibration hard-gate (records EXPIRED_FORCED in audit)")
 
 
 @router.get("")
@@ -110,14 +112,28 @@ def calibrate_chnspec(req: CHNSpecCalibrateRequest):
 @router.post("/chnspec/measure")
 def measure_chnspec(req: CHNSpecMeasureRequest):
     """Commands CHNSpec DS-36D to take a physical measurement and normalizes to 31 channels."""
+    cal_health = chnspec_driver.get_calibration_health()
+    cal_status = cal_health.get("status", "VALID")
+
+    if cal_status in ["EXPIRED", "UNCALIBRATED", "CALIBRATION_INVALID"]:
+        if not req.force_measure:
+            raise HTTPException(
+                status_code=428,
+                detail={
+                    "error_code": "INSTRUMENT_CALIBRATION_EXPIRED",
+                    "message": cal_health.get("message", "Instrument calibration expired or uncalibrated. Physical recalibration required before measurement."),
+                    "instrument": "CHNSpec DS-36D",
+                    "calibration_health": cal_health
+                }
+            )
+        cal_status = f"{cal_status}_FORCED"
+
     try:
         meas = chnspec_driver.measure(mode=req.mode)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    cal_health = chnspec_driver.get_calibration_health()
     meas["calibration_health"] = cal_health
-    cal_status = cal_health.get("status", "VALID")
 
     # Optionally archive into measurements table
     if req.save_to_archive:
@@ -219,14 +235,28 @@ def calibrate_rm400(req: CalibrateRequest):
 @router.post("/rm400/measure")
 def measure_sample(req: MeasureRequest):
     """Commands RM400 to take a spectral measurement and normalizes it."""
+    cal_health = rm400_driver.get_calibration_health()
+    cal_status = cal_health.get("status", "VALID")
+
+    if cal_status in ["EXPIRED", "UNCALIBRATED", "CALIBRATION_INVALID"]:
+        if not req.force_measure:
+            raise HTTPException(
+                status_code=428,
+                detail={
+                    "error_code": "INSTRUMENT_CALIBRATION_EXPIRED",
+                    "message": cal_health.get("message", "Instrument calibration expired or uncalibrated. Physical recalibration required before measurement."),
+                    "instrument": "X-Rite RM400",
+                    "calibration_health": cal_health
+                }
+            )
+        cal_status = f"{cal_status}_FORCED"
+
     try:
         meas = rm400_driver.measure()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    cal_health = rm400_driver.get_calibration_health()
     meas["calibration_health"] = cal_health
-    cal_status = cal_health.get("status", "VALID")
 
     # Optionally archive into measurements table
     if req.save_to_archive:

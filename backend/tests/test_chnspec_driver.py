@@ -117,11 +117,12 @@ def test_api_chnspec_endpoints():
         assert cal_resp.status_code == 200
         assert cal_resp.json()["success"] is True
 
-    # 4. Measure with archive
+    # 4. Measure with archive (use force_measure=True in automated suite when uncalibrated)
     meas_resp = client.post("/api/instruments/chnspec/measure", json={
         "mode": "SCI",
         "sample_name": "Pytest CHNSpec Verification Sample",
-        "save_to_archive": True
+        "save_to_archive": True,
+        "force_measure": True
     })
     assert meas_resp.status_code == 200
     meas = meas_resp.json()
@@ -164,7 +165,8 @@ def test_chnspec_sci_sce_dual_mode():
     api_resp = client.post("/api/instruments/chnspec/measure", json={
         "mode": "SCI_SCE",
         "sample_name": "Pytest Dual SCI/SCE Sample",
-        "save_to_archive": False
+        "save_to_archive": False,
+        "force_measure": True
     })
     assert api_resp.status_code == 200, f"Measure API failed: {api_resp.text}"
     api_data = api_resp.json()

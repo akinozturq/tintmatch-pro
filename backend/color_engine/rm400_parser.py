@@ -59,7 +59,15 @@ def parse_rm400_content(content: str, filename: str = "") -> dict:
 
 
 def _parse_xml_cxf(xml_text: str) -> dict:
-    """Parses CxF3 or generic XML spectrophotometer files."""
+    """Parses CxF3 or generic XML spectrophotometer files, delegating to ISO 17972-3 cxf_parser."""
+    try:
+        from .cxf_parser import parse_cxf3
+        res = parse_cxf3(xml_text)
+        if res.get("samples"):
+            return res
+    except Exception:
+        pass
+
     samples = []
     warnings = []
 
