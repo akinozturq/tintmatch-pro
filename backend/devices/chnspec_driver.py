@@ -46,6 +46,7 @@ class CHNSpecDriver:
         self._connected = False
         self._current_port = None
         self._clr_initialized = False
+        self._internal_timer = None
 
         self._meas_event = threading.Event()
         self._meas_result: List[List[float]] = []
@@ -107,17 +108,46 @@ class CHNSpecDriver:
 
         self._dev.ConnectStatusCallback = self._System.Action[bool](on_status_change)
 
+        # Internal watchdog timer hardening
+        # ConnectedMeasure.dll initializes an internal System.Timers.Timer with Interval = 10000ms (10s).
+        # On benchtop multi-flash spectrophotometers like CHNSpec DS-36D, physical calibration
+        # and measurement sweeps take 12-25 seconds (dual Xenon flashes, capacitor charging).
+        # At 10 seconds, the DLL's internal timer triggers OnTimedEvent, which prematurely calls
+        # DeviceCalibrationCallback(false) and sets IsWorking=false while the device is still flashing!
+        # By extending the internal watchdog timer to 60000ms (60s), we ensure the physical instrument
+        # has adequate time to complete all flashes and return the true status.
+        try:
+            from System.Reflection import BindingFlags
+            timer_field = clr.GetClrType(DeviceMethod).GetField("timer", BindingFlags.NonPublic | BindingFlags.Instance)
+            if timer_field:
+                self._internal_timer = timer_field.GetValue(self._dev)
+                if self._internal_timer:
+                    self._internal_timer.Interval = 60000.0
+                    logger.info("Extended CHNSpec internal watchdog timer to 60.0s.")
+        except Exception as e:
+            logger.warning(f"Could not access internal timer via reflection: {e}")
+            self._internal_timer = None
+
         # Static Measurement Callback
         def on_device_measure(ok: bool, spectral_infos):
+            logger.info(f"CHNSpec DeviceMeasureCallback invoked: ok={ok}, channels={len(spectral_infos) if spectral_infos else 0}")
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                except Exception:
+                    pass
+            if self._dev:
+                try:
+                    self._dev.IsWorking = False
+                except Exception:
+                    pass
             if ok and spectral_infos and len(spectral_infos) > 0:
-                if self._dev:
-                    try:
-                        self._dev.IsWorking = False
-                    except Exception:
-                        pass
                 self._meas_success = True
                 self._meas_result = [list(arr) for arr in spectral_infos]
-                self._meas_event.set()
+            else:
+                self._meas_success = False
+                self._meas_result = []
+            self._meas_event.set()
 
         T_meas = self._System.Action[
             self._System.Boolean,
@@ -127,6 +157,12 @@ class CHNSpecDriver:
 
         # Static Calibration Callback
         def on_device_calibration(ok: bool):
+            logger.info(f"CHNSpec DeviceCalibrationCallback invoked: ok={ok}")
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                except Exception:
+                    pass
             if self._dev:
                 try:
                     self._dev.IsWorking = False
@@ -276,7 +312,7 @@ class CHNSpecDriver:
             return self._connected
         return self._connected and (self._dev is not None and getattr(self._dev, "IsConnected", False))
 
-    def white_calibrate(self, timeout_sec: float = 12.0) -> Dict[str, Any]:
+    def white_calibrate(self, timeout_sec: float = 35.0) -> Dict[str, Any]:
         """Triggers physical white calibration on the instrument."""
         with self._lock:
             if self._is_mock:
@@ -290,14 +326,41 @@ class CHNSpecDriver:
             self._cal_event.clear()
             self._cal_success = False
 
+            # Ensure instrument is in clean, non-busy state
+            if self._dev:
+                try:
+                    self._dev.IsWorking = False
+                except Exception:
+                    pass
+
+            # Pre-arm watchdog timer to 60s
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                    self._internal_timer.Interval = 60000.0
+                except Exception:
+                    pass
+
             try:
+                logger.info("Triggering CHNSpec physical White calibration (please wait while flashing)...")
                 self._dev.White()
             except Exception as e:
                 raise RuntimeError(f"White calibration trigger failed: {e}")
 
             finished = self._cal_event.wait(timeout=timeout_sec)
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                except Exception:
+                    pass
+
             if not finished:
-                raise TimeoutError("White calibration timed out waiting for device response.")
+                if self._dev:
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
+                raise TimeoutError(f"White calibration timed out waiting for device response ({timeout_sec}s).")
 
             if self._cal_success:
                 self._last_calibrated_at = time.time()
@@ -308,7 +371,7 @@ class CHNSpecDriver:
                 "message": "White calibration successful" if self._cal_success else "White calibration failed"
             }
 
-    def black_calibrate(self, timeout_sec: float = 12.0) -> Dict[str, Any]:
+    def black_calibrate(self, timeout_sec: float = 35.0) -> Dict[str, Any]:
         """Triggers physical black cavity calibration on the instrument."""
         with self._lock:
             if self._is_mock:
@@ -322,14 +385,41 @@ class CHNSpecDriver:
             self._cal_event.clear()
             self._cal_success = False
 
+            # Ensure instrument is in clean, non-busy state
+            if self._dev:
+                try:
+                    self._dev.IsWorking = False
+                except Exception:
+                    pass
+
+            # Pre-arm watchdog timer to 60s
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                    self._internal_timer.Interval = 60000.0
+                except Exception:
+                    pass
+
             try:
+                logger.info("Triggering CHNSpec physical Black calibration (please wait while flashing)...")
                 self._dev.Black()
             except Exception as e:
                 raise RuntimeError(f"Black calibration trigger failed: {e}")
 
             finished = self._cal_event.wait(timeout=timeout_sec)
+            if self._internal_timer:
+                try:
+                    self._internal_timer.Stop()
+                except Exception:
+                    pass
+
             if not finished:
-                raise TimeoutError("Black calibration timed out waiting for device response.")
+                if self._dev:
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
+                raise TimeoutError(f"Black calibration timed out waiting for device response ({timeout_sec}s).")
 
             if self._cal_success:
                 self._last_calibrated_at = time.time()
@@ -389,7 +479,7 @@ class CHNSpecDriver:
             "message": msg
         }
 
-    def measure(self, mode: str = "SCI", timeout_sec: float = 12.0) -> Dict[str, Any]:
+    def measure(self, mode: str = "SCI", timeout_sec: float = 30.0) -> Dict[str, Any]:
         """
         Triggers a measurement sweep (SCI, SCE, or SCI_SCE).
         Returns normalized 31-channel reflectance [400..700 nm @ 10 nm], Lab coordinates, and Hex.
@@ -425,6 +515,21 @@ class CHNSpecDriver:
                 self._meas_result = []
                 self._meas_success = False
 
+                # Ensure instrument is in clean, non-busy state
+                if self._dev:
+                    try:
+                        self._dev.IsWorking = False
+                    except Exception:
+                        pass
+
+                # Pre-arm watchdog timer to 60s
+                if self._internal_timer:
+                    try:
+                        self._internal_timer.Stop()
+                        self._internal_timer.Interval = 60000.0
+                    except Exception:
+                        pass
+
                 csharp_mode = self._Measure_Mode.SCI
                 if norm_mode == "SCE":
                     csharp_mode = self._Measure_Mode.SCE
@@ -432,6 +537,7 @@ class CHNSpecDriver:
                     csharp_mode = self._Measure_Mode.SCI_SCE
 
                 try:
+                    logger.info(f"Triggering CHNSpec physical Measure mode={norm_mode}...")
                     self._dev.Measure(csharp_mode)
                 except Exception as e:
                     self._connection_state = "ERROR"
@@ -439,7 +545,18 @@ class CHNSpecDriver:
                     raise RuntimeError(f"Measure trigger failed on CHNSpec: {e}")
 
                 finished = self._meas_event.wait(timeout=timeout_sec)
+                if self._internal_timer:
+                    try:
+                        self._internal_timer.Stop()
+                    except Exception:
+                        pass
+
                 if not finished:
+                    if self._dev:
+                        try:
+                            self._dev.IsWorking = False
+                        except Exception:
+                            pass
                     self._connection_state = "ERROR"
                     self._last_error = f"CHNSpec measurement timed out after {timeout_sec}s."
                     raise TimeoutError(f"CHNSpec measurement timed out after {timeout_sec}s.")

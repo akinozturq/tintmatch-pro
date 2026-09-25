@@ -149,10 +149,17 @@ export const InstrumentModal: React.FC<InstrumentModalProps> = ({
     setFeedback(null);
     try {
       const res = await calibrateChnspec(type);
-      setFeedback({
-        type: 'success',
-        message: `${type === 'White' ? 'Beyaz Karo' : 'Siyah Tuzak'} kalibrasyonu tamamlandı: ${res.message}`
-      });
+      if (res.success) {
+        setFeedback({
+          type: 'success',
+          message: `${type === 'White' ? 'Beyaz Karo' : 'Siyah Tuzak'} kalibrasyonu başarıyla tamamlandı.`
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          message: `${type === 'White' ? 'Beyaz Karo' : 'Siyah Tuzak'} kalibrasyonu başarısız: ${res.message || 'Cihaz yanıt vermedi.'}`
+        });
+      }
       refreshAll();
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message || 'Kalibrasyon hatası' });
@@ -473,6 +480,15 @@ export const InstrumentModal: React.FC<InstrumentModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {isCalibrating && (
+                  <div className="p-2.5 rounded-lg bg-blue-950/40 border border-blue-800/60 text-blue-300 text-xs flex items-center gap-2 animate-pulse">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-400 shrink-0" />
+                    <span>
+                      {isCalibrating === 'White' ? 'Beyaz Karo' : 'Siyah Tuzak'} kalibrasyonu sürüyor. Cihaz çoklu Xenon flaş serisi patlatmaktadır, lütfen işlem bitene kadar bekleyin (~15-20 sn)...
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 3. Live Test Measurement */}
