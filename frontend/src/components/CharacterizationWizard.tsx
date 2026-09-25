@@ -615,17 +615,17 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({ bases, onComplet
               <span className="text-[10px] text-zinc-400">Uyum Oranı</span>
             </div>
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
-              <span className="text-[10px] text-zinc-400 block uppercase">LOOCV Tahmin</span>
+              <span className="text-[10px] text-zinc-400 block uppercase">LOOCV (Ort / Max)</span>
               <span className={`text-base font-bold mt-0.5 block ${
                 results.loocv?.status === 'LOOCV_EVALUATED'
-                  ? (results.loocv.mean_delta_e00 ?? 1) <= 0.50 ? 'text-cyan-400' : 'text-amber-400'
+                  ? (results.loocv.mean_delta_e00 ?? 1) <= 0.50 && (results.loocv.max_delta_e00 ?? 1) <= 1.00 ? 'text-cyan-400' : 'text-amber-400'
                   : 'text-zinc-500'
               }`}>
                 {results.loocv?.status === 'LOOCV_EVALUATED' && results.loocv.mean_delta_e00 != null
-                  ? results.loocv.mean_delta_e00.toFixed(3)
+                  ? `${results.loocv.mean_delta_e00.toFixed(2)} / ${results.loocv.max_delta_e00?.toFixed(2) ?? '-'}`
                   : 'N/A (n<4)'}
               </span>
-              <span className="text-[10px] text-zinc-400">Eşik &le; 0.500</span>
+              <span className="text-[10px] text-zinc-400">Eşik &le;0.50 / &le;1.00</span>
             </div>
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">
               <span className="text-[10px] text-zinc-400 block uppercase">Jacobian Cond</span>
@@ -633,7 +633,7 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({ bases, onComplet
                 {results.jacobian_diagnostics?.scaled_condition_status || 'WELL_CONDITIONED'}
               </span>
               <span className="text-[10px] text-zinc-400">
-                {results.jacobian_condition_number ? `κ ≈ ${results.jacobian_condition_number.toFixed(1)}` : 'Identifiable'}
+                {results.jacobian_diagnostics?.p95_condition_number ? `p95 ≈ ${results.jacobian_diagnostics.p95_condition_number.toFixed(1)}` : results.jacobian_condition_number ? `κ ≈ ${results.jacobian_condition_number.toFixed(1)}` : 'Identifiable'}
               </span>
             </div>
             <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800">

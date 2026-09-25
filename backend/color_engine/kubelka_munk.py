@@ -212,8 +212,12 @@ def calculate_km_jacobian_condition(
 
     scaled_val = round(float(np.median(scaled_conds)), 2) if scaled_conds else 999.0
     raw_val = round(float(np.median(raw_conds)), 2) if raw_conds else 999.0
+    p95_scaled = round(float(np.percentile(scaled_conds, 95)), 2) if scaled_conds else 999.0
+    max_scaled = round(float(np.max(scaled_conds)), 2) if scaled_conds else 999.0
+    worst_idx = int(np.argmax(scaled_conds)) if scaled_conds else 0
+    worst_wl = int(WAVELENGTHS[worst_idx]) if scaled_conds else 400
 
-    if scaled_val <= 250.0:
+    if scaled_val <= 250.0 and max_scaled <= 2000.0:
         status_str = "WELL_CONDITIONED"
     elif scaled_val <= 1000.0:
         status_str = "MODERATELY_ILL_CONDITIONED"
@@ -224,6 +228,9 @@ def calculate_km_jacobian_condition(
         "scaled_condition_number": scaled_val,
         "raw_condition_number": raw_val,
         "condition_number": scaled_val,
+        "p95_condition_number": p95_scaled,
+        "max_condition_number": max_scaled,
+        "worst_wavelength_nm": worst_wl,
         "status": status_str
     }
 
@@ -446,6 +453,7 @@ def characterize_letdown_series(
     # Minimum 4 letdown concentrations required so each fold retains at least 3 points with df > 0
     if n_letdowns >= 4:
         loocv_errors = []
+        loocv_fold_results = []
         for h in range(n_letdowns):
             train_idx = [idx for idx in range(n_letdowns) if idx != h]
             train_concs = concs[train_idx]
@@ -473,7 +481,15 @@ def characterize_letdown_series(
             lab_held_meas = reflectance_to_lab(r_meas_list[h], illuminant="D65", observer="10")
             lab_held_pred = reflectance_to_lab(held_pred_r_meas, illuminant="D65", observer="10")
             diff_h = ciede2000(lab_held_meas, lab_held_pred)
-            loocv_errors.append(round(float(diff_h["delta_e00"]), 3))
+            de00_h = round(float(diff_h["delta_e00"]), 3)
+            loocv_errors.append(de00_h)
+            loocv_fold_results.append({
+                "omitted_index": h,
+                "omitted_concentration": round(float(concs[h]), 4),
+                "delta_e00": de00_h,
+                "predicted_lab": [round(float(v), 2) for v in lab_held_pred],
+                "measured_lab": [round(float(v), 2) for v in lab_held_meas]
+            })
 
         loocv_mean_de00 = float(np.mean(loocv_errors))
         loocv_max_de00 = float(np.max(loocv_errors))
@@ -482,7 +498,8 @@ def characterize_letdown_series(
             "samples_count": n_letdowns,
             "mean_delta_e00": round(loocv_mean_de00, 3),
             "max_delta_e00": round(loocv_max_de00, 3),
-            "errors": loocv_errors
+            "errors": loocv_errors,
+            "fold_results": loocv_fold_results
         }
     else:
         loocv_result = {
@@ -491,6 +508,7 @@ def characterize_letdown_series(
             "mean_delta_e00": None,
             "max_delta_e00": None,
             "errors": [],
+            "fold_results": [],
             "message": f"LOOCV requires n >= 4 letdown concentrations (provided: {n_letdowns})."
         }
 

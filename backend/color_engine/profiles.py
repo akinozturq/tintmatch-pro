@@ -24,6 +24,7 @@ class ToleranceProfile:
     mean_de00_limit: float = 0.30
     single_de00_limit: float = 0.50
     loocv_de00_limit: float = 0.50
+    loocv_max_de00_limit: float = 1.00
     min_r_squared: float = 0.9950
     max_spectral_rmse: float = 0.0150
     opacity_limit: float = 98.0
@@ -33,10 +34,11 @@ class ToleranceProfile:
 TOLERANCE_STRICT_LAB = ToleranceProfile(
     id="strict_lab",
     name="Strict Laboratory Standard",
-    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50, LOOCV ≤ 0.50)",
+    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50, LOOCV Mean ≤ 0.50, LOOCV Max ≤ 1.00)",
     mean_de00_limit=0.30,
     single_de00_limit=0.50,
     loocv_de00_limit=0.50,
+    loocv_max_de00_limit=1.00,
     min_r_squared=0.9950,
     max_spectral_rmse=0.0150,
     opacity_limit=98.0,
@@ -46,10 +48,11 @@ TOLERANCE_STRICT_LAB = ToleranceProfile(
 TOLERANCE_INDUSTRIAL = ToleranceProfile(
     id="industrial",
     name="Industrial Production Standard",
-    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80, LOOCV ≤ 0.80)",
+    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80, LOOCV Mean ≤ 0.80, LOOCV Max ≤ 1.50)",
     mean_de00_limit=0.50,
     single_de00_limit=0.80,
     loocv_de00_limit=0.80,
+    loocv_max_de00_limit=1.50,
     min_r_squared=0.9900,
     max_spectral_rmse=0.0250,
     opacity_limit=97.0,
@@ -59,10 +62,11 @@ TOLERANCE_INDUSTRIAL = ToleranceProfile(
 TOLERANCE_COMMERCIAL = ToleranceProfile(
     id="commercial",
     name="Commercial Tinting Standard",
-    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20, LOOCV ≤ 1.20)",
+    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20, LOOCV Mean ≤ 1.20, LOOCV Max ≤ 2.00)",
     mean_de00_limit=0.80,
     single_de00_limit=1.20,
     loocv_de00_limit=1.20,
+    loocv_max_de00_limit=2.00,
     min_r_squared=0.9850,
     max_spectral_rmse=0.0350,
     opacity_limit=96.0,
@@ -75,6 +79,23 @@ STANDARD_TOLERANCE_PROFILES = [
     TOLERANCE_COMMERCIAL
 ]
 DEFAULT_TOLERANCE_PROFILE = TOLERANCE_STRICT_LAB
+
+
+@dataclass(frozen=True)
+class MeasurementContext:
+    """
+    Central immutable optical measurement and characterization context.
+    Prevents cross-geometry or cross-mode invalid optical combinations in CCM.
+    """
+    instrument_model: str = "X-Rite RM400"
+    geometry: str = "45°/0°"             # '45°/0°', 'd/8°'
+    measurement_mode: str = "SPEX"       # 'SPEX', 'SCI', 'SCE', 'SCI_SCE'
+    specular_included: bool = False
+    illuminant: str = "D65"
+    observer: str = "10"
+    wavelength_grid: tuple[int, ...] = tuple(range(400, 710, 10))
+    characterization_version: int = 1
+    characterization_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +123,7 @@ class ColorScienceProfile:
     char_mean_de00_max: float = 0.30
     char_single_de00_max: float = 0.50
     char_loocv_de00_max: float = 0.50
+    char_loocv_max_de00_max: float = 1.00
     char_min_r_squared: float = 0.9950
     char_max_spectral_rmse: float = 0.0150
     opacity_hiding_threshold: float = 98.0

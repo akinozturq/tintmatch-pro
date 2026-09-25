@@ -25,6 +25,9 @@ export interface ColorantPaste {
   unit_ks: number[];
   mean_delta_e00: number;
   passed_validation: boolean;
+  geometry?: string;
+  characterization_version?: number;
+  active_characterization_id?: number | null;
   characterization_base_id?: number | null;
   created_at?: string;
 }
@@ -164,6 +167,7 @@ export interface InstrumentComparisonResult {
   };
   diagnostics: {
     same_geometry: boolean;
+    comparison_status?: 'PASS' | 'WARN' | 'FAIL' | string;
     agreement_classification: string;
     notes: string[];
   };
@@ -225,6 +229,9 @@ export interface CharacterizationResult {
     scaled_condition_number: number;
     raw_condition_status: string;
     scaled_condition_status: string;
+    p95_condition_number?: number;
+    max_condition_number?: number;
+    worst_wavelength_nm?: number | null;
     is_well_conditioned: boolean;
     message: string;
   };

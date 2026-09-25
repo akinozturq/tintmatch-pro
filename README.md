@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-83%20passed%20%7C%2085%25%20cov-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-95%20passed%20%7C%2085%25%20cov-brightgreen)](backend/tests/)
 [![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -185,26 +185,26 @@ Name                                            Stmts   Miss  Cover
 backend\color_engine\__init__.py                    6      0   100%
 backend\color_engine\colorimetry.py               126      1    99%
 backend\color_engine\constants.py                  16      0   100%
-backend\color_engine\formulation.py               225     30    87%
-backend\color_engine\instrument_comparison.py      57      4    93%
-backend\color_engine\kubelka_munk.py              247     18    93%
-backend\color_engine\profiles.py                   59      0   100%
-backend\color_engine\quality_gate.py               69     10    86%
+backend\color_engine\formulation.py               225     18    92%
+backend\color_engine\instrument_comparison.py      64      5    92%
+backend\color_engine\kubelka_munk.py              254     16    94%
+backend\color_engine\profiles.py                   72      0   100%
+backend\color_engine\quality_gate.py               82     12    85%
 backend\color_engine\rm400_parser.py              211     27    87%
 backend\color_engine\saunderson.py                 31      1    97%
 backend\color_engine\spectrum_normalizer.py        48      2    96%
-backend\devices\chnspec_driver.py                 282     76    73%
-backend\devices\rm400_driver.py                   156     69    56%
+backend\devices\chnspec_driver.py                 312     81    74%
+backend\devices\rm400_driver.py                   186     82    56%
 backend\routes\__init__.py                          0      0   100%
 backend\routes\bases.py                            76     41    46%
-backend\routes\characterization.py                121     12    90%
-backend\routes\formulation.py                     218      7    97%
-backend\routes\instruments.py                     122     18    85%
+backend\routes\characterization.py                142      9    94%
+backend\routes\formulation.py                     233      6    97%
+backend\routes\instruments.py                     128     22    83%
 backend\routes\pastes.py                           42     12    71%
 backend\routes\reports.py                          52      2    96%
 -------------------------------------------------------------------
-TOTAL                                            2164    330    85%
-============================= 83 passed in 44.57s =============================
+TOTAL                                            2306    337    85%
+============================= 95 passed in 28.82s =============================
 ```
 
 ---

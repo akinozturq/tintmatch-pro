@@ -40,6 +40,7 @@ class PredictRecipeRequest(BaseModel):
 class MatchTargetRequest(BaseModel):
     target_reflectance: list[float] = Field(..., description="31-point target spectral reflectance (400-700 nm)")
     base_id: int = Field(1, json_schema_extra={"example": 1})
+    geometry: str | None = Field(None, description="Target optical geometry (e.g. '45°/0°', 'd/8°'). Mismatched bases/pastes are strictly rejected.")
     paste_ids: list[int] | None = Field(None, description="Candidate paste IDs; if None, all library pastes are used")
     max_pastes: int = Field(4, json_schema_extra={"example": 4})
     max_total_load: float = Field(12.0, json_schema_extra={"example": 12.0})
@@ -59,6 +60,9 @@ class SaveRecipeRequest(BaseModel):
     contrast_ratio: float | None = None
     profile_id: str | None = Field("color_match", json_schema_extra={"example": "color_match"})
     calculation_hash: str | None = None
+    geometry: str | None = Field(None, description="Optical geometry of formulation (e.g. '45°/0°', 'd/8°')")
+    characterization_version: int | str | None = Field(None, description="Characterization version or session ID")
+    active_characterization_ids: list[int] | None = Field(None, description="Exact characterization IDs used for pastes")
     quality_gate: dict | None = None
     k1: float = 0.04
     k2: float = 0.60
@@ -145,6 +149,7 @@ def match_color(req: MatchTargetRequest):
     """
     Automated Computer Color Matching (CCM) solver:
     Identifies the optimal blend of up to 4 colorant pastes to match the target spectrum.
+    Enforces strict optical geometry and context compatibility (no cross-geometry mixing).
     """
     if len(req.target_reflectance) != 31:
         raise HTTPException(status_code=400, detail="Target reflectance must have 31 spectral points (400-700 nm).")
@@ -158,27 +163,51 @@ def match_color(req: MatchTargetRequest):
     base_k = json.loads(base_row["absorption_k"])
     base_s = json.loads(base_row["scattering_s"])
 
-    # Fetch candidate pastes
+    # Enforce optical context / geometry
+    base_geo = (base_row["geometry"] if "geometry" in base_row.keys() and base_row["geometry"] else "45°/0°").strip()
+    target_geo = req.geometry.strip() if req.geometry else base_geo
+
+    if req.geometry and req.geometry.strip().lower() != base_geo.lower():
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Context Mismatch: Target optical geometry '{req.geometry}' does not match base paint geometry '{base_geo}'. Cross-geometry formulation is prohibited."
+        )
+
+    # Fetch candidate pastes matching exact geometry (NO geometry IS NULL bypass!)
     if req.paste_ids:
         placeholders = ",".join("?" for _ in req.paste_ids)
-        paste_rows = conn.execute(f"SELECT * FROM pastes WHERE id IN ({placeholders})", req.paste_ids).fetchall()
+        paste_rows = conn.execute(
+            f"SELECT * FROM pastes WHERE id IN ({placeholders}) AND geometry = ?",
+            (*req.paste_ids, target_geo)
+        ).fetchall()
     else:
-        paste_rows = conn.execute("SELECT * FROM pastes").fetchall()
+        paste_rows = conn.execute(
+            "SELECT * FROM pastes WHERE geometry = ?",
+            (target_geo,)
+        ).fetchall()
 
     conn.close()
 
     if not paste_rows:
-        raise HTTPException(status_code=400, detail="No colorant pastes available for matching.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"No characterized colorant pastes found matching optical geometry '{target_geo}'. Cross-geometry formulation is prohibited."
+        )
 
     available_pastes = []
     for r in paste_rows:
+        r_dict = dict(r)
         available_pastes.append({
-            "id": r["id"],
-            "name": r["name"],
-            "code": r["code"],
-            "hex": r["color_hex"],
-            "unit_k": json.loads(r["unit_k"]),
-            "unit_s": json.loads(r["unit_s"])
+            "id": r_dict["id"],
+            "name": r_dict["name"],
+            "code": r_dict["code"],
+            "hex": r_dict["color_hex"],
+            "geometry": r_dict.get("geometry", target_geo),
+            "characterization_version": r_dict.get("characterization_version", 1),
+            "active_characterization_id": r_dict.get("active_characterization_id"),
+            "unit_k": json.loads(r_dict["unit_k"]),
+            "unit_s": json.loads(r_dict["unit_s"])
         })
 
     try:
@@ -193,6 +222,7 @@ def match_color(req: MatchTargetRequest):
             k2=req.k2,
             profile_id=req.profile_id
         )
+        match_result["geometry"] = target_geo
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Color matching solver error: {str(e)}")
 
@@ -331,6 +361,11 @@ def save_recipe(req: SaveRecipeRequest):
 
     # Compute canonical SHA-256 execution context hash
     calc_hash = req.calculation_hash
+    recipe_geo = req.geometry or "45°/0°"
+    char_ver = int(req.characterization_version or 1)
+    char_ids = req.active_characterization_ids or [p.get("active_characterization_id") or p.get("id") for p in req.pastes]
+    char_ids_json = json.dumps(char_ids)
+
     if not calc_hash:
         calc_hash = compute_canonical_execution_hash(
             base_id=req.base_id,
@@ -344,26 +379,29 @@ def save_recipe(req: SaveRecipeRequest):
             tolerance_profile_id=req.tolerance_profile_id,
             max_pastes=req.max_pastes,
             max_total_load=req.max_total_load,
+            geometry=recipe_geo,
+            characterization_version=char_ver
         )
 
     qg_json = json.dumps(req.quality_gate) if req.quality_gate else None
     tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
 
     cur.execute("""
-    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, profile_id, quality_gate_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, profile_id, quality_gate_json, geometry, characterization_version, characterization_ids_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.name, req.base_id, json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance), json.dumps(req.lab),
         req.hex_color, req.delta_e00, req.contrast_ratio,
-        calc_hash, req.profile_id or "color_match", qg_json
+        calc_hash, req.profile_id or "color_match", qg_json,
+        recipe_geo, char_ver, char_ids_json
     ))
     new_id = cur.lastrowid
 
     # Automatically record Attempt #1 in recipe_history
     cur.execute("""
-    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, operator_notes)
-    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, geometry, characterization_ids_json, operator_notes)
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id,
         json.dumps(req.pastes),
@@ -372,6 +410,8 @@ def save_recipe(req: SaveRecipeRequest):
         req.composite_mi,
         tot_load,
         calc_hash,
+        recipe_geo,
+        char_ids_json,
         req.operator_notes or "Initial formulation match (Attempt #1)"
     ))
 

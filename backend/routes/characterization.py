@@ -46,6 +46,12 @@ class SaveCharacterizationRequest(BaseModel):
     k1: float = Field(0.04, json_schema_extra={"example": 0.04})
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
     instrument: str = Field("X-Rite RM400 (45°/0° Spectrophotometer)")
+    instrument_id: int | None = Field(None)
+    geometry: str = Field("45°/0°", json_schema_extra={"example": "45°/0°"})
+    measurement_mode: str = Field("SCI", json_schema_extra={"example": "SCI"})
+    characterization_version: int = Field(1, json_schema_extra={"example": 1})
+    is_simulation: bool = Field(False, description="Flag indicating if the measurement source was synthetic/simulated")
+    allow_simulation_save: bool = Field(False, description="Explicit override flag allowing simulated data to be saved to production library")
     letdowns: list[LetdownItem]
     calculation_results: dict
 
@@ -172,7 +178,14 @@ def download_sample_csv(colorant_key: str):
 def save_characterization(req: SaveCharacterizationRequest):
     """
     Saves the characterized paste to the library and records the calibration session.
+    Enforces simulation guards and links active_characterization_id with geometry.
     """
+    if req.is_simulation and not req.allow_simulation_save:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot save simulated characterization data to production paste library unless allow_simulation_save is explicitly True."
+        )
+
     res = req.calculation_results
     unit_k = res.get("unit_k")
     unit_s = res.get("unit_s")
@@ -198,31 +211,83 @@ def save_characterization(req: SaveCharacterizationRequest):
     cur = conn.cursor()
 
     try:
-        # Insert or update paste
-        cur.execute("""
-        INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, mean_delta_e00, passed_validation, characterization_base_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            req.name, req.code, color_hex, req.density,
-            json.dumps(unit_k), json.dumps(unit_s), json.dumps(unit_ks),
-            mean_de00, 1 if passed else 0, req.base_id
-        ))
-        paste_id = cur.lastrowid
+        # Check if paste with this code exists
+        existing_paste = cur.execute("SELECT id, characterization_version FROM pastes WHERE code = ?", (req.code,)).fetchone()
 
-        # Insert characterization record
+        target_version = req.characterization_version
+        if existing_paste:
+            paste_id = existing_paste["id"]
+            if target_version <= (existing_paste["characterization_version"] or 1):
+                target_version = (existing_paste["characterization_version"] or 1) + 1
+        else:
+            paste_id = None
+
         cur.execute("SELECT name FROM bases WHERE id = ?", (req.base_id,))
         base_row = cur.fetchone()
         base_name = base_row["name"] if base_row else "Standard Base"
 
+        # Construct measurement context json
+        specular_inc = req.measurement_mode.upper() in ("SCI", "SCI_SCE")
+        meas_context = {
+            "instrument_model": req.instrument,
+            "geometry": req.geometry,
+            "measurement_mode": req.measurement_mode,
+            "specular_included": specular_inc,
+            "characterization_version": target_version
+        }
+
+        # Insert characterization record
         cur.execute("""
-        INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO characterizations (
+            paste_id, paste_name, base_id, base_name, instrument, instrument_id,
+            geometry, measurement_mode, version, measurement_context_json,
+            k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            paste_id, req.name, req.base_id, base_name,
-            req.instrument, req.k1, req.k2,
+            paste_id, req.name, req.base_id, base_name, req.instrument, req.instrument_id,
+            req.geometry, req.measurement_mode, target_version, json.dumps(meas_context),
+            req.k1, req.k2,
             json.dumps([{"concentration": l.concentration, "reflectance": l.reflectance} for l in req.letdowns]),
             json.dumps(res), mean_de00, 1 if passed else 0
         ))
+        char_id = cur.lastrowid
+
+        if paste_id:
+            # Update existing paste
+            cur.execute("""
+            UPDATE pastes SET
+                name = ?, color_hex = ?, density = ?,
+                unit_k = ?, unit_s = ?, unit_ks = ?,
+                mean_delta_e00 = ?, passed_validation = ?, characterization_base_id = ?,
+                geometry = ?, characterization_version = ?, active_characterization_id = ?
+            WHERE id = ?
+            """, (
+                req.name, color_hex, req.density,
+                json.dumps(unit_k), json.dumps(unit_s), json.dumps(unit_ks),
+                mean_de00, 1 if passed else 0, req.base_id,
+                req.geometry, target_version, char_id,
+                paste_id
+            ))
+        else:
+            # Insert new paste
+            cur.execute("""
+            INSERT INTO pastes (
+                name, code, color_hex, density,
+                unit_k, unit_s, unit_ks,
+                mean_delta_e00, passed_validation, characterization_base_id,
+                geometry, characterization_version, active_characterization_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                req.name, req.code, color_hex, req.density,
+                json.dumps(unit_k), json.dumps(unit_s), json.dumps(unit_ks),
+                mean_de00, 1 if passed else 0, req.base_id,
+                req.geometry, target_version, char_id
+            ))
+            paste_id = cur.lastrowid
+            cur.execute("UPDATE characterizations SET paste_id = ? WHERE id = ?", (paste_id, char_id))
+
         conn.commit()
     except Exception as e:
         conn.close()
@@ -232,5 +297,7 @@ def save_characterization(req: SaveCharacterizationRequest):
     return {
         "success": True,
         "paste_id": paste_id,
-        "message": f"Colorant paste '{req.name}' successfully registered and characterized."
+        "characterization_id": char_id,
+        "version": target_version,
+        "message": f"Colorant paste '{req.name}' successfully registered and characterized (v{target_version})."
     }

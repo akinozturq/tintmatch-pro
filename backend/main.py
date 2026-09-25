@@ -26,6 +26,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Initialize DB on module import to ensure migrations are active in test environments
+init_db()
+
 import os
 
 app = FastAPI(

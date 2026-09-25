@@ -121,19 +121,26 @@ def measure_chnspec(req: CHNSpecMeasureRequest):
         cur = conn.cursor()
         # Find instrument id for CHNSpec
         inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%DS-36D%' LIMIT 1").fetchone()
-        inst_id = inst_row["id"] if inst_row else 2
+        if not inst_row:
+            conn.close()
+            raise HTTPException(
+                status_code=500,
+                detail="CHNSpec DS-36D spectrophotometer is not found in the verified instrument registry. Controlled registration required."
+            )
+        inst_id = inst_row["id"]
 
         spec_inc = 0 if req.mode.upper() == "SCE" else 1
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included)
-        VALUES (?, 'CHNSpec Operator', ?, ?, ?, 'd/8°', ?, ?)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation)
+        VALUES (?, 'CHNSpec Operator', ?, ?, ?, 'd/8°', ?, ?, ?)
         """, (
             inst_id,
             req.sample_name or "Lab Sample",
             json.dumps(meas["raw_reflectance"]),
             json.dumps(meas),
             req.mode,
-            spec_inc
+            spec_inc,
+            1 if meas.get("is_mock", False) else 0
         ))
         conn.commit()
         meas["measurement_id"] = cur.lastrowid
@@ -211,16 +218,23 @@ def measure_sample(req: MeasureRequest):
         conn = get_db_connection()
         cur = conn.cursor()
         inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%RM400%' LIMIT 1").fetchone()
-        inst_id = inst_row["id"] if inst_row else 1
+        if not inst_row:
+            conn.close()
+            raise HTTPException(
+                status_code=500,
+                detail="X-Rite RM400 spectrophotometer is not found in the verified instrument registry. Controlled registration required."
+            )
+        inst_id = inst_row["id"]
 
         cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included)
-        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0)
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation)
+        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0, ?)
         """, (
             inst_id,
             req.sample_name or "Lab Sample",
             json.dumps(meas["reflectance"]),
-            json.dumps(meas)
+            json.dumps(meas),
+            1 if meas.get("is_mock", False) else 0
         ))
         conn.commit()
         meas["measurement_id"] = cur.lastrowid

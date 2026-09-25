@@ -24,6 +24,7 @@ from typing import Optional, Dict, Any, List
 from .constants import WAVELENGTHS, N_WAVELENGTHS
 from .spectrum_normalizer import normalize_spectrum
 from .colorimetry import reflectance_to_lab, reflectance_to_hex, ciede2000
+from .profiles import ToleranceProfile, DEFAULT_TOLERANCE_PROFILE
 
 
 def compare_spectral_measurements(
@@ -32,7 +33,8 @@ def compare_spectral_measurements(
     ref_meta: Optional[Dict[str, Any]] = None,
     target_meta: Optional[Dict[str, Any]] = None,
     illuminant: str = "D65",
-    observer: str = "10"
+    observer: str = "10",
+    tolerance_profile: Optional[ToleranceProfile] = None
 ) -> Dict[str, Any]:
     """
     Compares two spectral reflectance curves, evaluating spectral discrepancy,
@@ -106,7 +108,7 @@ def compare_spectral_measurements(
         if "SCI" in target_mode or "SCI" in target_geo:
             notes.append(
                 f"Hedef ölçümde ayna yansıması dahil edilmiştir (SCI). "
-                f"Ortalama yansıma farkı: +{mean_bias*100.0:.2f}% R (yüzey parlaklık payı)."
+                f"Ortalama yansıma farkı: +{mean_bias*100.0:.2f}% R (yüzey aynasal yansıması, sphere trap etkisi ve optik geometri farkından kaynaklanan bileşik kayma)."
             )
         elif "SCE" in target_mode or "SCE" in target_geo:
             notes.append(
@@ -117,6 +119,14 @@ def compare_spectral_measurements(
             f"Aynı optik geometri ({ref_geo}). "
             "Sapmalar cihazlar arası uyum (IIA), kalibrasyon farkı veya numune konumlandırmasından kaynaklanır."
         )
+
+    prof = tolerance_profile or DEFAULT_TOLERANCE_PROFILE
+    if de00 <= prof.mean_de00_limit:
+        comparison_status = "PASS"
+    elif de00 <= prof.single_de00_limit:
+        comparison_status = "WARN"
+    else:
+        comparison_status = "FAIL"
 
     if de00 <= 0.30:
         agreement_class = "EXCELLENT (Inter-instrument agreement ΔE00 ≤ 0.30)"
@@ -167,6 +177,7 @@ def compare_spectral_measurements(
         },
         "diagnostics": {
             "same_geometry": same_geo,
+            "comparison_status": comparison_status,
             "agreement_classification": agreement_class,
             "notes": notes
         }

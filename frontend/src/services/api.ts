@@ -122,9 +122,13 @@ export async function saveCharacterization(payload: {
   k1?: number;
   k2?: number;
   instrument?: string;
+  geometry?: string;
+  characterization_version?: number;
+  is_simulation?: boolean;
+  allow_simulation_save?: boolean;
   letdowns: Array<{ concentration: number; reflectance: number[] }>;
   calculation_results: CharacterizationResult;
-}): Promise<{ success: boolean; paste_id: number; message: string }> {
+}): Promise<{ success: boolean; paste_id: number; characterization_id?: number; version?: number; message: string }> {
   const res = await fetch(`${BASE_URL}/characterization/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

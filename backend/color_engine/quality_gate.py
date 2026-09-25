@@ -152,38 +152,64 @@ def evaluate_characterization_gate(
     })
 
     # 8. Out-of-Sample Prediction Validation (LOOCV)
-    loocv_pass = True
+    loocv_mean_pass = True
+    loocv_max_pass = True
     if loocv_result is not None:
         if loocv_result.get("status") == "LOOCV_EVALUATED":
             loocv_mean = loocv_result.get("mean_delta_e00", 0.0)
             loocv_limit = getattr(tolerance, "loocv_de00_limit", 0.50)
-            loocv_pass = (loocv_mean is not None and loocv_mean <= loocv_limit)
+            loocv_mean_pass = (loocv_mean is not None and loocv_mean <= loocv_limit)
             checks.append({
                 "metric": "loocv_mean_delta_e00",
                 "label": "Görülmemiş Numune Tahmin Hatası (LOOCV Mean ΔE00)",
                 "actual": round(float(loocv_mean), 3) if loocv_mean is not None else None,
                 "limit": loocv_limit,
                 "operator": "<=",
-                "status": "PASS" if loocv_pass else "FAIL",
-                "severity": "INFO" if loocv_pass else "WARNING"
+                "status": "PASS" if loocv_mean_pass else "FAIL",
+                "severity": "INFO" if loocv_mean_pass else "WARNING"
+            })
+
+            loocv_max = loocv_result.get("max_delta_e00", 0.0)
+            loocv_max_limit = getattr(tolerance, "loocv_max_de00_limit", 1.00)
+            loocv_max_pass = (loocv_max is not None and loocv_max <= loocv_max_limit)
+            checks.append({
+                "metric": "loocv_max_delta_e00",
+                "label": "Maksimum Numune Tahmin Hatası (LOOCV Max ΔE00)",
+                "actual": round(float(loocv_max), 3) if loocv_max is not None else None,
+                "limit": loocv_max_limit,
+                "operator": "<=",
+                "status": "PASS" if loocv_max_pass else "FAIL",
+                "severity": "INFO" if loocv_max_pass else "WARNING"
             })
         else:
+            loocv_mean_pass = False
+            loocv_max_pass = False
             checks.append({
                 "metric": "loocv_mean_delta_e00",
                 "label": "Görülmemiş Numune Tahmin Hatası (LOOCV)",
-                "actual": "SKIPPED",
+                "actual": "INSUFFICIENT_LETDOWNS (n < 4)",
                 "limit": getattr(tolerance, "loocv_de00_limit", 0.50),
                 "operator": "<=",
-                "status": "SKIPPED",
-                "severity": "INFO"
+                "status": "WARN",
+                "severity": "WARNING"
             })
+    else:
+        loocv_mean_pass = False
+        loocv_max_pass = False
+
+    loocv_pass = loocv_mean_pass and loocv_max_pass
 
     # Overall verdict
     is_fully_passed = mean_pass and max_pass and r2_pass and rmse_pass and count_pass and loocv_pass
     if not is_fully_passed:
-        overall_status = "FAIL"
-        overall_severity = "CRITICAL"
-    elif letdown_count == 2:
+        # If all self-fit checks passed, but LOOCV was skipped due to n < 4, it is a WARN, NOT PASS
+        if mean_pass and max_pass and r2_pass and rmse_pass and count_pass and letdown_count < 4:
+            overall_status = "WARN"
+            overall_severity = "WARNING"
+        else:
+            overall_status = "FAIL"
+            overall_severity = "CRITICAL"
+    elif letdown_count < 4:
         overall_status = "WARN"
         overall_severity = "WARNING"
     else:

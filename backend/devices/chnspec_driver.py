@@ -54,6 +54,9 @@ class CHNSpecDriver:
         self._cal_event = threading.Event()
         self._cal_success = False
 
+        self._connection_state = "DISCONNECTED"
+        self._last_error = None
+
         # Attempt to load ConnectedMeasure.dll via PythonNET
         candidate_dirs = [dll_dir] if dll_dir else DEFAULT_DLL_SEARCH_DIRS
         for d in candidate_dirs:
@@ -142,9 +145,16 @@ class CHNSpecDriver:
     @property
     def connection_state(self) -> str:
         """Returns 4-state connection status: CONNECTED_REAL, CONNECTED_MOCK, DISCONNECTED, ERROR."""
+        if self._connection_state == "ERROR":
+            return "ERROR"
         if self.is_connected():
             return "CONNECTED_MOCK" if self._is_mock else "CONNECTED_REAL"
         return "DISCONNECTED"
+
+    @property
+    def last_error(self) -> str:
+        """Returns the last hardware or communication error message."""
+        return self._last_error or ""
 
     @staticmethod
     def list_ports() -> List[Dict[str, Any]]:
@@ -192,6 +202,8 @@ class CHNSpecDriver:
             if self._is_mock:
                 self._connected = True
                 self._current_port = port or "COM4 (Mock)"
+                self._connection_state = "CONNECTED_MOCK"
+                self._last_error = None
                 return True
 
             target_port = port or self.auto_detect_port() or "COM4"
@@ -206,6 +218,8 @@ class CHNSpecDriver:
                 if ok:
                     self._connected = True
                     self._current_port = target_port
+                    self._connection_state = "CONNECTED_REAL"
+                    self._last_error = None
                     try:
                         self._dev.IsWorking = False
                     except Exception:
@@ -215,10 +229,13 @@ class CHNSpecDriver:
                 else:
                     logger.warning(f"Failed to connect to CHNSpec on {target_port}")
                     self._connected = False
+                    self._connection_state = "DISCONNECTED"
                     return False
             except Exception as e:
                 logger.error(f"Error connecting to CHNSpec on {target_port}: {e}")
                 self._connected = False
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
                 return False
 
     def disconnect(self) -> bool:
@@ -227,6 +244,8 @@ class CHNSpecDriver:
             if self._is_mock:
                 self._connected = False
                 self._current_port = None
+                self._connection_state = "DISCONNECTED"
+                self._last_error = None
                 return True
 
             try:
@@ -238,10 +257,14 @@ class CHNSpecDriver:
                     self._dev.close()
                 self._connected = False
                 self._current_port = None
+                self._connection_state = "DISCONNECTED"
+                self._last_error = None
                 return True
             except Exception as e:
                 logger.error(f"Error disconnecting CHNSpec: {e}")
                 self._connected = False
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
                 return False
 
     def is_connected(self) -> bool:
@@ -351,20 +374,30 @@ class CHNSpecDriver:
                 try:
                     self._dev.Measure(csharp_mode)
                 except Exception as e:
+                    self._connection_state = "ERROR"
+                    self._last_error = str(e)
                     raise RuntimeError(f"Measure trigger failed on CHNSpec: {e}")
 
                 finished = self._meas_event.wait(timeout=timeout_sec)
                 if not finished:
+                    self._connection_state = "ERROR"
+                    self._last_error = f"CHNSpec measurement timed out after {timeout_sec}s."
                     raise TimeoutError(f"CHNSpec measurement timed out after {timeout_sec}s.")
 
                 if not self._meas_success or not self._meas_result:
+                    self._connection_state = "ERROR"
+                    self._last_error = "CHNSpec measurement completed with error status."
                     raise RuntimeError("CHNSpec measurement completed with error status.")
 
                 if norm_mode == "SCI_SCE":
                     # Physically confirmed on CHNSpec DS-36D:
                     # spectral_infos[0] is SCI, spectral_infos[1] is SCE
+                    if len(self._meas_result) < 2:
+                        self._connection_state = "ERROR"
+                        self._last_error = "Dual SCI_SCE requested but device returned fewer than two spectra."
+                        raise RuntimeError("Dual SCI_SCE requested but device failed to deliver second spectrum. Measurement aborted.")
                     raw_sci = self._meas_result[0]
-                    raw_sce = self._meas_result[1] if len(self._meas_result) > 1 else self._meas_result[0]
+                    raw_sce = self._meas_result[1]
                     sci_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sci, raw_wls)]
                     sce_norm = [round(float(v), 5) for v in normalize_spectrum(raw_sce, raw_wls)]
                 else:

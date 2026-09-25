@@ -49,6 +49,7 @@ def init_db():
         reflectance TEXT NOT NULL,
         absorption_k TEXT NOT NULL,
         scattering_s TEXT NOT NULL,
+        geometry TEXT DEFAULT '45°/0°',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -64,7 +65,9 @@ def init_db():
         unit_k TEXT NOT NULL,
         unit_s TEXT NOT NULL,
         unit_ks TEXT NOT NULL,
-        geometry TEXT DEFAULT '45°/0°',
+        geometry TEXT NOT NULL DEFAULT '45°/0°',
+        characterization_version INTEGER DEFAULT 1,
+        active_characterization_id INTEGER,
         mean_delta_e00 REAL NOT NULL DEFAULT 0.0,
         passed_validation BOOLEAN NOT NULL DEFAULT 1,
         characterization_base_id INTEGER,
@@ -84,6 +87,8 @@ def init_db():
         instrument_id INTEGER,
         geometry TEXT DEFAULT '45°/0°',
         measurement_mode TEXT DEFAULT 'SCI',
+        version INTEGER DEFAULT 1,
+        measurement_context_json TEXT,
         k1 REAL DEFAULT 0.04,
         k2 REAL DEFAULT 0.60,
         letdowns_json TEXT NOT NULL,
@@ -108,6 +113,9 @@ def init_db():
         contrast_ratio REAL,
         calculation_hash TEXT,
         profile_id TEXT DEFAULT 'color_match',
+        geometry TEXT DEFAULT '45°/0°',
+        characterization_version INTEGER DEFAULT 1,
+        characterization_ids_json TEXT,
         quality_gate_json TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -137,6 +145,7 @@ def init_db():
         geometry TEXT DEFAULT '45°/0°',
         measurement_mode TEXT DEFAULT 'SCI',
         specular_included BOOLEAN DEFAULT 1,
+        is_simulation BOOLEAN DEFAULT 0,
         file_sha256 TEXT,
         raw_content TEXT,
         parsed_json TEXT,
@@ -157,6 +166,8 @@ def init_db():
         composite_mi REAL,
         total_load REAL,
         calculation_hash TEXT,
+        geometry TEXT DEFAULT '45°/0°',
+        characterization_ids_json TEXT,
         operator_notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(recipe_id) REFERENCES recipes(id)
@@ -172,6 +183,26 @@ def init_db():
         cur.execute("ALTER TABLE recipes ADD COLUMN profile_id TEXT DEFAULT 'color_match'")
     if "quality_gate_json" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN quality_gate_json TEXT")
+    if "geometry" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "characterization_version" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN characterization_version INTEGER DEFAULT 1")
+    if "characterization_ids_json" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN characterization_ids_json TEXT")
+
+    # Migrate recipe_history table columns
+    cur.execute("PRAGMA table_info(recipe_history)")
+    hist_cols = [row[1] for row in cur.fetchall()]
+    if "geometry" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "characterization_ids_json" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN characterization_ids_json TEXT")
+
+    # Migrate bases table columns
+    cur.execute("PRAGMA table_info(bases)")
+    base_cols = [row[1] for row in cur.fetchall()]
+    if "geometry" not in base_cols:
+        cur.execute("ALTER TABLE bases ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
 
     # Migrate measurements table columns
     cur.execute("PRAGMA table_info(measurements)")
@@ -182,6 +213,8 @@ def init_db():
         cur.execute("ALTER TABLE measurements ADD COLUMN measurement_mode TEXT DEFAULT 'SCI'")
     if "specular_included" not in meas_cols:
         cur.execute("ALTER TABLE measurements ADD COLUMN specular_included BOOLEAN DEFAULT 1")
+    if "is_simulation" not in meas_cols:
+        cur.execute("ALTER TABLE measurements ADD COLUMN is_simulation BOOLEAN DEFAULT 0")
 
     # Migrate characterizations table columns
     cur.execute("PRAGMA table_info(characterizations)")
@@ -192,12 +225,20 @@ def init_db():
         cur.execute("ALTER TABLE characterizations ADD COLUMN measurement_mode TEXT DEFAULT 'SCI'")
     if "instrument_id" not in char_cols:
         cur.execute("ALTER TABLE characterizations ADD COLUMN instrument_id INTEGER")
+    if "version" not in char_cols:
+        cur.execute("ALTER TABLE characterizations ADD COLUMN version INTEGER DEFAULT 1")
+    if "measurement_context_json" not in char_cols:
+        cur.execute("ALTER TABLE characterizations ADD COLUMN measurement_context_json TEXT")
 
     # Migrate pastes table columns
     cur.execute("PRAGMA table_info(pastes)")
     paste_cols = [row[1] for row in cur.fetchall()]
     if "geometry" not in paste_cols:
         cur.execute("ALTER TABLE pastes ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "characterization_version" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN characterization_version INTEGER DEFAULT 1")
+    if "active_characterization_id" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN active_characterization_id INTEGER REFERENCES characterizations(id)")
 
     # Seed default instrument if empty
     cur.execute("SELECT COUNT(*) FROM instruments")
@@ -301,8 +342,8 @@ def _seed_default_data(conn: sqlite3.Connection):
         )
 
         cur.execute("""
-        INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, mean_delta_e00, passed_validation, characterization_base_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
         """, (
             pdata["name"], pdata["code"], pdata["color_hex"], pdata["density"],
             json.dumps(res["unit_k"]), json.dumps(res["unit_s"]), json.dumps(res["unit_ks"]),
@@ -312,22 +353,24 @@ def _seed_default_data(conn: sqlite3.Connection):
 
         # Insert characterization record
         cur.execute("""
-        INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+        VALUES (?, ?, ?, ?, ?, '45°/0°', 'SPEX', 1, ?, ?, ?, ?, ?, ?)
         """, (
             paste_id, pdata["name"], base_a_id, "Base A - Opaque White",
             "X-Rite RM400 (45°/0° Spectrophotometer)", 0.04, 0.60,
             json.dumps(pdata["letdowns"]), json.dumps(res),
             res["mean_delta_e00"], 1 if res["passed_validation"] else 0
         ))
+        char_id = cur.lastrowid
+        cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (char_id, paste_id))
 
     # Add Carbon Black (PBk7) and Bismuth Vanadate Yellow (PY184)
     black_k = [4.8 - (i * 0.02) for i in range(31)]
     black_s = [0.04] * 31
     black_ks = [k / s for k, s in zip(black_k, black_s)]
     cur.execute("""
-    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
     """, (
         "Carbon Black", "PBk7", "#18181b", 1.15,
         json.dumps([round(v, 4) for v in black_k]),
@@ -335,13 +378,19 @@ def _seed_default_data(conn: sqlite3.Connection):
         json.dumps([round(v, 4) for v in black_ks]),
         0.18, 1, base_a_id
     ))
+    pbk7_id = cur.lastrowid
+    cur.execute("""
+    INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+    VALUES (?, 'Carbon Black', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.18, 1)
+    """, (pbk7_id, base_a_id))
+    cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pbk7_id))
 
     yellow_k = [3.5 if i < 10 else (1.2 if i < 14 else 0.04) for i in range(31)]
     yellow_s = [0.15] * 31
     yellow_ks = [k / s for k, s in zip(yellow_k, yellow_s)]
     cur.execute("""
-    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
     """, (
         "Bismuth Vanadate Yellow", "PY184", "#eab308", 1.85,
         json.dumps([round(v, 4) for v in yellow_k]),
@@ -349,14 +398,20 @@ def _seed_default_data(conn: sqlite3.Connection):
         json.dumps([round(v, 4) for v in yellow_ks]),
         0.22, 1, base_a_id
     ))
+    py184_id = cur.lastrowid
+    cur.execute("""
+    INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+    VALUES (?, 'Bismuth Vanadate Yellow', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.22, 1)
+    """, (py184_id, base_a_id))
+    cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, py184_id))
 
     # Quinacridone Magenta PR122
     magenta_k = [0.4 if i < 8 else (3.8 if 10 <= i <= 18 else 0.15) for i in range(31)]
     magenta_s = [0.08] * 31
     magenta_ks = [k / s for k, s in zip(magenta_k, magenta_s)]
     cur.execute("""
-    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
     """, (
         "Quinacridone Magenta", "PR122", "#db2777", 1.30,
         json.dumps([round(v, 4) for v in magenta_k]),
@@ -364,5 +419,11 @@ def _seed_default_data(conn: sqlite3.Connection):
         json.dumps([round(v, 4) for v in magenta_ks]),
         0.24, 1, base_a_id
     ))
+    pr122_id = cur.lastrowid
+    cur.execute("""
+    INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+    VALUES (?, 'Quinacridone Magenta', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.24, 1)
+    """, (pr122_id, base_a_id))
+    cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pr122_id))
 
     conn.commit()

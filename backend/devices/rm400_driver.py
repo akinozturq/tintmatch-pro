@@ -45,6 +45,9 @@ class RM400Driver:
                 except Exception:
                     continue
 
+        self._connection_state = "DISCONNECTED"
+        self._last_error = None
+
         if self.dll is None:
             self._is_mock = True
 
@@ -70,7 +73,7 @@ class RM400Driver:
             self.dll.CalibrateStep.restype = ctypes.c_bool
             self.dll.GetLastErrorCode.restype = ctypes.c_int
             self.dll.GetLastErrorString.restype = ctypes.c_char_p
-        except Exception as e:
+        except Exception:
             # If any function binding fails, fall back to mock
             self.dll = None
             self._is_mock = True
@@ -97,9 +100,16 @@ class RM400Driver:
     @property
     def connection_state(self) -> str:
         """Returns 4-state connection status: CONNECTED_REAL, CONNECTED_MOCK, DISCONNECTED, ERROR."""
+        if getattr(self, "_connection_state", None) == "ERROR":
+            return "ERROR"
         if self.is_connected():
             return "CONNECTED_MOCK" if self._is_mock else "CONNECTED_REAL"
         return "DISCONNECTED"
+
+    @property
+    def last_error(self) -> str:
+        """Returns the last hardware or communication error message."""
+        return getattr(self, "_last_error", None) or ""
 
     def connect(self) -> bool:
         """Connects to RM400 over USB/FTDI interface."""
@@ -107,11 +117,17 @@ class RM400Driver:
             try:
                 ok = bool(self.dll.Connect())
                 self._connected = ok
+                self._connection_state = "CONNECTED_REAL" if ok else "DISCONNECTED"
+                self._last_error = None if ok else "RM400 Connect returned false."
                 return ok
-            except Exception:
+            except Exception as e:
                 self._connected = False
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
                 return False
         self._connected = True
+        self._connection_state = "CONNECTED_MOCK"
+        self._last_error = None
         return True
 
     def disconnect(self) -> bool:
@@ -120,11 +136,17 @@ class RM400Driver:
             try:
                 ok = bool(self.dll.Disconnect())
                 self._connected = not ok
+                self._connection_state = "DISCONNECTED"
+                self._last_error = None
                 return ok
-            except Exception:
+            except Exception as e:
                 self._connected = False
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
                 return False
         self._connected = False
+        self._connection_state = "DISCONNECTED"
+        self._last_error = None
         return True
 
     def is_connected(self) -> bool:
@@ -168,7 +190,9 @@ class RM400Driver:
         if self.dll and self.is_connected():
             try:
                 return bool(self.dll.CalibrateStep(step.encode("utf-8")))
-            except Exception:
+            except Exception as e:
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
                 return False
         return True
 
@@ -178,18 +202,27 @@ class RM400Driver:
         Returns normalized 31-channel reflectance [400..700 nm @ 10 nm], Lab coordinates, and Hex.
         """
         if self.dll and self.is_connected():
-            success = self.dll.Measure()
-            if not success:
-                err_msg = self.dll.GetLastErrorString()
-                err_str = err_msg.decode("utf-8", errors="ignore") if err_msg else "Measurement trigger failed"
-                raise RuntimeError(f"RM400 Measurement Error: {err_str}")
+            try:
+                success = self.dll.Measure()
+                if not success:
+                    err_msg = self.dll.GetLastErrorString()
+                    err_str = err_msg.decode("utf-8", errors="ignore") if err_msg else "Measurement trigger failed"
+                    self._connection_state = "ERROR"
+                    self._last_error = f"RM400 Measurement Error: {err_str}"
+                    raise RuntimeError(f"RM400 Measurement Error: {err_str}")
 
-            # Poll for data ready
-            start_time = time.time()
-            while not self.dll.IsDataReady():
-                if time.time() - start_time > timeout_sec:
-                    raise TimeoutError("RM400 Measurement timed out waiting for data.")
-                time.sleep(0.1)
+                # Poll for data ready
+                start_time = time.time()
+                while not self.dll.IsDataReady():
+                    if time.time() - start_time > timeout_sec:
+                        self._connection_state = "ERROR"
+                        self._last_error = "RM400 Measurement timed out waiting for data."
+                        raise TimeoutError("RM400 Measurement timed out waiting for data.")
+                    time.sleep(0.1)
+            except Exception as e:
+                self._connection_state = "ERROR"
+                self._last_error = str(e)
+                raise
 
             # Retrieve wavelengths and raw spectral data
             wl_count = self.dll.GetWavelengthCount()
