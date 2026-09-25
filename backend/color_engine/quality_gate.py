@@ -314,7 +314,7 @@ def evaluate_formulation_gate(
         "severity": "INFO" if solver_pass else "WARNING"
     })
 
-    overall_pass = de_pass and load_pass and solver_pass
+    overall_pass = de_pass and mi_pass and load_pass and solver_pass
     return {
         "gate_type": "FORMULATION_GATE",
         "status": "PASS" if overall_pass else "FAIL",

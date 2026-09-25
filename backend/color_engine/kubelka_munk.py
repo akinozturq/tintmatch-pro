@@ -42,7 +42,8 @@ def forward_two_constant_km(
     Rg: float | np.ndarray = 0.0,
     k1: float = 0.04,
     k2: float = 0.60,
-    apply_saunderson: bool = True
+    apply_saunderson: bool = True,
+    optical_thickness_scale: float = 25.0
 ) -> np.ndarray:
     """
     Two-Constant Kubelka-Munk forward prediction for non-opaque or finite film thickness.
@@ -65,7 +66,7 @@ def forward_two_constant_km(
     b = np.sqrt(np.maximum(a ** 2 - 1.0, 0.0))
     bS = b * s_safe
 
-    optical_x = (thickness / 100.0) * 25.0
+    optical_x = (thickness / 100.0) * optical_thickness_scale
 
     # Argument to hyperbolic cotangent
     y = np.clip(bS * optical_x, 1e-7, 60.0)
@@ -103,15 +104,16 @@ def calculate_opacity_contrast_ratio(
     S: np.ndarray,
     thickness: float = 100.0,
     k1: float = 0.04,
-    k2: float = 0.60
+    k2: float = 0.60,
+    optical_thickness_scale: float = 25.0
 ) -> dict:
     """
     Computes spectral contrast ratio over black substrate (Rg=0.04) and white substrate (Rg=0.82)
     and overall luminous Y-contrast ratio (ISO 2814 / ASTM D2805).
     Opacity >= 98.0% denotes complete hiding.
     """
-    r_black = forward_two_constant_km(K, S, thickness=thickness, Rg=0.04, k1=k1, k2=k2)
-    r_white = forward_two_constant_km(K, S, thickness=thickness, Rg=0.82, k1=k1, k2=k2)
+    r_black = forward_two_constant_km(K, S, thickness=thickness, Rg=0.04, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
+    r_white = forward_two_constant_km(K, S, thickness=thickness, Rg=0.82, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
 
     spectral_cr = (r_black / np.maximum(r_white, 1e-6)) * 100.0
     spectral_cr = np.clip(spectral_cr, 0.0, 100.0)
@@ -141,7 +143,8 @@ def calculate_critical_hiding_thickness(
     k1: float = 0.04,
     k2: float = 0.60,
     min_thickness: float = 1.0,
-    max_thickness: float = 1000.0
+    max_thickness: float = 1000.0,
+    optical_thickness_scale: float = 25.0
 ) -> float:
     """
     Calculates the minimum dry/wet film thickness x_hiding (in micrometers)
@@ -152,7 +155,7 @@ def calculate_critical_hiding_thickness(
     S_arr = np.asarray(S, dtype=float)
 
     def cr_at(x):
-        res = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=x, k1=k1, k2=k2)
+        res = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=x, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
         return res["luminous_contrast_ratio"]
 
     cr_min = cr_at(min_thickness)
@@ -179,7 +182,8 @@ def calibrate_thickness_from_drawdown(
     Rg_black: float = 0.04,
     Rg_white: float = 0.82,
     k1: float = 0.04,
-    k2: float = 0.60
+    k2: float = 0.60,
+    optical_thickness_scale: float = 25.0
 ) -> dict:
     """
     Calibrates and estimates the effective film thickness (in micrometers) from
@@ -191,23 +195,23 @@ def calibrate_thickness_from_drawdown(
     S_arr = np.asarray(S, dtype=float)
 
     def loss(thickness_val):
-        pb = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_black, k1=k1, k2=k2, apply_saunderson=True)
-        pw = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_white, k1=k1, k2=k2, apply_saunderson=True)
+        pb = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_black, k1=k1, k2=k2, apply_saunderson=True, optical_thickness_scale=optical_thickness_scale)
+        pw = forward_two_constant_km(K_arr, S_arr, thickness=thickness_val, Rg=Rg_white, k1=k1, k2=k2, apply_saunderson=True, optical_thickness_scale=optical_thickness_scale)
         return float(np.sum((pb - rb_meas) ** 2) + np.sum((pw - rw_meas) ** 2))
 
     from scipy.optimize import minimize_scalar
     res = minimize_scalar(loss, bounds=(5.0, 500.0), method="bounded", options={"xatol": 0.1})
     est_x = float(res.x)
 
-    pb_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_black, k1=k1, k2=k2)
-    pw_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_white, k1=k1, k2=k2)
+    pb_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_black, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
+    pw_final = forward_two_constant_km(K_arr, S_arr, thickness=est_x, Rg=Rg_white, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
 
     tot_pts = len(rb_meas) + len(rw_meas)
     rmse = float(np.sqrt((np.sum((pb_final - rb_meas) ** 2) + np.sum((pw_final - rw_meas) ** 2)) / max(tot_pts, 1)))
 
-    cr_info = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=est_x, k1=k1, k2=k2)
+    cr_info = calculate_opacity_contrast_ratio(K_arr, S_arr, thickness=est_x, k1=k1, k2=k2, optical_thickness_scale=optical_thickness_scale)
 
-    optical_x = (est_x / 100.0) * 25.0
+    optical_x = (est_x / 100.0) * optical_thickness_scale
     mean_S = float(np.mean(S_arr))
     optical_depth = round(mean_S * optical_x, 3)
 
@@ -249,6 +253,7 @@ def calculate_km_jacobian_condition(
 
     scaled_conds = []
     raw_conds = []
+    wl_scaled_pairs = []
     n_wl = len(base_k)
 
     for wl_idx in range(n_wl):
@@ -289,6 +294,7 @@ def calculate_km_jacobian_condition(
             c_s = np.linalg.cond(J_scaled)
             if not np.isnan(c_s) and not np.isinf(c_s):
                 scaled_conds.append(c_s)
+                wl_scaled_pairs.append((int(WAVELENGTHS[wl_idx]), c_s))
         except Exception:
             pass
 
@@ -303,8 +309,7 @@ def calculate_km_jacobian_condition(
     raw_val = round(float(np.median(raw_conds)), 2) if raw_conds else 999.0
     p95_scaled = round(float(np.percentile(scaled_conds, 95)), 2) if scaled_conds else 999.0
     max_scaled = round(float(np.max(scaled_conds)), 2) if scaled_conds else 999.0
-    worst_idx = int(np.argmax(scaled_conds)) if scaled_conds else 0
-    worst_wl = int(WAVELENGTHS[worst_idx]) if scaled_conds else 400
+    worst_wl = max(wl_scaled_pairs, key=lambda kv: kv[1])[0] if wl_scaled_pairs else 400
 
     if scaled_val <= 250.0 and max_scaled <= 2000.0:
         status_str = "WELL_CONDITIONED"
