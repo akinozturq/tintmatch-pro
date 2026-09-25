@@ -482,3 +482,45 @@ def test_api_formulation_recipes_crud():
     # Verify deleted
     list_after = client.get("/api/formulation/recipes").json()
     assert not any(r["id"] == recipe_id for r in list_after)
+
+
+def test_unified_recipe_objective_profile_distinction():
+    """Verify evaluate_recipe_objective assigns differential penalties according to profile weights."""
+    from backend.color_engine.formulation import evaluate_recipe_objective
+    from backend.color_engine.profiles import PROFILE_COLOR_MATCH, PROFILE_LIGHT_STABILITY, PROFILE_ECONOMY
+    from backend.color_engine.colorimetry import reflectance_to_lab
+
+    base_k = np.full(31, 0.02)
+    base_s = np.full(31, 1.0)
+    paste_k = np.zeros((31, 2))
+    paste_k[10:20, 0] = 5.0  # Green-ish absorption
+    paste_k[0:10, 1] = 4.0   # Blue-ish absorption
+    paste_s = np.full((31, 2), 0.05)
+
+    target_r = np.full(31, 0.4)
+    target_d65 = reflectance_to_lab(target_r, "D65", "10")
+    target_a = reflectance_to_lab(target_r, "A", "10")
+    target_f11 = reflectance_to_lab(target_r, "F11", "10")
+
+    concs = np.array([2.0, 1.0])
+    loss_a = evaluate_recipe_objective(
+        concs, [0, 1], paste_k, paste_s, base_k, base_s,
+        target_d65, target_a, target_f11, PROFILE_COLOR_MATCH
+    )
+    loss_b = evaluate_recipe_objective(
+        concs, [0, 1], paste_k, paste_s, base_k, base_s,
+        target_d65, target_a, target_f11, PROFILE_LIGHT_STABILITY
+    )
+    loss_c = evaluate_recipe_objective(
+        concs, [0, 1], paste_k, paste_s, base_k, base_s,
+        target_d65, target_a, target_f11, PROFILE_ECONOMY
+    )
+
+    assert loss_a > 0
+    assert loss_b > 0
+    assert loss_c > 0
+    # Light stability penalizes secondary illuminants and metamerism heavily (weight_metamerism=2.50)
+    # Economy penalizes pigment loading heavily (weight_load=0.25 vs 0.02)
+    assert loss_c != loss_a
+    assert loss_b != loss_a
+

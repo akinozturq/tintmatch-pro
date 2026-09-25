@@ -1,14 +1,18 @@
 """
 Instruments API Router
 ======================
-Endpoints for interacting with spectrophotometers, specifically the X-Rite RM400.
-Handles connection, calibration, physical acquisition, and spectral normalization.
+Endpoints for interacting with laboratory spectrophotometers:
+1. CHNSpec DS-36D Benchtop Spectrophotometer (d/8° Integrating Sphere, USB CDC / COM4).
+2. X-Rite RM400 Portable Spectrophotometer (45°/0° Directional, 64-bit DLL).
+Handles hardware connection, auto-discovery of COM ports, calibration, and spectral acquisition.
 """
 
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..devices.rm400_driver import rm400_driver
+from ..devices.chnspec_driver import chnspec_driver, CHNSpecDriver
 from ..database.db import get_db_connection
 
 router = APIRouter(prefix="/api/instruments", tags=["instruments"])
@@ -23,6 +27,20 @@ class MeasureRequest(BaseModel):
     save_to_archive: bool = Field(True, description="Whether to record measurement in measurements table")
 
 
+class CHNSpecConnectRequest(BaseModel):
+    port: str | None = Field(None, description="Serial port (e.g. 'COM4'). Auto-detected if omitted.")
+
+
+class CHNSpecCalibrateRequest(BaseModel):
+    type: str = Field("White", description="Calibration type ('White' or 'Black')")
+
+
+class CHNSpecMeasureRequest(BaseModel):
+    mode: str = Field("SCI", description="Measurement mode: 'SCI', 'SCE', 'SCI_SCE'")
+    sample_name: str | None = Field("Lab Sample", description="Sample identification")
+    save_to_archive: bool = Field(True, description="Whether to record measurement in measurements table")
+
+
 @router.get("")
 def list_instruments():
     """Returns all registered spectrophotometers."""
@@ -31,6 +49,97 @@ def list_instruments():
     conn.close()
     return [dict(r) for r in rows]
 
+
+@router.get("/ports")
+def get_serial_ports():
+    """Lists available serial COM ports and highlights spectrophotometers."""
+    return {
+        "ports": CHNSpecDriver.list_ports(),
+        "active_chnspec_port": chnspec_driver._current_port,
+        "is_chnspec_connected": chnspec_driver.is_connected()
+    }
+
+
+# =========================================================================
+# CHNSpec DS-36D Benchtop Spectrophotometer Endpoints
+# =========================================================================
+
+@router.get("/chnspec/status")
+def get_chnspec_status():
+    """Queries CHNSpec DS-36D hardware status, port, mock state, and geometry."""
+    return chnspec_driver.get_status()
+
+
+@router.post("/chnspec/connect")
+def connect_chnspec(req: CHNSpecConnectRequest = CHNSpecConnectRequest()):
+    """Connects to CHNSpec DS-36D on COM port (auto-detected if omitted)."""
+    success = chnspec_driver.connect(req.port)
+    port = chnspec_driver._current_port
+    return {
+        "success": success,
+        "connected": chnspec_driver.is_connected(),
+        "port": port,
+        "is_mock": chnspec_driver.is_mock,
+        "message": f"Connected to CHNSpec DS-36D on {port}" if success else f"Unable to establish connection on {port or 'auto-detect'}."
+    }
+
+
+@router.post("/chnspec/disconnect")
+def disconnect_chnspec():
+    """Disconnects from CHNSpec DS-36D."""
+    success = chnspec_driver.disconnect()
+    return {"success": success, "message": "CHNSpec DS-36D disconnected."}
+
+
+@router.post("/chnspec/calibrate")
+def calibrate_chnspec(req: CHNSpecCalibrateRequest):
+    """Executes White or Black calibration on CHNSpec DS-36D."""
+    cal_type = req.type.strip().capitalize()
+    try:
+        if cal_type == "Black":
+            res = chnspec_driver.black_calibrate()
+        else:
+            res = chnspec_driver.white_calibrate()
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chnspec/measure")
+def measure_chnspec(req: CHNSpecMeasureRequest):
+    """Commands CHNSpec DS-36D to take a physical measurement and normalizes to 31 channels."""
+    try:
+        meas = chnspec_driver.measure(mode=req.mode)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Optionally archive into measurements table
+    if req.save_to_archive:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Find instrument id for CHNSpec
+        inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%DS-36D%' LIMIT 1").fetchone()
+        inst_id = inst_row["id"] if inst_row else 2
+
+        cur.execute("""
+        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json)
+        VALUES (?, 'CHNSpec Operator', ?, ?, ?)
+        """, (
+            inst_id,
+            req.sample_name or "Lab Sample",
+            json.dumps(meas["raw_reflectance"]),
+            json.dumps(meas)
+        ))
+        conn.commit()
+        meas["measurement_id"] = cur.lastrowid
+        conn.close()
+
+    return meas
+
+
+# =========================================================================
+# X-Rite RM400 Spectrophotometer Endpoints
+# =========================================================================
 
 @router.get("/rm400/status")
 def get_rm400_status():
@@ -90,7 +199,6 @@ def measure_sample(req: MeasureRequest):
 
     # Optionally archive into measurements table
     if req.save_to_archive:
-        import json
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("""

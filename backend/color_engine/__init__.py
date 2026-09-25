@@ -2,5 +2,5 @@ from .constants import WAVELENGTHS, N_WAVELENGTHS, ILLUMINANTS
 from .saunderson import saunderson_correction, inverse_saunderson
 from .kubelka_munk import reflectance_to_ks, ks_to_reflectance, forward_two_constant_km, calculate_opacity_contrast_ratio, characterize_letdown_series
 from .colorimetry import reflectance_to_xyz, xyz_to_lab, reflectance_to_lab, reflectance_to_hex, ciede2000, compute_metamerism_index
-from .formulation import predict_recipe, match_color_ccm
+from .formulation import predict_recipe, match_color_ccm, evaluate_recipe_objective, calculate_pigment_sensitivity_matrix
 from .rm400_parser import parse_rm400_content, get_industrial_sample_datasets, generate_sample_rm400_csv

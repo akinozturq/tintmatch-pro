@@ -64,6 +64,10 @@ class SaveRecipeRequest(BaseModel):
     k2: float = 0.60
     composite_mi: float | None = None
     total_load: float | None = None
+    target_reflectance: list[float] | None = None
+    tolerance_profile_id: str | None = None
+    max_pastes: int | None = None
+    max_total_load: float | None = None
     operator_notes: str | None = None
 
 
@@ -76,6 +80,10 @@ class AddAttemptRequest(BaseModel):
     k1: float = 0.04
     k2: float = 0.60
     profile_id: str = "color_match"
+    target_reflectance: list[float] | None = None
+    tolerance_profile_id: str | None = None
+    max_pastes: int | None = None
+    max_total_load: float | None = None
     operator_notes: str | None = None
 
 
@@ -255,6 +263,10 @@ def compute_canonical_execution_hash(
     illuminant: str = "D65",
     observer: str = "10",
     algorithm: str = "TintMatch-CCM-2.0-SLSQP",
+    target_reflectance: list[float] | None = None,
+    tolerance_profile_id: str | None = None,
+    max_pastes: int | None = None,
+    max_total_load: float | None = None,
 ) -> str:
     """Computes a canonical SHA-256 execution context hash capturing all optical, formulation, and solver parameters."""
     def paste_sort_key(p):
@@ -285,6 +297,20 @@ def compute_canonical_execution_hash(
         "saunderson_k2": round(float(k2), 4),
         "total_load": round(float(calc_total_load), 6),
     }
+
+    if target_reflectance is not None and len(target_reflectance) > 0:
+        target_rounded = [round(float(v), 5) for v in target_reflectance]
+        payload["target_hash"] = hashlib.sha256(json.dumps(target_rounded).encode()).hexdigest()
+
+    if tolerance_profile_id:
+        payload["tolerance_profile_id"] = str(tolerance_profile_id)
+
+    if max_pastes is not None:
+        payload["max_pastes"] = int(max_pastes)
+
+    if max_total_load is not None:
+        payload["max_total_load"] = round(float(max_total_load), 4)
+
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -307,7 +333,11 @@ def save_recipe(req: SaveRecipeRequest):
             k1=req.k1,
             k2=req.k2,
             profile_id=req.profile_id or "color_match",
-            total_load=req.total_load
+            total_load=req.total_load,
+            target_reflectance=req.target_reflectance,
+            tolerance_profile_id=req.tolerance_profile_id,
+            max_pastes=req.max_pastes,
+            max_total_load=req.max_total_load,
         )
 
     qg_json = json.dumps(req.quality_gate) if req.quality_gate else None
@@ -409,7 +439,11 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
         k1=req.k1,
         k2=req.k2,
         profile_id=req.profile_id,
-        total_load=req.total_load
+        total_load=req.total_load,
+        target_reflectance=req.target_reflectance,
+        tolerance_profile_id=req.tolerance_profile_id,
+        max_pastes=req.max_pastes,
+        max_total_load=req.max_total_load,
     )
 
     tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)

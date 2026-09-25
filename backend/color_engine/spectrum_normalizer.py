@@ -34,12 +34,17 @@ def normalize_spectrum(
         ValueError: If array lengths do not match or if length is ambiguous without wavelength data.
     """
     refl = np.asarray(reflectances, dtype=float)
+    if len(refl) == 0:
+        raise ValueError("Reflectance array cannot be empty.")
+
+    if np.any(np.isnan(refl)) or np.any(np.isinf(refl)):
+        raise ValueError("Reflectance spectrum contains NaN or infinite values.")
 
     # 1. When wavelengths are not specified
     if wavelengths is None:
         if len(refl) == len(target_grid):
             # Scale check (percentage vs fractional)
-            if np.nanmax(refl) > 1.5:
+            if np.max(refl) > 1.5:
                 refl = refl / 100.0
             return np.clip(refl, 0.0, 1.0)
         else:
@@ -52,12 +57,28 @@ def normalize_spectrum(
     if len(wls) != len(refl):
         raise ValueError(f"Wavelengths length ({len(wls)}) does not match reflectances length ({len(refl)}).")
 
-    # 2. Deduplicate & sort monotonically
-    unique_wls, indices = np.unique(wls, return_index=True)
-    sorted_refl = refl[indices]
+    if np.any(np.isnan(wls)) or np.any(np.isinf(wls)):
+        raise ValueError("Wavelength array contains NaN or infinite values.")
+
+    if np.any(wls <= 0):
+        raise ValueError("Wavelength values must be strictly positive (> 0 nm).")
+
+    # 2. Deduplicate by computing group mean for identical wavelengths & sort monotonically
+    unique_wls = np.unique(wls)
+    if len(unique_wls) < len(wls):
+        # Aggregate multiple measurements at same wavelength using arithmetic mean
+        averaged_refl = np.zeros(len(unique_wls), dtype=float)
+        for idx, u_wl in enumerate(unique_wls):
+            mask = (wls == u_wl)
+            averaged_refl[idx] = np.mean(refl[mask])
+        sorted_refl = averaged_refl
+    else:
+        sort_idx = np.argsort(wls)
+        unique_wls = wls[sort_idx]
+        sorted_refl = refl[sort_idx]
 
     # Handle percentage scale (0-100) vs fractional (0-1)
-    if np.nanmax(sorted_refl) > 1.5:
+    if np.max(sorted_refl) > 1.5:
         sorted_refl = sorted_refl / 100.0
 
     # If within target_grid exactly, return clipped directly

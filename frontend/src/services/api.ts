@@ -193,3 +193,77 @@ export async function fetchIsoReport(charId: number): Promise<Iso18314Report> {
 export function getDownloadCsvUrl(charId: number): string {
   return `${BASE_URL}/reports/characterization/${charId}/csv`;
 }
+
+export async function fetchInstruments(): Promise<any[]> {
+  const res = await fetch(`${BASE_URL}/instruments`);
+  if (!res.ok) throw new Error('Cihazlar listesi alınamadı');
+  return res.json();
+}
+
+export async function fetchPorts(): Promise<{
+  ports: Array<{ port: string; description: string; is_recommended: boolean }>;
+  active_chnspec_port: string | null;
+  is_chnspec_connected: boolean;
+}> {
+  const res = await fetch(`${BASE_URL}/instruments/ports`);
+  if (!res.ok) throw new Error('Seri port listesi alınamadı');
+  return res.json();
+}
+
+export async function getChnspecStatus(): Promise<any> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/status`);
+  if (!res.ok) throw new Error('CHNSpec durumu alınamadı');
+  return res.json();
+}
+
+export async function connectChnspec(port?: string): Promise<{
+  success: boolean;
+  connected: boolean;
+  port: string;
+  is_mock: boolean;
+  message: string;
+}> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port }),
+  });
+  if (!res.ok) throw new Error('CHNSpec bağlantı hatası');
+  return res.json();
+}
+
+export async function disconnectChnspec(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/disconnect`, { method: 'POST' });
+  if (!res.ok) throw new Error('CHNSpec bağlantısı kesilemedi');
+  return res.json();
+}
+
+export async function calibrateChnspec(type: 'White' | 'Black' = 'White'): Promise<{
+  success: boolean;
+  type: string;
+  message: string;
+}> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/calibrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Kalibrasyon hatası');
+  }
+  return res.json();
+}
+
+export async function measureChnspec(mode: 'SCI' | 'SCE' = 'SCI', sampleName: string = 'Lab Sample'): Promise<any> {
+  const res = await fetch(`${BASE_URL}/instruments/chnspec/measure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, sample_name: sampleName, save_to_archive: true }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'CHNSpec ölçüm hatası');
+  }
+  return res.json();
+}

@@ -174,6 +174,13 @@ def init_db():
         VALUES ('Primary Lab Spectrophotometer', 'X-Rite RM400', 'XR-RM400-08941', '45°/0° Directional', 4.0, CURRENT_TIMESTAMP)
         """)
 
+    cur.execute("SELECT COUNT(*) FROM instruments WHERE model LIKE '%DS-36D%'")
+    if cur.fetchone()[0] == 0:
+        cur.execute("""
+        INSERT INTO instruments (name, model, serial_number, geometry, aperture_mm, calibration_date)
+        VALUES ('CHNSpec Benchtop Spectrophotometer', 'CHNSpec DS-36D', 'DS36D-COM4', 'd/8° Integrating Sphere', 10.0, CURRENT_TIMESTAMP)
+        """)
+
     conn.commit()
 
     # Check if bases need seeding

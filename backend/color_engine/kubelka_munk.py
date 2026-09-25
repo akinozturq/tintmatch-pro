@@ -134,6 +134,74 @@ def calculate_opacity_contrast_ratio(
     }
 
 
+def calculate_km_jacobian_condition(
+    concs: np.ndarray,
+    base_k: np.ndarray,
+    base_s: np.ndarray,
+    unit_k: np.ndarray,
+    unit_s: np.ndarray,
+    k1: float = 0.04,
+    k2: float = 0.60
+) -> float:
+    """
+    Computes the 2-constant Kubelka-Munk Jacobian condition number kappa(J).
+    Evaluates J = [∂R_m/∂K_p, ∂R_m/∂S_p] across letdown concentrations and wavelengths.
+    """
+    c_arr = np.asarray(concs, dtype=float)
+    if len(c_arr) < 2:
+        return 999.0
+
+    cond_numbers = []
+    n_wl = len(base_k)
+
+    for wl_idx in range(n_wl):
+        bk = float(base_k[wl_idx])
+        bs = float(base_s[wl_idx])
+        uk = float(unit_k[wl_idx])
+        us = float(unit_s[wl_idx])
+
+        J_wl = np.zeros((len(c_arr), 2), dtype=float)
+        for i, c in enumerate(c_arr):
+            K = max(bk + c * uk, 1e-6)
+            S = max(bs + c * us, 1e-6)
+            theta = K / S
+            a = 1.0 + theta
+            b = np.sqrt(max(a * a - 1.0, 1e-8))
+            R_i = max(a - b, 1e-6)
+
+            # dR_i / dtheta
+            dRi_dtheta = 1.0 - a / b
+
+            # dR_m / dR_i
+            denom = max((1.0 - k2 * R_i) ** 2, 1e-6)
+            dRm_dRi = (1.0 - k1) * (1.0 - k2) / denom
+
+            factor = dRm_dRi * dRi_dtheta
+
+            # dtheta / dKp = c / S
+            dtheta_dKp = c / S
+            # dtheta / dSp = -c * theta / S
+            dtheta_dSp = -c * theta / S
+
+            scale_k = max(uk, 0.01)
+            scale_s = max(us, 0.01)
+
+            J_wl[i, 0] = factor * dtheta_dKp * scale_k
+            J_wl[i, 1] = factor * dtheta_dSp * scale_s
+
+        try:
+            cond = np.linalg.cond(J_wl)
+            if not np.isnan(cond) and not np.isinf(cond):
+                cond_numbers.append(cond)
+        except Exception:
+            continue
+
+    if not cond_numbers:
+        return 999.0
+
+    return round(float(np.median(cond_numbers)), 2)
+
+
 def characterize_letdown_series(
     base_reflectance: np.ndarray | list[float],
     letdowns: list[dict],
@@ -319,15 +387,6 @@ def characterize_letdown_series(
     spectral_rmse = float(np.sqrt(total_sse / max(n_letdowns * N_WAVELENGTHS, 1)))
     max_spec_res = float(np.max([bp["max_residual"] for bp in back_predictions])) if back_predictions else 0.0
 
-    # Numerical conditioning & parameter identifiability
-    pos_concs = concs[concs > 0]
-    cond_index = float(np.max(pos_concs) / max(np.min(pos_concs), 1e-4)) if len(pos_concs) > 0 else 1.0
-    identifiability = "ROBUST - Well Conditioned" if n_letdowns >= 3 and cond_index <= 500.0 else ("ACCEPTABLE" if n_letdowns >= 2 else "POOR - Insufficient Letdowns")
-
-    # Contrast ratio of base paint
-    cr_info = calculate_opacity_contrast_ratio(base_k, base_s, thickness=100.0, k1=k1, k2=k2)
-    base_cr = cr_info["luminous_contrast_ratio"]
-
     # Directional residuals (mean across series)
     mean_dir_res = {
         "delta_L": round(float(np.mean([bp["delta_L"] for bp in back_predictions])), 2),
@@ -336,6 +395,22 @@ def characterize_letdown_series(
         "delta_C": round(float(np.mean([bp["delta_C"] for bp in back_predictions])), 2),
         "delta_H": round(float(np.mean([bp["delta_H"] for bp in back_predictions])), 2)
     }
+
+    # Numerical conditioning & parameter identifiability
+    pos_concs = concs[concs > 0]
+    span_ratio = float(np.max(pos_concs) / max(np.min(pos_concs), 1e-4)) if len(pos_concs) > 0 else 1.0
+    jac_cond = calculate_km_jacobian_condition(pos_concs, base_k, base_s, unit_k, unit_s, k1=k1, k2=k2)
+
+    if n_letdowns >= 3 and jac_cond <= 250.0 and span_ratio >= 10.0:
+        identifiability = "ROBUST - Well Conditioned"
+    elif n_letdowns >= 2 and jac_cond <= 1000.0:
+        identifiability = "ACCEPTABLE"
+    else:
+        identifiability = "POOR - Ill-Conditioned"
+
+    # Contrast ratio of base paint
+    cr_info = calculate_opacity_contrast_ratio(base_k, base_s, thickness=100.0, k1=k1, k2=k2)
+    base_cr = cr_info["luminous_contrast_ratio"]
 
     from .quality_gate import evaluate_characterization_gate
     qg_result = evaluate_characterization_gate(
@@ -359,7 +434,9 @@ def characterize_letdown_series(
         "max_delta_e00": round(max_de00, 3),
         "spectral_rmse": round(spectral_rmse, 4),
         "max_spectral_residual": round(max_spec_res, 4),
-        "condition_index": round(cond_index, 2),
+        "jacobian_condition_number": jac_cond,
+        "concentration_span_ratio": round(span_ratio, 2),
+        "condition_index": round(span_ratio, 2),
         "identifiability": identifiability,
         "passed_validation": qg_result["status"] == "PASS",
         "r_squared": round(r_squared, 4),
@@ -367,5 +444,5 @@ def characterize_letdown_series(
         "model_type": "Two-Constant Kubelka-Munk" if use_two_constant else "Single-Constant K/S",
         "characterization_gate": qg_result,
         "quality_gate": qg_result,
-        "summary": "Industrial Validation PASSED (Conforms to ISO 18314 Method)" if qg_result["status"] == "PASS" else f"Calibration Refinement Required (Mean ΔE00 = {mean_de00:.2f})"
+        "summary": "Industrial Validation PASSED (Calculation performed using ISO 18314-aligned colorimetric methodology)" if qg_result["status"] == "PASS" else f"Calibration Refinement Required (Mean ΔE00 = {mean_de00:.2f})"
     }

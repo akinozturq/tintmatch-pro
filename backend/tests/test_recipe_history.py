@@ -48,6 +48,27 @@ def test_canonical_hash_sensitivity():
     )
     assert hash_base1 != hash_profile_changed
 
+    # Changing target spectrum
+    hash_target_1 = compute_canonical_execution_hash(
+        base_id=1, base_hash="hash_alpha", pastes=pastes, target_reflectance=[0.5] * 31
+    )
+    hash_target_2 = compute_canonical_execution_hash(
+        base_id=1, base_hash="hash_alpha", pastes=pastes, target_reflectance=[0.6] * 31
+    )
+    assert hash_target_1 != hash_target_2
+    assert hash_target_1 != hash_base1
+
+    # Changing tolerance profile or max load limits
+    hash_tol = compute_canonical_execution_hash(
+        base_id=1, base_hash="hash_alpha", pastes=pastes, tolerance_profile_id="strict_lab"
+    )
+    assert hash_tol != hash_base1
+
+    hash_load = compute_canonical_execution_hash(
+        base_id=1, base_hash="hash_alpha", pastes=pastes, max_total_load=15.0
+    )
+    assert hash_load != hash_base1
+
 
 def test_recipe_save_and_attempt_tracking():
     """Verify that saving a recipe automatically logs attempt #1 and subsequent attempts work."""

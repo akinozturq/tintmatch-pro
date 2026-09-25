@@ -80,3 +80,40 @@ def test_colorimetry_rejects_silent_truncation():
     xyz = reflectance_to_xyz(bad_refl, wavelengths=wls_36)
     assert len(xyz) == 3
     assert all(v > 0 for v in xyz)
+
+
+def test_duplicate_wavelength_group_averaging():
+    """Duplicate wavelength measurements should be averaged rather than silently dropped."""
+    # 400 nm measured twice: 0.40 and 0.60 -> average must be 0.50
+    wls = [400, 400] + list(range(410, 710, 10))
+    refl = [0.40, 0.60] + [0.50] * 30
+    res = normalize_spectrum(refl, wavelengths=wls)
+    assert len(res) == 31
+    assert np.isclose(res[0], 0.50, atol=1e-3)
+
+
+def test_nan_inf_and_invalid_wavelength_rejection():
+    """NaN, Inf, non-positive wavelengths and empty inputs must raise ValueError."""
+    # NaN in reflectance
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        normalize_spectrum([np.nan] * 31)
+
+    # Inf in reflectance
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        normalize_spectrum([np.inf] * 31)
+
+    # NaN in wavelengths
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        wls = list(range(400, 710, 10))
+        wls[5] = np.nan
+        normalize_spectrum([0.5] * 31, wavelengths=wls)
+
+    # Non-positive wavelength
+    with pytest.raises(ValueError, match="strictly positive"):
+        wls = list(range(400, 710, 10))
+        wls[0] = -400
+        normalize_spectrum([0.5] * 31, wavelengths=wls)
+
+    # Empty array
+    with pytest.raises(ValueError, match="cannot be empty"):
+        normalize_spectrum([])

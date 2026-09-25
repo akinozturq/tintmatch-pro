@@ -9,7 +9,7 @@ Industrial-grade multi-illuminant CCM solver and live recipe simulation engine:
     2. Recipe B — Light Stability (DIN 6172 / ASTM E805 multi-illuminant metamerism penalty)
     3. Recipe C — Economy / Low Load (Total pigment loading penalty)
 - Solver diagnostics (OPTIMAL_CONVERGED, FEASIBLE_LOCAL_MIN, MAX_ITERATIONS, CONSTRAINTS_VIOLATED)
-- Analytical Pigment Sensitivity Matrix (What-If partial derivatives: d(dE00)/dc, dL/dc, da/dc, db/dc, dC/dc, dH/dc)
+- Finite-Difference Numerical Sensitivity Matrix (What-If partial derivatives: d(dE00)/dc, dL/dc, da/dc, db/dc, dC/dc, dH/dc)
 """
 
 import numpy as np
@@ -162,7 +162,7 @@ def calculate_pigment_sensitivity_matrix(
     delta: float = 0.05
 ) -> list[dict]:
     """
-    Computes analytical 'What-If' sensitivity partial derivatives for each pigment in a recipe:
+    Computes finite-difference numerical 'What-If' sensitivity partial derivatives for each pigment in a recipe:
     - d(ΔE00)/dc: Sensitivity of total color difference to concentration change (% / %)
     - dL*/dc: Lightness impact
     - da*/dc: Red/Green shift impact
@@ -270,6 +270,72 @@ def calculate_pigment_sensitivity_matrix(
     return matrix
 
 
+def evaluate_recipe_objective(
+    concs: np.ndarray | list[float],
+    active_indices: list[int],
+    paste_k_matrix: np.ndarray,
+    paste_s_matrix: np.ndarray,
+    base_k: np.ndarray,
+    base_s: np.ndarray,
+    target_lab_d65: tuple[float, float, float],
+    target_lab_a: tuple[float, float, float],
+    target_lab_f11: tuple[float, float, float],
+    profile: OptimizationProfile,
+    k1: float = 0.04,
+    k2: float = 0.60
+) -> float:
+    """
+    Unified objective loss calculation for both primary SLSQP search and pruning refinement.
+    Ensures Recipe B (Light Stability) and Recipe C (Economy) preserve their profile penalty weights.
+    """
+    k_tot = base_k.copy()
+    s_tot = base_s.copy()
+    for i, p_idx in enumerate(active_indices):
+        c = max(0.0, float(concs[i]))
+        k_tot += c * paste_k_matrix[:, p_idx]
+        s_tot += c * paste_s_matrix[:, p_idx]
+
+    ks_tot = k_tot / np.maximum(s_tot, 1e-6)
+    r_i = ks_to_reflectance(ks_tot)
+    r_m = inverse_saunderson(r_i, k1=k1, k2=k2)
+
+    # Primary illuminant: D65
+    lab_d65 = reflectance_to_lab(r_m, illuminant="D65", observer="10")
+    diff_d65 = ciede2000(target_lab_d65, lab_d65)
+    de_d65 = diff_d65["delta_e00"]
+
+    # Secondary illuminant A
+    if profile.weight_a > 0 or profile.weight_metamerism > 0:
+        lab_a = reflectance_to_lab(r_m, illuminant="A", observer="10")
+        de_a = ciede2000(target_lab_a, lab_a)["delta_e00"]
+        mi_a = abs(de_a - de_d65)
+    else:
+        de_a = 0.0
+        mi_a = 0.0
+
+    # Tertiary illuminant F11 (TL84)
+    if profile.weight_f11 > 0 or profile.weight_metamerism > 0:
+        lab_f11 = reflectance_to_lab(r_m, illuminant="F11", observer="10")
+        de_f11 = ciede2000(target_lab_f11, lab_f11)["delta_e00"]
+        mi_f11 = abs(de_f11 - de_d65)
+    else:
+        de_f11 = 0.0
+        mi_f11 = 0.0
+
+    # DIN 6172 / ASTM E805 worst-case composite metamerism index
+    mi_composite = max(mi_a, mi_f11)
+    tot_c = float(np.sum(np.maximum(concs, 0.0)))
+
+    total_loss = (
+        profile.weight_d65 * de_d65
+        + profile.weight_a * de_a
+        + profile.weight_f11 * de_f11
+        + profile.weight_metamerism * mi_composite
+        + profile.weight_load * tot_c
+    )
+    return float(total_loss)
+
+
 def _optimize_single_profile(
     profile: OptimizationProfile,
     target_r: np.ndarray,
@@ -315,52 +381,20 @@ def _optimize_single_profile(
     ]
 
     def objective(sub_concs):
-        k_tot = base_k.copy()
-        s_tot = base_s.copy()
-        for i, p_idx in enumerate(candidate_indices):
-            c = sub_concs[i]
-            k_tot += c * paste_k_matrix[:, p_idx]
-            s_tot += c * paste_s_matrix[:, p_idx]
-
-        ks_tot = k_tot / np.maximum(s_tot, 1e-6)
-        r_i = ks_to_reflectance(ks_tot)
-        r_m = inverse_saunderson(r_i, k1=k1, k2=k2)
-
-        # Primary illuminant: D65
-        lab_d65 = reflectance_to_lab(r_m, illuminant="D65", observer="10")
-        diff_d65 = ciede2000(target_lab_d65, lab_d65)
-        de_d65 = diff_d65["delta_e00"]
-
-        # Secondary illuminant A
-        if profile.weight_a > 0 or profile.weight_metamerism > 0:
-            lab_a = reflectance_to_lab(r_m, illuminant="A", observer="10")
-            de_a = ciede2000(target_lab_a, lab_a)["delta_e00"]
-            mi_a = abs(de_a - de_d65)
-        else:
-            de_a = 0.0
-            mi_a = 0.0
-
-        # Tertiary illuminant F11 (TL84)
-        if profile.weight_f11 > 0 or profile.weight_metamerism > 0:
-            lab_f11 = reflectance_to_lab(r_m, illuminant="F11", observer="10")
-            de_f11 = ciede2000(target_lab_f11, lab_f11)["delta_e00"]
-            mi_f11 = abs(de_f11 - de_d65)
-        else:
-            de_f11 = 0.0
-            mi_f11 = 0.0
-
-        # DIN 6172 / ASTM E805 worst-case composite metamerism index
-        mi_composite = max(mi_a, mi_f11)
-        tot_c = float(np.sum(sub_concs))
-
-        total_loss = (
-            profile.weight_d65 * de_d65
-            + profile.weight_a * de_a
-            + profile.weight_f11 * de_f11
-            + profile.weight_metamerism * mi_composite
-            + profile.weight_load * tot_c
+        return evaluate_recipe_objective(
+            concs=sub_concs,
+            active_indices=candidate_indices,
+            paste_k_matrix=paste_k_matrix,
+            paste_s_matrix=paste_s_matrix,
+            base_k=base_k,
+            base_s=base_s,
+            target_lab_d65=target_lab_d65,
+            target_lab_a=target_lab_a,
+            target_lab_f11=target_lab_f11,
+            profile=profile,
+            k1=k1,
+            k2=k2
         )
-        return total_loss
 
     res = minimize(
         objective,
@@ -396,35 +430,52 @@ def _optimize_single_profile(
         sorted_by_c = sorted(pruned_concs.items(), key=lambda kv: kv[1], reverse=True)[:max_pastes]
         pruned_concs = dict(sorted_by_c)
 
-        # Quick refinement polish on final top pastes
+        # Quick refinement polish on final top pastes using unified objective
         sub_indices = list(pruned_concs.keys())
         sub_x0 = [pruned_concs[idx] for idx in sub_indices]
         sub_bounds = [(0.0, max_total_load) for _ in sub_indices]
         sub_constraints = [{"type": "ineq", "fun": lambda c: max_total_load - np.sum(c)}]
 
         def sub_obj(c_vec):
-            k_t = base_k.copy()
-            s_t = base_s.copy()
-            for k, p_i in enumerate(sub_indices):
-                k_t += c_vec[k] * paste_k_matrix[:, p_i]
-                s_t += c_vec[k] * paste_s_matrix[:, p_i]
-            ks_t = k_t / np.maximum(s_t, 1e-6)
-            r_sim = inverse_saunderson(ks_to_reflectance(ks_t), k1=k1, k2=k2)
-            l_d65 = reflectance_to_lab(r_sim, illuminant="D65", observer="10")
-            d_d65 = ciede2000(target_lab_d65, l_d65)["delta_e00"]
-            return d_d65 + profile.weight_load * np.sum(c_vec)
+            return evaluate_recipe_objective(
+                concs=c_vec,
+                active_indices=sub_indices,
+                paste_k_matrix=paste_k_matrix,
+                paste_s_matrix=paste_s_matrix,
+                base_k=base_k,
+                base_s=base_s,
+                target_lab_d65=target_lab_d65,
+                target_lab_a=target_lab_a,
+                target_lab_f11=target_lab_f11,
+                profile=profile,
+                k1=k1,
+                k2=k2
+            )
 
-        res_ref = minimize(sub_obj, sub_x0, method="SLSQP", bounds=sub_bounds, constraints=sub_constraints, options={"maxiter": 60, "eps": 1e-3})
+        res_ref = minimize(
+            sub_obj,
+            sub_x0,
+            method="SLSQP",
+            bounds=sub_bounds,
+            constraints=sub_constraints,
+            options={"maxiter": 80, "eps": 1e-3, "ftol": 1e-6}
+        )
         if res_ref.success:
             for k, p_i in enumerate(sub_indices):
                 pruned_concs[p_i] = max(0.0, float(res_ref.x[k]))
 
-    # Final total load clamp verification
+    # Final total load clamp verification: handle floating-point epsilon gracefully
     sum_c = sum(pruned_concs.values())
     if sum_c > max_total_load:
-        scale = max_total_load / max(sum_c, 1e-6)
-        for p_i in pruned_concs:
-            pruned_concs[p_i] *= scale
+        excess = sum_c - max_total_load
+        if excess <= 1e-3:
+            # Subtle numerical epsilon: trim from largest concentration to strictly satisfy constraint
+            max_p = max(pruned_concs, key=pruned_concs.get)
+            pruned_concs[max_p] = max(0.0, pruned_concs[max_p] - excess)
+        else:
+            scale = max_total_load / max(sum_c, 1e-6)
+            for p_i in pruned_concs:
+                pruned_concs[p_i] *= scale
 
     # Compile matched pastes list
     matched_pastes = []

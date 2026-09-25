@@ -100,16 +100,28 @@ def evaluate_characterization_gate(
         "severity": "INFO" if rmse_pass else "WARNING"
     })
 
-    # 5. Letdown Series Count (minimum 3 concentrations required for identifiability)
-    count_pass = letdown_count >= 2
+    # 5. Letdown Series Count (minimum 3 concentrations required for robust validation)
+    if letdown_count >= 3:
+        count_status = "PASS"
+        count_severity = "INFO"
+        count_pass = True
+    elif letdown_count == 2:
+        count_status = "WARN"
+        count_severity = "WARNING"
+        count_pass = True  # Fit is mathematically possible, but warn
+    else:
+        count_status = "FAIL"
+        count_severity = "CRITICAL"
+        count_pass = False
+
     checks.append({
         "metric": "letdown_count",
         "label": "Seyreltme Konsantrasyon Sayısı",
         "actual": letdown_count,
-        "limit": 2,
+        "limit": 3,
         "operator": ">=",
-        "status": "PASS" if count_pass else "FAIL",
-        "severity": "INFO" if count_pass else "CRITICAL"
+        "status": count_status,
+        "severity": count_severity
     })
 
     # 6. Maximum Spectral Residual (if provided)
@@ -140,13 +152,21 @@ def evaluate_characterization_gate(
 
     # Overall verdict
     is_fully_passed = mean_pass and max_pass and r2_pass and rmse_pass and count_pass
-    overall_status = "PASS" if is_fully_passed else "FAIL"
+    if not is_fully_passed:
+        overall_status = "FAIL"
+        overall_severity = "CRITICAL"
+    elif letdown_count == 2:
+        overall_status = "WARN"
+        overall_severity = "WARNING"
+    else:
+        overall_status = "PASS"
+        overall_severity = "INFO"
 
     return {
         "gate_type": "CHARACTERIZATION_GATE",
         "status": overall_status,
         "tolerance_profile": tolerance.name,
-        "overall_severity": "INFO" if is_fully_passed else "CRITICAL",
+        "overall_severity": overall_severity,
         "checks": checks,
         "directional_residuals": directional_residuals or {
             "delta_L": 0.0,

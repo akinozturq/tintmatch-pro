@@ -41,7 +41,7 @@ $$R(K, S, x, R_g) = \frac{1 - R_g [a - b \coth(b S x)]}{a + b \coth(b S x) - R_g
 
 ### 4. Geri Tahmin Doğrulaması (Back-Prediction) & $\Delta E_{00} < 0.30$
 Seyreltme serisi (%0.1, %0.5, %1, %2.5, %5, %10) ölçümleri üzerinden türetilen $K(\lambda)$ ve $S(\lambda)$ matrisleri, model tarafından geriye dönük çalıştırılarak CIEDE2000 renk farkı hesaplanır:
-$$\Delta E_{00} < 0.30 \implies \textbf{ONAYLANDI (PASS - ISO 18314 Sertifikalı)}$$
+$$\Delta E_{00} < 0.30 \implies \textbf{ONAYLANDI (PASS - ISO 18314 metodolojisine dayalı hesaplama)}$$
 
 ### 5. Metamerizm İndeksi (MI)
 Formülasyonun günışığı dışındaki aydınlatıcılar altında renk değiştirme riski çoklu aydınlatıcı matrisi ile anlık denetlenir:
@@ -143,21 +143,26 @@ TintMatch PRO
 
 ## 🧪 Test Kapsamı (Test Coverage: %90)
 
-Tüm renk bilimi algoritmaları, sınır koşulları, parser değişkenleri ve API uç noktaları için yazılmış **47 kapsamlı test** bulunmaktadır:
-
-```bash
-python -m pytest --cov=backend/color_engine --cov=backend/routes --cov-report=term-missing
-### 7. X-Rite RM400 Yerel 64-Bit Donanım Sürücüsü & Spektral Normalizasyon
-- **Doğrudan DLL Entegrasyonu:** 64-bit Python `ctypes.WinDLL` köprüsü ile `RM400.dll` doğrudan yüklenir (`Connect`, `Measure`, `GetSpectralData`, `GetCalStatus`). Harici 32-bit IPC ara katmanına gerek kalmaz.
-- **Monotonik PCHIP Spektral Normalizasyon:** Gelen tüm spektral ölçümler (380-730 nm, 5 nm, 20 nm serileri) `spectrum_normalizer.py` üzerinden fiziksel $[0.0, 1.0]$ sınırlarında enterpole edilir. Sessiz kırpma (`r[:31]`) tamamen kaldırılmıştır.
+### 7. Çoklu Spektrofotometre Donanım Sürücüleri & Spektral Normalizasyon
+- **CHNSpec DS-36D Masaüstü Spektrofotometresi (d/8° Küre Geometrisi):**
+  - PythonNET (`clr`) köprüsü ile yerel `ConnectedMeasure.dll` kütüphanesine bağlanır (`backend/devices/chnspec_driver.py`).
+  - USB CDC sanal seri port (`COM4`, STMicroelectronics VID:PID `0483:5740`) üzerinden donanımla haberleşir; port otomatik algılanır.
+  - Fiziksel optik flaş patlatarak 43 spektral kanal (360–780 nm @ 10 nm) SCI veya SCE reflektansını okur.
+  - Merkezi `normalize_spectrum()` PCHIP enterpolatörü ile standart 31 kanallı (400–700 nm @ 10 nm) laboratuvar ızgarasına dönüştürülür.
+  - Donanım bağlı olmadığında otomatik simülasyon (MOCK) moduna geçerek test ve arayüz geliştirmeyi kesintisiz sürdürür.
+- **X-Rite RM400 Taşınabilir Spektrofotometresi (45°/0° Geometri):**
+  - 64-bit Python `ctypes.WinDLL` köprüsü ile `RM400.dll` doğrudan yüklenir (`Connect`, `Measure`, `GetSpectralData`, `GetCalStatus`).
+- **Monotonik PCHIP Spektral Normalizasyon:**
+  - Gelen tüm spektral ölçümler (360-780 nm, 380-730 nm, 5 nm, 10 nm, 20 nm serileri) `spectrum_normalizer.py` üzerinden fiziksel $[0.0, 1.0]$ sınırlarında enterpole edilir.
+  - Aynı dalga boyundaki tekrarlanan ölçümlerin grup ortalaması (`np.mean`) alınır, `NaN`/`inf` hatalı girişler engellenir.
 - **İkili Quality Gate Mimarisi:**
-  - `evaluate_characterization_gate`: RMSE $\le 0.015$, $R^2 \ge 0.995$, max residual $\le 0.035$, letdown serisi $\ge 3$, koşul indeksi (condition number).
+  - `evaluate_characterization_gate`: RMSE $\le 0.015$, $R^2 \ge 0.995$, max residual $\le 0.040$, letdown serisi $\ge 3$, K-M Jacobian koşul sayısı $\kappa(J)$ ve konsantrasyon aralık oranı (`concentration_span_ratio`).
   - `evaluate_formulation_gate`: D65 $\Delta E_{00}$, yönsel kalıntılar ($\Delta L^*, \Delta a^*, \Delta b^*, \Delta C^*, \Delta H^*$), DIN 6172 bileşik metamerizm, kütle marjı (slack $\ge 0$), SLSQP yakınsama durumu.
-- **Kanonik SHA-256 Reçete İzi & Deneme Geçmişi:** Reçetenin tüm optik parametreleri (baz K/S, Saunderson $k_1/k_2$, profil, aydınlatıcı) deterministik hashlenir ve `recipe_history` tablosunda laborant denemeleri adım adım arşivlenir.
+- **Kanonik SHA-256 Reçete İzi & Deneme Geçmişi:** Reçetenin tüm optik parametreleri (hedef spektrum, baz K/S, Saunderson $k_1/k_2$, profil, toleranslar, aydınlatıcı) deterministik hashlenir ve `recipe_history` tablosunda laborant denemeleri adım adım arşivlenir.
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (Test Suite)
+## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 73 Test, %85 Kapsam)
 
 ```bash
 python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices
@@ -169,24 +174,25 @@ Name                                          Stmts   Miss  Cover
 backend\color_engine\__init__.py                  6      0   100%
 backend\color_engine\colorimetry.py             126      1    99%
 backend\color_engine\constants.py                16      0   100%
-backend\color_engine\formulation.py             228     36    84%
-backend\color_engine\kubelka_munk.py            157      7    96%
+backend\color_engine\formulation.py             225     30    87%
+backend\color_engine\kubelka_munk.py            200     14    93%
 backend\color_engine\profiles.py                 57      0   100%
-backend\color_engine\quality_gate.py             44      1    98%
+backend\color_engine\quality_gate.py             61     10    84%
 backend\color_engine\rm400_parser.py            211     27    87%
 backend\color_engine\saunderson.py               31      1    97%
-backend\color_engine\spectrum_normalizer.py      25      2    92%
+backend\color_engine\spectrum_normalizer.py      41      2    95%
+backend\devices\chnspec_driver.py               231     67    71%
 backend\devices\rm400_driver.py                 140     60    57%
 backend\routes\__init__.py                        0      0   100%
 backend\routes\bases.py                          76     41    46%
 backend\routes\characterization.py              121     12    90%
-backend\routes\formulation.py                   199      5    97%
-backend\routes\instruments.py                    50     10    80%
+backend\routes\formulation.py                   216      6    97%
+backend\routes\instruments.py                   100     16    84%
 backend\routes\pastes.py                         42     12    71%
 backend\routes\reports.py                        52      2    96%
 -----------------------------------------------------------------
-TOTAL                                          1581    217    86%
-============================= 65 passed in 10.33s =============================
+TOTAL                                          1952    301    85%
+============================= 73 passed in 16.56s =============================
 ```
 
 ---
