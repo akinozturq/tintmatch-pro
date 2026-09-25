@@ -12,9 +12,10 @@ import type { ChnspecStatusInfo, DeviceConnectionState } from '../types';
 interface HeaderProps {
   activeTab: 'dashboard' | 'wizard' | 'formulation' | 'glossary' | 'report';
   setActiveTab: (tab: 'dashboard' | 'wizard' | 'formulation' | 'glossary' | 'report') => void;
+  onOpenInstruments?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
+export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenInstruments }) => {
   const [deviceStatus, setDeviceStatus] = useState<ChnspecStatusInfo | null>(null);
 
   useEffect(() => {
@@ -52,27 +53,39 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
     if (connState === 'CONNECTED_REAL') {
       return (
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/80 text-emerald-300">
+        <button
+          onClick={onOpenInstruments}
+          title="DS-36D Bağlı - Cihaz Masası & Kalibrasyon için tıklayın"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/80 text-emerald-300 transition-colors cursor-pointer text-left"
+        >
           <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
           <span className="font-semibold text-[10px]">CHNSpec:</span>
           <span className="text-[10px] text-emerald-200">{deviceStatus?.port || 'COM4'} (GERÇEK)</span>
-        </div>
+        </button>
       );
     }
     if (connState === 'CONNECTED_MOCK') {
       return (
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/50 border border-amber-800/70 text-amber-300">
+        <button
+          onClick={onOpenInstruments}
+          title="Simülasyon Modu - Cihaz Masası & Port Seçimi için tıklayın"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/50 hover:bg-amber-900/70 border border-amber-800/70 text-amber-300 transition-colors cursor-pointer text-left"
+        >
           <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
           <span className="font-semibold text-[10px]">CHNSpec:</span>
           <span className="text-[10px] text-amber-200">SİMÜLASYON</span>
-        </div>
+        </button>
       );
     }
     return (
-      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+      <button
+        onClick={onOpenInstruments}
+        title="CHNSpec Bağlı Değil - Bağlanmak ve kalibre etmek için tıklayın"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-left"
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
         <span className="text-[10px]">CHNSpec: BAĞLI DEĞİL</span>
-      </div>
+      </button>
     );
   };
 
@@ -90,10 +103,14 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
           <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-zinc-800 font-mono">
             {renderChnspecBadge()}
-            <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400">
+            <button
+              onClick={onOpenInstruments}
+              title="Cihaz Masası (RM400 / DS-36D)"
+              className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
               <span>RM400 (45°:0°)</span>
-            </div>
+            </button>
           </div>
         </div>
 

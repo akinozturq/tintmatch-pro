@@ -7,6 +7,7 @@ import { CharacterizationWizard } from './components/CharacterizationWizard';
 import { FormulationSimulator } from './components/FormulationSimulator';
 import { Glossary } from './components/Glossary';
 import { IsoReportView } from './components/IsoReportView';
+import { InstrumentModal } from './components/InstrumentModal';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -15,6 +16,7 @@ export const App: React.FC = () => {
   const [pastes, setPastes] = useState<ColorantPaste[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isInstrumentModalOpen, setIsInstrumentModalOpen] = useState<boolean>(false);
 
   // Cross-component states
   const [simPaste, setSimPaste] = useState<ColorantPaste | null>(null);
@@ -51,7 +53,11 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800">
       {/* Top Header */}
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Header
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenInstruments={() => setIsInstrumentModalOpen(true)}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 pb-16">
@@ -124,6 +130,12 @@ export const App: React.FC = () => {
           <span className="text-zinc-600">ISO 18314-1 / ISO 18314-2 • D65/10° • X-Rite RM400</span>
         </div>
       </footer>
+
+      {/* Industrial Spectrophotometer Modal (CHNSpec DS-36D & RM400) */}
+      <InstrumentModal
+        isOpen={isInstrumentModalOpen}
+        onClose={() => setIsInstrumentModalOpen(false)}
+      />
     </div>
   );
 };

@@ -224,6 +224,8 @@ export async function fetchPorts(): Promise<{
   return res.json();
 }
 
+export const listSerialPorts = fetchPorts;
+
 export async function getChnspecStatus(): Promise<ChnspecStatusInfo> {
   const res = await fetch(`${BASE_URL}/instruments/chnspec/status`);
   if (!res.ok) throw new Error('CHNSpec durumu alınamadı');
