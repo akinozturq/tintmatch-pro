@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-155%20passed%20%7C%2086%25%20cov-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-158%20passed%20%7C%2086%25%20cov-brightgreen)](backend/tests/)
 [![CCM Validation](https://img.shields.io/badge/CCM%20Validation-1.0%20(12%20Pillars)-success)](#-ccm-validation-10-end-to-end-doğrulama-ve-kıyaslama-paketi)
 [![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20ISO%2017972--3-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
@@ -213,7 +213,7 @@ TintMatch PRO
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 155 Test, %86 Kapsam)
+## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 158 Test, %86 Kapsam)
 
 ```bash
 python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices backend/tests/
@@ -252,7 +252,7 @@ backend\routes\pastes.py                                        42     12    71%
 backend\routes\reports.py                                       52      2    96%
 --------------------------------------------------------------------------------
 TOTAL                                                         3086    420    86%
-============================ 155 passed in 43.06s =============================
+============================ 158 passed in 44.84s =============================
 ```
 
 ---

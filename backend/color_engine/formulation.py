@@ -748,8 +748,8 @@ def match_color_ccm(
     b_s = np.asarray(base_s, dtype=float)
     base_ks = b_k / np.maximum(b_s, 1e-6)
 
-    # Initial delta K/S requirement
-    delta_ks = np.maximum(target_ks - base_ks, 0.0)
+    # Positive absorption demand in linear K/S space for NNLS screening
+    delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
 
     # Construct spectral matrices for all available pastes
     A = np.zeros((N_WAVELENGTHS, n_pastes), dtype=float)
@@ -763,14 +763,14 @@ def match_color_ccm(
         paste_s_matrix[:, idx] = us
         A[:, idx] = uk / np.maximum(b_s, 1e-6)
 
-    # Step 1: Initial NNLS across full library
-    initial_sol, _ = nnls(A, delta_ks)
+    # Step 1: Initial NNLS across full library for candidate pre-screening
+    initial_sol, _ = nnls(A, delta_ks_req)
 
-    # Screen candidate pigments
+    # Screen candidate pigments based on positive absorption demand
     positive_indices = [idx for idx in np.argsort(initial_sol)[::-1] if initial_sol[idx] > 0.001]
     if len(positive_indices) < 2:
         # Fallback to top correlated pigments if NNLS is too sparse
-        corr_scores = [float(np.dot(A[:, i], delta_ks)) for i in range(n_pastes)]
+        corr_scores = [float(np.dot(A[:, i], delta_ks_req)) for i in range(n_pastes)]
         positive_indices = list(np.argsort(corr_scores)[::-1][:min(4, n_pastes)])
 
     # Select candidate pool (up to max_pastes + 2 candidates for SLSQP to choose from)

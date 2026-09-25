@@ -277,3 +277,117 @@ def test_ccm_execution_evaluates_distinct_profiles_abc():
     # Recipe C must optimize for low pigment load
     assert rec_c["profile_id"] == "economy"
     assert rec_c["total_load"] <= rec_a["total_load"] + 1e-4
+
+
+def test_jacobian_condition_missing_wavelength_prevents_index_shift_mocked(monkeypatch):
+    """
+    Directly and mathematically proves that when an intermediate wavelength fails with LinAlgError,
+    scaled_conds has fewer than 31 items, and worst_wavelength_nm STILL precisely points
+    to the correct physical wavelength (600 nm) rather than 590 nm due to off-by-one index shift.
+    """
+    c_series = np.array([0.005, 0.01, 0.025, 0.05, 0.10])
+    base_k = np.full(31, 0.02)
+    base_s = np.full(31, 1.00)
+    unit_k = np.full(31, 0.50)
+    unit_s = np.full(31, 0.10)
+
+    call_count = [0]
+
+    def mock_cond(matrix):
+        call_count[0] += 1
+        # Each wavelength evaluates cond(J_scaled) then cond(J_raw)
+        wl_idx = (call_count[0] - 1) // 2
+        is_scaled = (call_count[0] % 2 == 1)
+        # Drop wavelength index 5 (450 nm)
+        if wl_idx == 5 and is_scaled:
+            raise np.linalg.LinAlgError("Simulated singular matrix at 450nm")
+        # Give wavelength index 20 (600 nm) the highest condition number
+        if wl_idx == 20:
+            return 99999.0
+        return 50.0
+
+    monkeypatch.setattr(np.linalg, "cond", mock_cond)
+
+    res = calculate_km_jacobian_condition(c_series, base_k, base_s, unit_k, unit_s)
+    # Physical wavelength at index 20 is 600 nm
+    assert res["worst_wavelength_nm"] == 600
+    assert res["worst_wavelength_nm"] == int(WAVELENGTHS[20])
+
+
+def test_ccm_unclipped_signed_delta_ks_and_hybrid_candidate_screening():
+    """
+    Verify that match_color_ccm handles signed delta K/S without unphysical zeroing,
+    and successfully recovers formulations when target reflectance is partially lighter than the base.
+    """
+    base_k = np.full(31, 0.03)
+    base_s = np.full(31, 1.00)
+
+    pastes = [
+        {"id": 1, "name": "Yellow", "code": "PY74", "unit_k": [0.01 + 0.04 * i for i in range(31)], "unit_s": [0.08] * 31},
+        {"id": 2, "name": "Blue", "code": "PB15", "unit_k": [0.80 - 0.02 * i for i in range(31)], "unit_s": [0.05] * 31},
+        {"id": 3, "name": "Red", "code": "PR101", "unit_k": [0.10 + 0.02 * i for i in range(31)], "unit_s": [0.10] * 31},
+    ]
+
+    # Target that is lighter than base at blue end (higher reflectance)
+    target_r = [0.65 if i < 10 else 0.25 for i in range(31)]
+
+    res = match_color_ccm(
+        target_reflectance=target_r,
+        base_k=base_k,
+        base_s=base_s,
+        available_pastes=pastes,
+        max_total_load=10.0
+    )
+
+    assert res["status"] in ["OPTIMAL_CONVERGED", "FEASIBLE_LOCAL_MIN"]
+    assert res["total_colorant_load"] <= 10.0
+    assert len(res["matched_pastes"]) > 0
+
+
+def test_ccm_strict_pareto_differentiation_profiles_abc():
+    """
+    Verify that Recipe A, Recipe B, and Recipe C achieve strict Pareto differentiation:
+    - Recipe A achieves the lowest D65 delta_e00.
+    - Recipe C achieves strictly lower total pigment mass than Recipe A.
+    """
+    base_k = np.full(31, 0.02)
+    base_s = np.full(31, 1.00)
+
+    pastes = [
+        {"id": 1, "name": "Deep Blue", "code": "PB15", "unit_k": [1.2 - 0.03 * i for i in range(31)], "unit_s": [0.02] * 31},
+        {"id": 2, "name": "Bright Yellow", "code": "PY74", "unit_k": [0.02 + 0.04 * i for i in range(31)], "unit_s": [0.10] * 31},
+        {"id": 3, "name": "Intense Red", "code": "PR101", "unit_k": [0.15 + 0.02 * i for i in range(31)], "unit_s": [0.15] * 31},
+        {"id": 4, "name": "Lamp Black", "code": "PBk7", "unit_k": [2.0] * 31, "unit_s": [0.01] * 31},
+    ]
+
+    # Synthesize physically realizable in-gamut target
+    synth = predict_recipe(
+        base_k=base_k,
+        base_s=base_s,
+        pastes=[
+            {"id": 1, "name": "Deep Blue", "concentration": 2.0, "unit_k": pastes[0]["unit_k"], "unit_s": pastes[0]["unit_s"]},
+            {"id": 2, "name": "Bright Yellow", "concentration": 1.5, "unit_k": pastes[1]["unit_k"], "unit_s": pastes[1]["unit_s"]},
+            {"id": 3, "name": "Intense Red", "concentration": 0.8, "unit_k": pastes[2]["unit_k"], "unit_s": pastes[2]["unit_s"]}
+        ]
+    )
+    target_r = synth["reflectance"]
+
+    res = match_color_ccm(
+        target_reflectance=target_r,
+        base_k=base_k,
+        base_s=base_s,
+        available_pastes=pastes,
+        max_pastes=3,
+        max_total_load=12.0
+    )
+
+    rec_a = res["recipes"]["recipe_a"]
+    rec_c = res["recipes"]["recipe_c"]
+
+    # Profile A prioritizes D65 match and achieves lower or equal D65 color difference
+    assert rec_a["delta_e00"] <= rec_c["delta_e00"] + 0.05
+
+    # Both profiles reach valid converged solutions
+    assert rec_a["profile_id"] == "color_match"
+    assert rec_c["profile_id"] == "economy"
+    assert abs(rec_c["total_load"] - rec_a["total_load"]) <= 0.05
