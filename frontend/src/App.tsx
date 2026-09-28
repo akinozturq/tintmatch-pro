@@ -94,6 +94,7 @@ export const App: React.FC = () => {
                 onSelectPasteForSim={handleSelectPasteForSim}
                 onOpenWizard={() => setActiveTab('wizard')}
                 onOpenReport={handleOpenReport}
+                onRefreshData={loadData}
               />
             )}
 

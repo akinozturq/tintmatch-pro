@@ -26,6 +26,28 @@ export async function fetchBases(): Promise<BasePaint[]> {
   return res.json();
 }
 
+export async function createBase(payload: {
+  name: string;
+  code: string;
+  base_type: 'white_a' | 'medium_b' | 'deep_c' | 'transparent_d';
+  density: number;
+  reflectance: number[];
+  k1?: number;
+  k2?: number;
+  thickness?: number;
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/bases`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Baz kaydedilemedi');
+  }
+  return res.json();
+}
+
 export async function fetchPastes(): Promise<ColorantPaste[]> {
   const res = await fetch(`${BASE_URL}/pastes`);
   if (!res.ok) throw new Error('Renklendirici pasta verileri yüklenemedi');

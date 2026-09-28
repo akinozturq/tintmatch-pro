@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { BasePaint, ColorantPaste } from '../types';
 import { SpectralChart } from './SpectralChart';
+import { AddBaseModal } from './AddBaseModal';
 import {
   Search,
   CheckCircle2,
@@ -15,6 +16,7 @@ interface DashboardProps {
   onSelectPasteForSim?: (paste: ColorantPaste) => void;
   onOpenWizard?: () => void;
   onOpenReport?: (pasteId: number) => void;
+  onRefreshData?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -23,8 +25,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectPasteForSim,
   onOpenWizard,
   onOpenReport,
+  onRefreshData,
 }) => {
   const [activeTab, setActiveTab] = useState<'pastes' | 'bases'>('pastes');
+  const [isAddBaseOpen, setIsAddBaseOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPasteId, setSelectedPasteId] = useState<number>(
     pastes.length > 0 ? pastes[0].id : 1
@@ -217,15 +221,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            {/* Bottom New Calibration CTA */}
+            {/* Bottom New Calibration / Add Base CTA */}
             <div className="mt-3 pt-3 border-t border-zinc-800/70">
-              <button
-                onClick={onOpenWizard}
-                className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Yeni Karakterizasyon</span>
-              </button>
+              {activeTab === 'pastes' ? (
+                <button
+                  onClick={onOpenWizard}
+                  className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Yeni Karakterizasyon</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAddBaseOpen(true)}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Yeni Baz Ekle</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -376,6 +390,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+      {/* Add Base Paint Modal */}
+      <AddBaseModal
+        isOpen={isAddBaseOpen}
+        onClose={() => setIsAddBaseOpen(false)}
+        onSuccess={() => {
+          if (onRefreshData) onRefreshData();
+        }}
+      />
     </div>
   );
 };
