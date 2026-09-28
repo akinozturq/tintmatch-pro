@@ -11,8 +11,9 @@ import { InstrumentModal } from './components/InstrumentModal';
 import { SpectroSettingsView } from './components/SpectroSettingsView';
 import { ConfigurationView } from './components/ConfigurationView';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { ThemeProvider } from './context/ThemeContext';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report'>('dashboard');
   const [bases, setBases] = useState<BasePaint[]>([]);
   const [pastes, setPastes] = useState<ColorantPaste[]>([]);
@@ -54,7 +55,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-zinc-800">
+    <div className="min-h-screen bg-[var(--surface-1)] text-[var(--text-primary)] flex flex-col font-sans transition-colors duration-150 selection:bg-[var(--accent)] selection:text-white">
       {/* Top Header */}
       <Header
         activeTab={activeTab}
@@ -148,10 +149,10 @@ export const App: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800/80 bg-[#09090b] px-6 py-4 text-xs font-mono text-zinc-500 print:hidden">
+      <footer className="border-t border-[var(--border)] bg-[var(--surface-0)] px-6 py-4 text-xs font-mono text-[var(--text-muted)] print:hidden transition-colors">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>TintMatch PRO • Endüstriyel Spektrofotometrik Renklendirici Karakterizasyonu ve CCM</span>
-          <span className="text-zinc-600">ISO 18314-1 / ISO 18314-2 • D65/10° • X-Rite RM400</span>
+          <span className="text-[var(--text-secondary)]">ISO 18314-1 / ISO 18314-2 • D65/10° • X-Rite RM400</span>
         </div>
       </footer>
 
@@ -163,5 +164,11 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
+export const App: React.FC = () => (
+  <ThemeProvider>
+    <AppContent />
+  </ThemeProvider>
+);
 
 export default App;

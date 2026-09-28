@@ -2,26 +2,286 @@
 
 @layer base {
   :root {
-    --bg-main: #09090b;
-    --bg-surface: #121215;
-    --bg-subtle: #18181b;
-    --border-subtle: #27272a;
-    --border-focus: #3f3f46;
-    --text-primary: #f4f4f5;
-    --text-secondary: #a1a1aa;
-    --text-muted: #71717a;
-    --accent: #2563eb;
+    /* -------------------------------------------------------------------------
+     * 1. MARKA & YARDIMCI RENKLER (CLAUDE CLAY & TINTMATCH PRO)
+     * ------------------------------------------------------------------------- */
+    --brand-clay: #d97757;
+    --brand-clay-emphasized: #c6613f;
+    --brand-blue: #2563eb;
+    --brand-blue-hover: #1d4ed8;
+    --heather: #cbcadb;
+    --plum: #827dbd;
+    --cactus: #bcd1ca;
+    --mineral: #629987;
+
+    /* -------------------------------------------------------------------------
+     * 2. SICAK NÖTR GRİ SKALASI (GRAY-0 … GRAY-900)
+     * ------------------------------------------------------------------------- */
+    --gray-0: #ffffff;
+    --gray-10: #fcfcfb;
+    --gray-20: #f9f9f7;
+    --gray-30: #f6f6f4;
+    --gray-40: #f3f3f0;
+    --gray-50: #f0efec;
+    --gray-60: #edece8;
+    --gray-80: #e7e6e1;
+    --gray-100: #e1e0d9;
+    --gray-150: #d2d1c7;
+    --gray-200: #c3c2b7;
+    --gray-300: #a5a49a;
+    --gray-400: #898781;
+    --gray-500: #6d6b67;
+    --gray-550: #5f5e5a;
+    --gray-600: #52514e;
+    --gray-650: #454442;
+    --gray-700: #383835;
+    --gray-750: #2c2c2a;
+    --gray-800: #20201f;
+    --gray-850: #151515;
+    --gray-870: #111111;
+    --gray-890: #0d0d0d;
+    --gray-900: #0b0b0b;
+
+    /* -------------------------------------------------------------------------
+     * 3. SEMANTİK YÜZEY & METİN TOKEN'LARI (AÇIK TEMA VARSAYILAN)
+     * ------------------------------------------------------------------------- */
+    --surface-0: var(--gray-20);      /* Sayfa arkası #f9f9f7 */
+    --surface-1: var(--gray-10);      /* Ana zemin #fcfcfb */
+    --surface-3: var(--gray-0);       /* Kart / Yükseltilmiş #ffffff */
+    --surface-neutral: #f4f4f5;       /* Renk değerlendirme akromatik zemin */
+
+    --text-primary: var(--gray-900);  /* #0b0b0b */
+    --text-secondary: var(--gray-600);/* #52514e */
+    --text-muted: var(--gray-400);    /* #898781 */
+
+    --border: hsl(0 0% 4% / 10%);
+    --border-strong: hsl(0 0% 4% / 20%);
+    --ring-color: hsl(0 0% 4% / 10%);
+    --ring-outer: 0 0 0 1px var(--ring-color);
+    --ring-inner: inset 0 0 0 1px var(--ring-color);
+
+    /* -------------------------------------------------------------------------
+     * 4. DURUM VE VURGU RENKLERİ (AÇIK TEMA)
+     * ------------------------------------------------------------------------- */
+    --accent: hsl(210 70.9% 51.6%);
+    --accent-text: hsl(210 73.7% 40.2%);
+    --accent-bg: hsl(211 72% 90%);
+
+    --danger: hsl(0 56.2% 45.4%);
+    --danger-text: hsl(0 58.6% 34.1%);
+    --danger-bg: hsl(0 50% 95%);
+
+    --success: hsl(103 72.3% 26.9%);
+    --success-text: hsl(125 100% 18%);
+    --success-bg: hsl(86 45.1% 90%);
+
+    --warning: hsl(39 88.8% 28%);
+    --warning-text: hsl(45 91.8% 19%);
+    --warning-bg: hsl(38 65.9% 92%);
+
+    --pro: hsl(251 40% 45.1%);
+    --pro-text: hsl(251 34.2% 33.3%);
+    --pro-bg: hsl(253 33.3% 91.8%);
+
+    /* -------------------------------------------------------------------------
+     * 5. TİPOGRAFİ
+     * ------------------------------------------------------------------------- */
+    --font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* -------------------------------------------------------------------------
+     * 6. YÜKSEKLİK (ELEVATION) & HAREKET
+     * ------------------------------------------------------------------------- */
+    --shadow-color: hsl(0 0% 4% / 8%);
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 4% / 6%), 0 2px 8px 0 var(--shadow-color);
+    --shadow-md: 0 2px 4px 0 hsl(0 0% 4% / 7%), 0 6px 16px 0 var(--shadow-color);
+    --shadow-lg: 0 4px 8px 0 hsl(0 0% 4% / 8%), 0 12px 28px -2px var(--shadow-color);
+    --shadow-popover: 0 8px 24px #0000001f, 0 2px 6px #00000014;
+
+    --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --dur-snap: 0.12s;
+    --dur-fast: 0.15s;
+
+    color-scheme: light;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * YOĞUNLUK MODU 1: COMPACT (VARSAYILAN - LABORATUVAR & CCM İÇİN İDEAL)
+   * --------------------------------------------------------------------------- */
+  :root, [data-density="compact"] {
+    --fs-caption: 0.75rem;
+    --fs-footnote: 0.75rem;
+    --fs-code: 0.75rem;
+    --fs-body: 0.8125rem;
+    --fs-prose: 0.875rem;
+    --fs-heading: 0.875rem;
+    --fs-title: 1.125rem;
+
+    --pad-xs: 0.25rem;
+    --pad-sm: 0.375rem;
+    --pad-md: 0.5rem;
+    --pad-lg: 0.75rem;
+    --pad-xl: 1.25rem;
+
+    --gap-xs: 0.375rem;
+    --gap-sm: 0.5rem;
+    --gap-md: 0.75rem;
+    --gap-lg: 1.25rem;
+    --gap-xl: 2rem;
+
+    --h-control-xs: 1.25rem;
+    --h-control-sm: 1.25rem;
+    --h-control: 1.5rem;
+    --h-control-lg: 1.75rem;
+
+    --radius-xs: 0.3125rem;
+    --radius-sm: 0.3125rem;
+    --radius: 0.375rem;
+    --radius-lg: 0.4375rem;
+    --radius-composer: 0.75rem;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * YOĞUNLUK MODU 2: COMFORTABLE (GENİŞ BOŞLUK, SUNUM & RAPOR MODU)
+   * --------------------------------------------------------------------------- */
+  [data-density="comfortable"] {
+    --fs-caption: 0.75rem;
+    --fs-footnote: 0.8125rem;
+    --fs-code: 0.8125rem;
+    --fs-body: 0.875rem;
+    --fs-prose: 1rem;
+    --fs-heading: 0.9375rem;
+    --fs-title: 1.375rem;
+
+    --pad-xs: 0.375rem;
+    --pad-sm: 0.5rem;
+    --pad-md: 0.75rem;
+    --pad-lg: 1rem;
+    --pad-xl: 1.5rem;
+
+    --gap-xs: 0.5rem;
+    --gap-sm: 0.75rem;
+    --gap-md: 1rem;
+    --gap-lg: 1.75rem;
+    --gap-xl: 2.5rem;
+
+    --h-control-xs: 1.5rem;
+    --h-control-sm: 1.75rem;
+    --h-control: 2rem;
+    --h-control-lg: 2.5rem;
+
+    --radius-xs: 0.375rem;
+    --radius-sm: 0.4375rem;
+    --radius: 0.5rem;
+    --radius-lg: 0.625rem;
+    --radius-composer: 0.875rem;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * KOYU TEMA TOKEN'LARI (DARK THEME)
+   * --------------------------------------------------------------------------- */
+  [data-mode="dark"], .dark {
+    --surface-0: var(--gray-900);      /* #0b0b0b */
+    --surface-1: var(--gray-850);      /* #151515 */
+    --surface-3: var(--gray-800);      /* #20201f */
+    --surface-neutral: #18181b;        /* Renk değerlendirme akromatik zemin */
+
+    --text-primary: var(--gray-50);    /* #f0efec */
+    --text-secondary: var(--gray-200); /* #c3c2b7 */
+    --text-muted: var(--gray-400);     /* #898781 */
+
+    --border: hsl(60 7% 97% / 10%);
+    --border-strong: hsl(60 7% 97% / 20%);
+    --ring-color: hsl(60 7% 97% / 12%);
+    --ring-outer: 0 0 0 1px var(--ring-color);
+    --ring-inner: inset 0 0 0 1px var(--ring-color);
+
+    --accent: hsl(210 65.5% 67.1%);
+    --accent-text: hsl(210 65.5% 67.1%);
+    --accent-bg: hsl(210 55.9% 24.6%);
+
+    --danger: hsl(0 67% 59.6%);
+    --danger-text: hsl(0 98.4% 75.1%);
+    --danger-bg: hsl(0 46.5% 27.8%);
+
+    --success: hsl(97 75% 32.9%);
+    --success-text: hsl(97 59.1% 46.1%);
+    --success-bg: hsl(127 100% 13.9%);
+
+    --warning: hsl(39 93.4% 35.9%);
+    --warning-text: hsl(40 71% 50%);
+    --warning-bg: hsl(45 94.8% 15.1%);
+
+    --pro: hsl(251 40.2% 54.1%);
+    --pro-text: hsl(251 84.6% 74.5%);
+    --pro-bg: hsl(250 25.3% 19.4%);
+
+    --shadow-color: #0000003d;
+    --shadow-sm: 0 1px 2px 0 #0000003d, 0 2px 8px 0 #00000052;
+    --shadow-md: 0 2px 4px 0 #0000004d, 0 6px 16px 0 #00000066;
+    --shadow-lg: 0 4px 8px 0 #00000059, 0 12px 28px -2px #00000080;
+    --shadow-popover: 0 8px 24px #00000052, 0 2px 6px #0003;
+
+    color-scheme: dark;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * SİSTEM TERCİHİ (SYSTEM COLOR SCHEME DETECTOR)
+   * --------------------------------------------------------------------------- */
+  @media (prefers-color-scheme: dark) {
+    [data-mode="system"] {
+      --surface-0: var(--gray-900);
+      --surface-1: var(--gray-850);
+      --surface-3: var(--gray-800);
+      --surface-neutral: #18181b;
+
+      --text-primary: var(--gray-50);
+      --text-secondary: var(--gray-200);
+      --text-muted: var(--gray-400);
+
+      --border: hsl(60 7% 97% / 10%);
+      --border-strong: hsl(60 7% 97% / 20%);
+      --ring-color: hsl(60 7% 97% / 12%);
+
+      --accent: hsl(210 65.5% 67.1%);
+      --accent-text: hsl(210 65.5% 67.1%);
+      --accent-bg: hsl(210 55.9% 24.6%);
+
+      --danger: hsl(0 67% 59.6%);
+      --danger-text: hsl(0 98.4% 75.1%);
+      --danger-bg: hsl(0 46.5% 27.8%);
+
+      --success: hsl(97 75% 32.9%);
+      --success-text: hsl(97 59.1% 46.1%);
+      --success-bg: hsl(127 100% 13.9%);
+
+      --warning: hsl(39 93.4% 35.9%);
+      --warning-text: hsl(40 71% 50%);
+      --warning-bg: hsl(45 94.8% 15.1%);
+
+      --shadow-color: #0000003d;
+      --shadow-sm: 0 1px 2px 0 #0000003d, 0 2px 8px 0 #00000052;
+      --shadow-md: 0 2px 4px 0 #0000004d, 0 6px 16px 0 #00000066;
+      --shadow-lg: 0 4px 8px 0 #00000059, 0 12px 28px -2px #00000080;
+      --shadow-popover: 0 8px 24px #00000052, 0 2px 6px #0003;
+
+      color-scheme: dark;
+    }
   }
 
   body {
-    background-color: var(--bg-main);
+    background-color: var(--surface-1);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-ui);
     margin: 0;
     padding: 0;
     min-height: 100vh;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
   }
 
   #root {
@@ -35,23 +295,43 @@
   }
 }
 
-/* Minimalist scrollbars */
+/* ---------------------------------------------------------------------------
+ * ODAK VE ERİŞİLEBİLİRLİK (FOCUS RING)
+ * --------------------------------------------------------------------------- */
+:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--surface-1),
+    0 0 0 1px var(--accent),
+    0 0 6px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * ZARİF KAYDIRMA ÇUBUĞU (SCROLLBAR)
+ * --------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--border-strong);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--text-muted);
 }
 
-/* Minimal range inputs */
+/* Range input accent */
 input[type="range"] {
-  accent-color: #3b82f6;
+  accent-color: var(--accent);
 }

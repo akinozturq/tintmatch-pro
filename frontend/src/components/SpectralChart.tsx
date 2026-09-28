@@ -52,34 +52,34 @@ export const SpectralChart: React.FC<SpectralChartProps> = ({
   });
 
   return (
-    <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 shadow-sm">
+    <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 shadow-[var(--shadow-sm)] transition-colors">
       {/* Chart Header */}
       <div className="flex items-center justify-between gap-4 mb-5">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300 font-mono">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
             {title}
           </h3>
-          <p className="text-[11px] text-zinc-500 mt-0.5">{subtitle}</p>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{subtitle}</p>
         </div>
 
         {/* Minimal segmented toggle */}
-        <div className="flex items-center bg-zinc-950 p-1 rounded-md border border-zinc-800 text-[11px] font-mono">
+        <div className="flex items-center bg-[var(--surface-0)] p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] text-[11px] font-mono">
           <button
             onClick={() => setViewMode('reflectance')}
-            className={`px-2.5 py-1 rounded transition-colors ${
+            className={`px-2.5 py-1 rounded-[var(--radius-xs)] transition-colors ${
               viewMode === 'reflectance'
-                ? 'bg-zinc-800 text-zinc-100 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm [box-shadow:var(--ring-outer)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             R% (Yansıma)
           </button>
           <button
             onClick={() => setViewMode('ks')}
-            className={`px-2.5 py-1 rounded transition-colors ${
+            className={`px-2.5 py-1 rounded-[var(--radius-xs)] transition-colors ${
               viewMode === 'ks'
-                ? 'bg-zinc-800 text-zinc-100 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm [box-shadow:var(--ring-outer)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             K/S
@@ -91,17 +91,17 @@ export const SpectralChart: React.FC<SpectralChartProps> = ({
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="2 2" stroke="#27272a" vertical={false} />
+            <CartesianGrid strokeDasharray="2 2" stroke="var(--border)" vertical={false} />
             <XAxis
               dataKey="wavelength"
-              stroke="#52525b"
+              stroke="var(--text-muted)"
               fontSize={10}
               tickLine={false}
               interval={2}
               dy={5}
             />
             <YAxis
-              stroke="#52525b"
+              stroke="var(--text-muted)"
               fontSize={10}
               tickLine={false}
               domain={viewMode === 'reflectance' ? [0, 100] : ['auto', 'auto']}
@@ -110,13 +110,13 @@ export const SpectralChart: React.FC<SpectralChartProps> = ({
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#18181b',
-                borderColor: '#27272a',
+                backgroundColor: 'var(--surface-3)',
+                borderColor: 'var(--border-strong)',
                 borderRadius: '6px',
                 fontSize: '11px',
-                color: '#f4f4f5',
+                color: 'var(--text-primary)',
                 padding: '8px 12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                boxShadow: 'var(--shadow-popover)',
               }}
               formatter={(val: any, name: any) => [
                 viewMode === 'reflectance' ? `${val}%` : val,

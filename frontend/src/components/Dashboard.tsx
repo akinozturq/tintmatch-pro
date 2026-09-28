@@ -97,35 +97,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* SOL: Kütüphane (3 Cols) */}
         {/* ======================================================== */}
         <div className="lg:col-span-3 space-y-3">
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col h-full">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 flex flex-col h-full shadow-[var(--shadow-sm)] transition-colors">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300 font-mono">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                 Kütüphane
               </span>
-              <span className="text-[10px] font-mono text-zinc-500">
+              <span className="text-[10px] font-mono text-[var(--text-muted)]">
                 {activeTab === 'pastes' ? `${pastes.length} Pasta` : `${bases.length} Baz`}
               </span>
             </div>
 
             {/* Segmented Switcher */}
-            <div className="grid grid-cols-2 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800/80 my-3 text-xs font-medium">
+            <div className="grid grid-cols-2 gap-1 bg-[var(--surface-0)] p-1 rounded-[var(--radius)] border border-[var(--border)] my-3 text-xs font-medium">
               <button
                 onClick={() => setActiveTab('pastes')}
-                className={`py-1 rounded transition-colors ${
+                className={`py-1 rounded-[var(--radius-xs)] transition-colors ${
                   activeTab === 'pastes'
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm [box-shadow:var(--ring-outer)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 Pastalar
               </button>
               <button
                 onClick={() => setActiveTab('bases')}
-                className={`py-1 rounded transition-colors ${
+                className={`py-1 rounded-[var(--radius-xs)] transition-colors ${
                   activeTab === 'bases'
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm [box-shadow:var(--ring-outer)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 Bazlar
@@ -134,13 +134,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Search Input */}
             <div className="relative mb-3">
-              <Search className="h-3.5 w-3.5 absolute left-2.5 top-2 text-zinc-500" />
+              <Search className="h-3.5 w-3.5 absolute left-2.5 top-2 text-[var(--text-muted)]" />
               <input
                 type="text"
                 placeholder={activeTab === 'pastes' ? "Pasta filtrele..." : "Baz filtrele..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
+                className="w-full pl-8 pr-2.5 py-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
               />
             </div>
 
@@ -153,29 +153,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div
                       key={paste.id}
                       onClick={() => setSelectedPasteId(paste.id)}
-                      className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                      className={`p-2.5 rounded-[var(--radius)] border transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-zinc-800/80 border-zinc-600'
-                          : 'bg-zinc-950/40 border-zinc-800/60 hover:bg-zinc-800/30 hover:border-zinc-700'
+                          ? 'bg-[var(--surface-0)] border-[var(--brand-clay)] shadow-sm'
+                          : 'bg-[var(--surface-1)] border-[var(--border)] hover:bg-[var(--surface-0)] hover:border-[var(--border-strong)]'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0">
                           <span
-                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-zinc-700"
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-[var(--border-strong)]"
                             style={{ backgroundColor: paste.color_hex }}
                           />
-                          <span className="text-xs font-medium text-zinc-200 truncate">
+                          <span className="text-xs font-medium text-[var(--text-primary)] truncate">
                             {paste.name}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-400">
+                        <span className="text-[10px] font-mono text-[var(--text-muted)]">
                           {paste.code}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mt-1.5 pl-4.5">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)] mt-1.5 pl-4.5">
                         <span>{paste.density} g/cm³</span>
-                        <span className="text-emerald-400 font-medium">
+                        <span className="text-[var(--success-text)] font-semibold">
                           ΔE00: {paste.mean_delta_e00.toFixed(2)}
                         </span>
                       </div>
@@ -189,29 +189,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div
                       key={base.id}
                       onClick={() => setSelectedBaseId(base.id)}
-                      className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                      className={`p-2.5 rounded-[var(--radius)] border transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-zinc-800/80 border-zinc-600'
-                          : 'bg-zinc-950/40 border-zinc-800/60 hover:bg-zinc-800/30 hover:border-zinc-700'
+                          ? 'bg-[var(--surface-0)] border-[var(--brand-clay)] shadow-sm'
+                          : 'bg-[var(--surface-1)] border-[var(--border)] hover:bg-[var(--surface-0)] hover:border-[var(--border-strong)]'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0">
                           <span
-                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-zinc-700"
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-[var(--border-strong)]"
                             style={{ backgroundColor: base.hex }}
                           />
-                          <span className="text-xs font-medium text-zinc-200 truncate">
+                          <span className="text-xs font-medium text-[var(--text-primary)] truncate">
                             {base.name}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-400">
+                        <span className="text-[10px] font-mono text-[var(--text-muted)]">
                           {base.code}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mt-1.5 pl-4.5">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)] mt-1.5 pl-4.5">
                         <span>Opasite: %{base.contrast_ratio}</span>
-                        <span className="text-zinc-300">
+                        <span className="text-[var(--text-primary)]">
                           {base.is_opaque ? 'Opak' : 'Yarı-Opak'}
                         </span>
                       </div>
@@ -222,11 +222,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Bottom New Calibration / Add Base CTA */}
-            <div className="mt-3 pt-3 border-t border-zinc-800/70">
+            <div className="mt-3 pt-3 border-t border-[var(--border)]">
               {activeTab === 'pastes' ? (
                 <button
                   onClick={onOpenWizard}
-                  className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className="w-full py-2 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Yeni Karakterizasyon</span>
@@ -234,7 +234,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ) : (
                 <button
                   onClick={() => setIsAddBaseOpen(true)}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                  className="w-full py-2 bg-[var(--accent)] hover:opacity-90 text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Yeni Baz Ekle</span>
@@ -257,41 +257,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Minimalist Specs Bar */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3.5 bg-zinc-900/70 border border-zinc-800 rounded-xl space-y-2">
+            <div className="p-3.5 bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] space-y-2 shadow-[var(--shadow-sm)] transition-colors">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
                   Renklendirici
                 </span>
                 <span
-                  className="w-3 h-3 rounded-full border border-zinc-700"
+                  className="w-3 h-3 rounded-full border border-[var(--border-strong)]"
                   style={{ backgroundColor: selectedPaste?.color_hex }}
                 />
               </div>
-              <p className="text-xs font-semibold text-zinc-100 truncate">
+              <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
                 {selectedPaste?.name} ({selectedPaste?.code})
               </p>
-              <div className="flex justify-between text-[11px] font-mono text-zinc-400">
+              <div className="flex justify-between text-[11px] font-mono text-[var(--text-secondary)]">
                 <span>Yoğunluk: {selectedPaste?.density} g/cm³</span>
-                <span className="text-emerald-400">ΔE00: {selectedPaste?.mean_delta_e00?.toFixed(3)}</span>
+                <span className="text-[var(--success-text)] font-semibold">ΔE00: {selectedPaste?.mean_delta_e00?.toFixed(3)}</span>
               </div>
             </div>
 
-            <div className="p-3.5 bg-zinc-900/70 border border-zinc-800 rounded-xl space-y-2">
+            <div className="p-3.5 bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] space-y-2 shadow-[var(--shadow-sm)] transition-colors">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
                   Baz Boya
                 </span>
                 <span
-                  className="w-3 h-3 rounded-full border border-zinc-700"
+                  className="w-3 h-3 rounded-full border border-[var(--border-strong)]"
                   style={{ backgroundColor: selectedBase?.hex }}
                 />
               </div>
-              <p className="text-xs font-semibold text-zinc-100 truncate">
+              <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
                 {selectedBase?.name} ({selectedBase?.code})
               </p>
-              <div className="flex justify-between text-[11px] font-mono text-zinc-400">
+              <div className="flex justify-between text-[11px] font-mono text-[var(--text-secondary)]">
                 <span>Kontrast: %{selectedBase?.contrast_ratio}</span>
-                <span className="text-zinc-300">{selectedBase?.is_opaque ? 'Opak (≥%98)' : 'Şeffaf'}</span>
+                <span className="text-[var(--text-primary)]">{selectedBase?.is_opaque ? 'Opak (≥%98)' : 'Şeffaf'}</span>
               </div>
             </div>
           </div>
@@ -301,50 +301,50 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* SAĞ: Kolorimetri & Kalite (3 Cols) */}
         {/* ======================================================== */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-5">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-5 shadow-[var(--shadow-sm)] transition-colors">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300 font-mono">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                 Kolorimetri
               </span>
-              <span className="text-[10px] font-mono text-zinc-400">D65 / 10°</span>
+              <span className="text-[10px] font-mono text-[var(--text-muted)]">D65 / 10°</span>
             </div>
 
             {/* Pure Color Swatch */}
             <div className="space-y-2">
               <div
-                className="h-28 rounded-lg border border-zinc-800 flex items-end p-3 transition-colors duration-200"
+                className="h-28 rounded-[var(--radius)] border border-[var(--border-strong)] flex items-end p-3 transition-colors duration-200 shadow-inner"
                 style={{ backgroundColor: selectedPaste?.color_hex || '#3b82f6' }}
               >
-                <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-zinc-950/80 text-zinc-100 backdrop-blur border border-zinc-800/80">
+                <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-3)]/90 text-[var(--text-primary)] backdrop-blur border border-[var(--border)] shadow-sm">
                   {selectedPaste?.color_hex}
                 </span>
               </div>
-              <p className="text-[10px] text-zinc-500 font-mono text-center">
+              <p className="text-[10px] text-[var(--text-muted)] font-mono text-center">
                 sRGB Gamma Düzeltmeli Dijital Renk Eşleniği
               </p>
             </div>
 
             {/* Validation Meter */}
-            <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2 font-mono">
+            <div className="p-3 bg-[var(--surface-0)] rounded-[var(--radius)] border border-[var(--border)] space-y-2 font-mono">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-400">Geri Tahmin ΔE00</span>
-                <span className="text-emerald-400 font-semibold">
+                <span className="text-[var(--text-secondary)]">Geri Tahmin ΔE00</span>
+                <span className="text-[var(--success-text)] font-semibold">
                   {selectedPaste?.mean_delta_e00?.toFixed(3)}
                 </span>
               </div>
 
               {/* Minimalist linear progress track */}
-              <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+              <div className="w-full bg-[var(--surface-1)] rounded-full h-1.5 overflow-hidden border border-[var(--border)]">
                 <div
-                  className="bg-emerald-500 h-1.5 rounded-full"
+                  className="bg-[var(--success)] h-1.5 rounded-full"
                   style={{ width: `${Math.min(100, ((selectedPaste?.mean_delta_e00 || 0.1) / 0.3) * 100)}%` }}
                 />
               </div>
 
-              <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
+              <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] pt-0.5">
                 <span>Eşik &lt; 0.30</span>
-                <span className="text-emerald-400 flex items-center gap-1 font-sans">
+                <span className="text-[var(--success-text)] flex items-center gap-1 font-sans font-medium">
                   <CheckCircle2 className="h-3 w-3" />
                   Doğrulandı
                 </span>
@@ -352,19 +352,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Metamerism Index */}
-            <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 space-y-2 font-mono">
+            <div className="p-3 bg-[var(--surface-0)] rounded-[var(--radius)] border border-[var(--border)] space-y-2 font-mono">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-400">Metamerizm (MI)</span>
-                <span className="text-[10px] text-emerald-400 font-semibold">Mükemmel</span>
+                <span className="text-[var(--text-secondary)]">Metamerizm (MI)</span>
+                <span className="text-[10px] text-[var(--success-text)] font-semibold">Mükemmel</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
-                <div className="p-1.5 bg-zinc-900 rounded">
-                  <span className="block text-[9px] text-zinc-400">Akkor (Illum A)</span>
-                  <span className="text-zinc-200">MI: 0.18</span>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-1.5 bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-xs)]">
+                  <span className="block text-[9px] text-[var(--text-muted)]">Akkor (Illum A)</span>
+                  <span className="text-[var(--text-primary)] font-medium">MI: 0.18</span>
                 </div>
-                <div className="p-1.5 bg-zinc-900 rounded">
-                  <span className="block text-[9px] text-zinc-400">Floresan (TL84)</span>
-                  <span className="text-zinc-200">MI: 0.14</span>
+                <div className="p-1.5 bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-xs)]">
+                  <span className="block text-[9px] text-[var(--text-muted)]">Floresan (TL84)</span>
+                  <span className="text-[var(--text-primary)] font-medium">MI: 0.14</span>
                 </div>
               </div>
             </div>
@@ -373,7 +373,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="space-y-2 pt-2">
               <button
                 onClick={() => onSelectPasteForSim && onSelectPasteForSim(selectedPaste)}
-                className="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-900 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-2 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
               >
                 <Sliders className="h-3.5 w-3.5" />
                 <span>CCM Simülatörüne Gönder</span>
@@ -381,7 +381,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <button
                 onClick={() => onOpenReport && onOpenReport(1)}
-                className="w-full py-2 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border border-zinc-800"
+                className="w-full py-2 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-[var(--radius)] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border border-[var(--border)]"
               >
                 <ExternalLink className="h-3 w-3" />
                 <span>ISO 18314 Sertifikası</span>
