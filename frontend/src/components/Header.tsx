@@ -5,14 +5,15 @@ import {
   Sliders,
   FileCheck,
   BookOpen,
-  Cpu
+  Cpu,
+  Settings2
 } from 'lucide-react';
 import { getChnspecStatus } from '../services/api';
 import type { ChnspecStatusInfo, DeviceConnectionState } from '../types';
 
 interface HeaderProps {
-  activeTab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report';
-  setActiveTab: (tab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report') => void;
+  activeTab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report';
+  setActiveTab: (tab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report') => void;
   onOpenInstruments?: () => void;
 }
 
@@ -42,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
     { id: 'spectro', label: 'Spektrofotometre', icon: Cpu },
     { id: 'wizard', label: 'K-M Karakterizasyon', icon: Wand2 },
     { id: 'formulation', label: 'CCM Reçete', icon: Sliders },
+    { id: 'config', label: 'Yapılandırma', icon: Settings2 },
     { id: 'report', label: 'ISO 18314 Rapor', icon: FileCheck },
     { id: 'glossary', label: 'Sözlük', icon: BookOpen },
   ] as const;

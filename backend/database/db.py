@@ -261,6 +261,74 @@ def init_db():
         cur.execute("ALTER TABLE pastes ADD COLUMN characterization_version INTEGER DEFAULT 1")
     if "active_characterization_id" not in paste_cols:
         cur.execute("ALTER TABLE pastes ADD COLUMN active_characterization_id INTEGER REFERENCES characterizations(id)")
+    if "cost_per_kg" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN cost_per_kg REAL DEFAULT 150.0")
+
+    # Can Sizes table (Pre-filled can sizes with headspace check)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS can_sizes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        nominal_volume_l REAL NOT NULL,
+        default_base_fill_l REAL NOT NULL,
+        max_colorant_volume_l REAL NOT NULL,
+        package_cost REAL DEFAULT 0.0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Products table (e.g. PT.505.25 - Süper Mat İç Cephe)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        product_type TEXT DEFAULT 'interior_matte',
+        voc_limit REAL DEFAULT 30.0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Product Abstract Bases mapping (SW, W, TR -> physical bases)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS product_bases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL REFERENCES products(id),
+        abstract_base_code TEXT NOT NULL,
+        base_id INTEGER NOT NULL REFERENCES bases(id),
+        specific_gravity REAL NOT NULL DEFAULT 1.45,
+        cost_per_liter REAL DEFAULT 45.0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(product_id, abstract_base_code)
+    );
+    """)
+
+    # Color Cards table (e.g. RAL Classic K7, NCS S 1950)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS color_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Card Colors table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS card_colors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_id INTEGER NOT NULL REFERENCES color_cards(id),
+        color_code TEXT NOT NULL,
+        color_name TEXT NOT NULL,
+        hex TEXT NOT NULL,
+        lab_json TEXT NOT NULL,
+        reflectance_json TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(card_id, color_code)
+    );
+    """)
 
     # Seed default instrument if empty
     cur.execute("SELECT COUNT(*) FROM instruments")
@@ -283,6 +351,11 @@ def init_db():
     cur.execute("SELECT COUNT(*) FROM bases")
     if cur.fetchone()[0] == 0:
         _seed_default_data(conn)
+
+    # Check if configuration data needs seeding
+    cur.execute("SELECT COUNT(*) FROM can_sizes")
+    if cur.fetchone()[0] == 0:
+        _seed_configuration_data(conn)
 
     conn.close()
 
@@ -447,5 +520,122 @@ def _seed_default_data(conn: sqlite3.Connection):
     VALUES (?, 'Quinacridone Magenta', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.24, 1)
     """, (pr122_id, base_a_id))
     cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pr122_id))
+
+    conn.commit()
+
+
+def _seed_configuration_data(conn: sqlite3.Connection):
+    cur = conn.cursor()
+
+    # 1. Pre-filled Can Sizes
+    can_sizes_data = [
+        ("1L", "1 Litre Kutu", 1.0, 0.90, 0.10, 15.0),
+        ("2.5L", "2.5 Litre Galon", 2.5, 2.30, 0.25, 28.0),
+        ("7.5L", "7.5 Litre Kova", 7.5, 7.00, 0.65, 55.0),
+        ("15L", "15 Litre Standart Teneke", 15.0, 14.00, 1.20, 95.0),
+        ("200L", "200 Litre Sanayi Varili", 200.0, 185.00, 18.00, 650.0),
+    ]
+    cur.executemany("""
+    INSERT OR IGNORE INTO can_sizes (code, name, nominal_volume_l, default_base_fill_l, max_colorant_volume_l, package_cost)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, can_sizes_data)
+
+    # 2. Products & Abstract Bases (PT.505.25 -> SW, W, TR)
+    cur.execute("SELECT id FROM bases WHERE code LIKE 'BASE-A%' ORDER BY id ASC")
+    base_a_row = cur.fetchone()
+    base_a_id = base_a_row[0] if base_a_row else 1
+
+    cur.execute("SELECT id FROM bases WHERE code LIKE 'BASE-B%' ORDER BY id ASC")
+    base_b_row = cur.fetchone()
+    base_b_id = base_b_row[0] if base_b_row else 2
+
+    cur.execute("SELECT id FROM bases WHERE code LIKE 'BASE-D%' ORDER BY id ASC")
+    base_d_row = cur.fetchone()
+    base_d_id = base_d_row[0] if base_d_row else 4
+
+    cur.execute("""
+    INSERT OR IGNORE INTO products (code, name, product_type, voc_limit)
+    VALUES ('PT.505.25', 'PT.505.25 Endüstriyel Mat Boya Serisi', 'interior_matte', 25.0)
+    """)
+    cur.execute("SELECT id FROM products WHERE code = 'PT.505.25'")
+    prod_row = cur.fetchone()
+    if prod_row:
+        prod_id = prod_row[0]
+        # Abstract Bases SW, W, TR
+        cur.executemany("""
+        INSERT OR IGNORE INTO product_bases (product_id, abstract_base_code, base_id, specific_gravity, cost_per_liter)
+        VALUES (?, ?, ?, ?, ?)
+        """, [
+            (prod_id, "SW", base_a_id, 1.48, 52.0),
+            (prod_id, "W", base_b_id, 1.38, 46.0),
+            (prod_id, "TR", base_d_id, 1.05, 65.0),
+        ])
+
+    # 3. RAL Classic K7 Color Card & Reference Spectral Colors
+    cur.execute("""
+    INSERT OR IGNORE INTO color_cards (code, name, description)
+    VALUES ('RAL-CLASSIC-K7', 'RAL Classic K7 Koleksiyonu', 'Endüstriyel standart RAL K7 renk kartelası referans spektrumları ve CIELAB koordinatları')
+    """)
+    cur.execute("SELECT id FROM color_cards WHERE code = 'RAL-CLASSIC-K7'")
+    card_row = cur.fetchone()
+    if card_row:
+        card_id = card_row[0]
+        ral_colors = [
+            (
+                "RAL 7035", "Işık Grisi (Light Grey)", "#D7D7D7",
+                {"L": 83.5, "a": -0.8, "b": 2.2},
+                [0.612, 0.625, 0.638, 0.647, 0.655, 0.661, 0.665, 0.668, 0.670, 0.672, 0.673, 0.674, 0.675, 0.675, 0.675, 0.674, 0.674, 0.673, 0.672, 0.671, 0.670, 0.669, 0.668, 0.667, 0.666, 0.665, 0.664, 0.663, 0.662, 0.661, 0.660]
+            ),
+            (
+                "RAL 9010", "Saf Beyaz (Pure White)", "#F7F9EF",
+                {"L": 94.2, "a": -0.6, "b": 4.8},
+                [0.780, 0.810, 0.835, 0.852, 0.865, 0.874, 0.880, 0.885, 0.888, 0.890, 0.892, 0.893, 0.894, 0.894, 0.893, 0.892, 0.891, 0.890, 0.888, 0.887, 0.885, 0.883, 0.881, 0.880, 0.878, 0.876, 0.875, 0.873, 0.871, 0.869, 0.866]
+            ),
+            (
+                "RAL 7016", "Antrasit Gri (Anthracite Grey)", "#383E42",
+                {"L": 26.5, "a": -0.9, "b": -2.8},
+                [0.065, 0.064, 0.063, 0.062, 0.061, 0.060, 0.059, 0.058, 0.057, 0.056, 0.055, 0.054, 0.053, 0.052, 0.052, 0.051, 0.051, 0.050, 0.050, 0.049, 0.049, 0.048, 0.048, 0.048, 0.047, 0.047, 0.047, 0.046, 0.046, 0.046, 0.045]
+            ),
+            (
+                "RAL 9005", "Simsiyah (Jet Black)", "#0E0E10",
+                {"L": 7.2, "a": 0.2, "b": -0.5},
+                [0.012, 0.012, 0.011, 0.011, 0.011, 0.010, 0.010, 0.010, 0.010, 0.009, 0.009, 0.009, 0.009, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008, 0.008, 0.007, 0.007, 0.007, 0.007, 0.007, 0.007, 0.007, 0.007, 0.007, 0.007]
+            ),
+            (
+                "RAL 5015", "Gök Mavisi (Sky Blue)", "#2271B3",
+                {"L": 46.8, "a": -7.5, "b": -38.2},
+                [0.420, 0.445, 0.460, 0.450, 0.420, 0.360, 0.280, 0.210, 0.160, 0.130, 0.110, 0.095, 0.085, 0.078, 0.072, 0.068, 0.065, 0.062, 0.060, 0.058, 0.056, 0.055, 0.054, 0.054, 0.054, 0.054, 0.055, 0.056, 0.058, 0.060, 0.062]
+            ),
+            (
+                "RAL 3020", "Trafik Kırmızı (Traffic Red)", "#CC0605",
+                {"L": 43.5, "a": 62.4, "b": 39.1},
+                [0.045, 0.044, 0.043, 0.042, 0.042, 0.041, 0.041, 0.040, 0.040, 0.040, 0.041, 0.042, 0.045, 0.052, 0.075, 0.130, 0.250, 0.450, 0.650, 0.760, 0.810, 0.835, 0.848, 0.855, 0.860, 0.864, 0.867, 0.870, 0.872, 0.874, 0.876]
+            ),
+            (
+                "RAL 1021", "Kolza Sarısı (Rape Yellow)", "#F6B600",
+                {"L": 76.2, "a": 10.5, "b": 78.4},
+                [0.042, 0.043, 0.044, 0.045, 0.048, 0.055, 0.075, 0.125, 0.240, 0.480, 0.700, 0.810, 0.845, 0.858, 0.865, 0.870, 0.873, 0.875, 0.877, 0.879, 0.880, 0.881, 0.882, 0.883, 0.884, 0.885, 0.886, 0.887, 0.888, 0.889, 0.890]
+            ),
+            (
+                "RAL 6005", "Yosun Yeşili (Moss Green)", "#114232",
+                {"L": 28.4, "a": -18.2, "b": 6.5},
+                [0.048, 0.049, 0.052, 0.058, 0.070, 0.092, 0.120, 0.135, 0.130, 0.110, 0.085, 0.065, 0.052, 0.045, 0.042, 0.040, 0.039, 0.038, 0.038, 0.037, 0.037, 0.037, 0.037, 0.037, 0.038, 0.038, 0.039, 0.040, 0.041, 0.042, 0.044]
+            ),
+            (
+                "RAL 8017", "Çikolata Kahve (Chocolate Brown)", "#442F29",
+                {"L": 22.8, "a": 8.5, "b": 7.8},
+                [0.032, 0.032, 0.032, 0.032, 0.033, 0.034, 0.036, 0.038, 0.041, 0.045, 0.050, 0.056, 0.063, 0.072, 0.082, 0.095, 0.112, 0.132, 0.155, 0.178, 0.200, 0.218, 0.232, 0.244, 0.254, 0.262, 0.270, 0.276, 0.282, 0.288, 0.294]
+            ),
+            (
+                "RAL 7040", "Pencere Grisi (Window Grey)", "#9DA3A6",
+                {"L": 65.8, "a": -1.2, "b": -2.1},
+                [0.380, 0.395, 0.408, 0.418, 0.426, 0.432, 0.436, 0.439, 0.441, 0.442, 0.443, 0.444, 0.444, 0.444, 0.443, 0.442, 0.441, 0.440, 0.439, 0.438, 0.437, 0.435, 0.434, 0.432, 0.431, 0.429, 0.428, 0.426, 0.425, 0.423, 0.421]
+            ),
+        ]
+        for color_code, color_name, hex_val, lab_val, refl in ral_colors:
+            cur.execute("""
+            INSERT OR IGNORE INTO card_colors (card_id, color_code, color_name, hex, lab_json, reflectance_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (card_id, color_code, color_name, hex_val, json.dumps(lab_val), json.dumps(refl)))
 
     conn.commit()

@@ -4,7 +4,8 @@ import type {
   Letdown,
   CharacterizationResult,
   ChnspecStatusInfo,
-  CalibrationHealthInfo
+  CalibrationHealthInfo,
+  ProposerResponse
 } from '../types';
 import {
   calculateCharacterization,
@@ -13,7 +14,8 @@ import {
   saveCharacterization,
   getChnspecStatus,
   getChnspecCalibrationHealth,
-  measureChnspec
+  measureChnspec,
+  fetchProposerLetdowns
 } from '../services/api';
 import { SpectralChart } from './SpectralChart';
 import {
@@ -84,6 +86,33 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
 
   // Step 4: Optimization result
   const [results, setResults] = useState<CharacterizationResult | null>(null);
+
+  // Innovatint Smart Mixture Proposer
+  const [showProposer, setShowProposer] = useState<boolean>(true);
+  const [proposerBatchWeight, setProposerBatchWeight] = useState<number>(100.0);
+  const [proposerData, setProposerData] = useState<ProposerResponse | null>(null);
+  const [isLoadingProposer, setIsLoadingProposer] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadProposer = async () => {
+      setIsLoadingProposer(true);
+      try {
+        const data = await fetchProposerLetdowns(proposerBatchWeight, pasteDensity, 1.45);
+        if (isMounted) setProposerData(data);
+      } catch (err) {
+        console.warn('Proposer load error:', err);
+      } finally {
+        if (isMounted) setIsLoadingProposer(false);
+      }
+    };
+    if (currentStep === 3) {
+      loadProposer();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [currentStep, proposerBatchWeight, pasteDensity]);
 
   const refreshHardware = async () => {
     try {
@@ -700,6 +729,134 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
                 />
               </div>
             </div>
+          </div>
+
+          {/* ======================================================== */}
+          {/* INNOVATINT SMART MIXTURE PROPOSER (LAB RECIPE GUIDE)     */}
+          {/* ======================================================== */}
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl overflow-hidden shadow-lg">
+            <div
+              onClick={() => setShowProposer(!showProposer)}
+              className="p-3 bg-zinc-900/90 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-zinc-850 transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-semibold text-zinc-100 font-mono tracking-tight">
+                  Innovatint Akıllı Karışım Asistanı (Smart Mixture Proposer)
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono border border-zinc-700/60">
+                  {proposerBatchWeight}g Baz Numunesi
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-zinc-500 text-[10px] font-mono">Test Kabı Baz Ağırlığı:</span>
+                  {[50, 100, 200].map((wt) => (
+                    <button
+                      key={wt}
+                      type="button"
+                      onClick={() => setProposerBatchWeight(wt)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                        proposerBatchWeight === wt
+                          ? 'bg-amber-950/70 border-amber-500 text-amber-300 font-medium shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      {wt} g
+                    </button>
+                  ))}
+                </div>
+                <span className="text-zinc-400 font-mono text-[11px] select-none">
+                  {showProposer ? '▲ Kılavuzu Daralt' : '▼ Kılavuzu Genişlet'}
+                </span>
+              </div>
+            </div>
+
+            {showProposer && (
+              <div className="p-3.5 space-y-3 bg-zinc-950/40">
+                <div className="text-[11px] text-zinc-400 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <span>
+                    Laboratuvarda hassas terazi ile tartım reçetesi (Pasta Yoğunluğu: {pasteDensity} g/cm³):
+                  </span>
+                  <span className="text-amber-400/90 text-[10px] font-mono">
+                    Çift Sabitli Kubelka-Munk Doğrulaması İçin 6 İdeal Konsantrasyon Seviyesi
+                  </span>
+                </div>
+
+                {isLoadingProposer ? (
+                  <div className="py-4 text-center text-xs text-zinc-500 font-mono animate-pulse">
+                    Karışım kılavuzu hesaplanıyor...
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-zinc-800/80">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-zinc-950 text-zinc-400 text-[10px] uppercase border-b border-zinc-800">
+                        <tr>
+                          <th className="p-2">Hedef %</th>
+                          <th className="p-2">Baz Tartımı (gr)</th>
+                          <th className="p-2">Pasta Tartımı (gr)</th>
+                          <th className="p-2">Pasta Hacmi (ml)</th>
+                          <th className="p-2">Hazırlık Notu</th>
+                          <th className="p-2 text-right">İşlem</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/50">
+                        {proposerData?.recommendations?.map((st, idx) => {
+                          const isAlreadyMeasured = letdowns.some(
+                            (ld) => Math.abs(ld.concentration - st.concentration_pct) < 0.01
+                          );
+                          const isCurrentSelected = Math.abs(newConc - st.concentration_pct) < 0.01;
+                          return (
+                            <tr
+                              key={idx}
+                              className={`transition-colors ${
+                                isCurrentSelected
+                                  ? 'bg-amber-950/30 text-amber-200'
+                                  : 'hover:bg-zinc-900/60 text-zinc-300'
+                              }`}
+                            >
+                              <td className="p-2 font-semibold">
+                                %{st.concentration_pct}
+                              </td>
+                              <td className="p-2 text-zinc-300">{st.base_weight_g.toFixed(2)} g</td>
+                              <td className="p-2 font-semibold text-amber-400">
+                                {st.paste_weight_g < 1 ? st.paste_weight_g.toFixed(3) : st.paste_weight_g.toFixed(2)} g
+                              </td>
+                              <td className="p-2 text-cyan-300">
+                                {st.paste_volume_ml < 1 ? st.paste_volume_ml.toFixed(3) : st.paste_volume_ml.toFixed(2)} ml
+                              </td>
+                              <td className="p-2 text-zinc-400 text-[11px]">{st.instruction}</td>
+                              <td className="p-2 text-right">
+                                {isAlreadyMeasured ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-mono">
+                                    <Check className="h-3 w-3" /> Ölçüldü
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNewConc(st.concentration_pct);
+                                    }}
+                                    className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                                      isCurrentSelected
+                                        ? 'bg-amber-500 text-zinc-950 font-bold'
+                                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60'
+                                    }`}
+                                  >
+                                    {isCurrentSelected ? 'Seçildi' : 'Ölçüm İçin Seç'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ======================================================== */}

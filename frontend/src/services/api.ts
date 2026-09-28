@@ -15,7 +15,14 @@ import type {
   InstrumentComparisonResult,
   CalibrationHealthInfo,
   AddBackCorrectionRequest,
-  AddBackCorrectionResponse
+  AddBackCorrectionResponse,
+  CanSize,
+  Product,
+  ColorCard,
+  CardColor,
+  ProposerResponse,
+  CanScaledRecipe,
+  BatchMatchResponse
 } from '../types';
 
 const BASE_URL = '/api';
@@ -406,3 +413,184 @@ export async function runAddBackCorrection(
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Industrial Configuration & Workflow API Functions
+// ---------------------------------------------------------------------------
+
+export async function fetchCanSizes(): Promise<CanSize[]> {
+  const res = await fetch(`${BASE_URL}/configuration/can-sizes`);
+  if (!res.ok) throw new Error('Kutu boyutları alınamadı');
+  return res.json();
+}
+
+export async function createCanSize(payload: {
+  code: string;
+  name: string;
+  nominal_volume_l: number;
+  default_base_fill_l: number;
+  max_colorant_volume_l: number;
+  package_cost?: number;
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/can-sizes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Kutu boyutu oluşturulamadı');
+  }
+  return res.json();
+}
+
+export async function deleteCanSize(id: number): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/can-sizes/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Kutu boyutu silinemedi');
+  return res.json();
+}
+
+export async function fetchProducts(): Promise<Product[]> {
+  const res = await fetch(`${BASE_URL}/configuration/products`);
+  if (!res.ok) throw new Error('Ürünler alınamadı');
+  return res.json();
+}
+
+export async function createProduct(payload: {
+  code: string;
+  name: string;
+  product_type?: string;
+  voc_limit?: number;
+  bases: Array<{
+    abstract_base_code: string;
+    base_id: number;
+    specific_gravity: number;
+    cost_per_liter: number;
+  }>;
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Ürün kaydedilemedi');
+  }
+  return res.json();
+}
+
+export async function deleteProduct(id: number): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/products/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Ürün silinemedi');
+  return res.json();
+}
+
+export async function fetchColorCards(): Promise<ColorCard[]> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards`);
+  if (!res.ok) throw new Error('Renk kartelaları alınamadı');
+  return res.json();
+}
+
+export async function fetchCardColors(cardId: number): Promise<{ card: ColorCard; colors: CardColor[] }> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}/colors`);
+  if (!res.ok) throw new Error('Kartela renkleri alınamadı');
+  return res.json();
+}
+
+export async function createColorCard(payload: {
+  code: string;
+  name: string;
+  description?: string;
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Renk kartelası oluşturulamadı');
+  }
+  return res.json();
+}
+
+export async function addCardColor(cardId: number, payload: {
+  color_code: string;
+  color_name: string;
+  hex: string;
+  reflectance: number[];
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}/colors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Kartela rengi eklenemedi');
+  }
+  return res.json();
+}
+
+export async function deleteColorCard(cardId: number): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Renk kartelası silinemedi');
+  return res.json();
+}
+
+export async function fetchProposerLetdowns(
+  baseWeightG: number = 100.0,
+  pasteDensity: number = 1.35,
+  baseDensity: number = 1.45,
+  levels: string = '0.1,0.5,1.0,2.5,5.0,10.0'
+): Promise<ProposerResponse> {
+  const params = new URLSearchParams({
+    base_weight_g: String(baseWeightG),
+    paste_density: String(pasteDensity),
+    base_density: String(baseDensity),
+    levels
+  });
+  const res = await fetch(`${BASE_URL}/configuration/proposer/letdowns?${params.toString()}`);
+  if (!res.ok) throw new Error('Karışım önerileri alınamadı');
+  return res.json();
+}
+
+export async function scaleRecipeToCan(payload: {
+  can_size_id: number;
+  base_id: number;
+  pastes: Array<{ paste_id: number; concentration: number }>;
+  number_of_cans?: number;
+}): Promise<CanScaledRecipe> {
+  const res = await fetch(`${BASE_URL}/configuration/scale-recipe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Kutu ölçekleme hatası');
+  }
+  return res.json();
+}
+
+export async function batchMatchCard(payload: {
+  card_id: number;
+  base_id: number;
+  product_id?: number;
+  max_pastes?: number;
+  profile_id?: string;
+  max_de_threshold?: number;
+}): Promise<BatchMatchResponse> {
+  const res = await fetch(`${BASE_URL}/configuration/match-card`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Kartela toplu eşleme hatası');
+  }
+  return res.json();
+}
+

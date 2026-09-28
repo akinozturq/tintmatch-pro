@@ -507,3 +507,152 @@ export interface AddBackCorrectionResponse {
   notes: string[];
   engine_version: string;
 }
+
+// ---------------------------------------------------------------------------
+// Industrial Configuration & Workflow Types (Innovatint Architecture)
+// ---------------------------------------------------------------------------
+
+export interface CanSize {
+  id: number;
+  code: string;
+  name: string;
+  nominal_volume_l: number;
+  default_base_fill_l: number;
+  max_colorant_volume_l: number;
+  headspace_l: number;
+  package_cost: number;
+  created_at?: string;
+}
+
+export interface ProductBase {
+  id: number;
+  abstract_base_code: 'SW' | 'W' | 'TR' | string;
+  base_id: number;
+  base_name: string;
+  base_code: string;
+  base_hex: string;
+  specific_gravity: number;
+  cost_per_liter: number;
+}
+
+export interface Product {
+  id: number;
+  code: string;
+  name: string;
+  product_type: string;
+  voc_limit: number;
+  created_at?: string;
+  bases: ProductBase[];
+}
+
+export interface ColorCard {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  color_count: number;
+  created_at?: string;
+}
+
+export interface CardColor {
+  id: number;
+  color_code: string;
+  color_name: string;
+  hex: string;
+  lab: { L: number; a: number; b: number };
+  reflectance: number[];
+  created_at?: string;
+}
+
+export interface ProposerRecommendation {
+  concentration_pct: number;
+  base_weight_g: number;
+  paste_weight_g: number;
+  paste_volume_ml: number;
+  total_weight_g: number;
+  total_volume_ml: number;
+  instruction: string;
+}
+
+export interface ProposerResponse {
+  base_weight_g: number;
+  base_density: number;
+  paste_density: number;
+  recommendations: ProposerRecommendation[];
+  summary: string;
+}
+
+export interface ScaledPaste {
+  paste_id: number;
+  name: string;
+  code: string;
+  color_hex: string;
+  concentration_pct: number;
+  density: number;
+  per_can: {
+    mass_g: number;
+    volume_ml: number;
+    shots: number;
+  };
+  total: {
+    mass_g: number;
+    volume_ml: number;
+  };
+  cost_per_kg: number;
+  total_cost: number;
+}
+
+export interface CanScaledRecipe {
+  can_size: CanSize;
+  number_of_cans: number;
+  base: {
+    id: number;
+    name: string;
+    code: string;
+    density: number;
+    cost_per_liter: number;
+    per_can_volume_l: number;
+    per_can_mass_kg: number;
+    total_volume_l: number;
+    total_mass_kg: number;
+    total_cost: number;
+  };
+  pastes: ScaledPaste[];
+  headspace: {
+    max_colorant_volume_ml: number;
+    used_colorant_volume_ml: number;
+    remaining_headspace_ml: number;
+    overfill_alert: boolean;
+    status: 'HEADSPACE_SAFE' | 'OVERFILL_WARNING';
+  };
+  costing: {
+    base_cost: number;
+    colorant_cost: number;
+    package_cost: number;
+    total_batch_cost: number;
+    cost_per_liter: number;
+    cost_per_can: number;
+  };
+}
+
+export interface BatchMatchItem {
+  color_id: number;
+  color_code: string;
+  color_name: string;
+  hex: string;
+  delta_e00: number | null;
+  passed: boolean;
+  pastes?: Array<{ paste_id: number; name: string; code: string; concentration: number; hex: string }>;
+  predicted_hex?: string;
+  predicted_lab?: { L: number; a: number; b: number };
+  error?: string;
+}
+
+export interface BatchMatchResponse {
+  card: { id: number; code: string; name: string };
+  total_colors: number;
+  passed_colors: number;
+  success_rate_pct: number;
+  results: BatchMatchItem[];
+}
+

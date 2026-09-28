@@ -9,10 +9,11 @@ import { Glossary } from './components/Glossary';
 import { IsoReportView } from './components/IsoReportView';
 import { InstrumentModal } from './components/InstrumentModal';
 import { SpectroSettingsView } from './components/SpectroSettingsView';
+import { ConfigurationView } from './components/ConfigurationView';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report'>('dashboard');
   const [bases, setBases] = useState<BasePaint[]>([]);
   const [pastes, setPastes] = useState<ColorantPaste[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
 
   // Cross-component states
   const [simPaste, setSimPaste] = useState<ColorantPaste | null>(null);
+  const [externalTarget, setExternalTarget] = useState<{ reflectance: number[]; name: string; hex?: string } | null>(null);
   const [reportId, setReportId] = useState<number>(1);
 
   const loadData = async () => {
@@ -122,6 +124,17 @@ export const App: React.FC = () => {
                 bases={bases}
                 pastes={pastes}
                 initialPaste={simPaste}
+                initialTarget={externalTarget}
+              />
+            )}
+
+            {activeTab === 'config' && (
+              <ConfigurationView
+                bases={bases}
+                onNavigateToFormulationWithTarget={(refl, colorName) => {
+                  setExternalTarget({ reflectance: refl, name: colorName });
+                  setActiveTab('formulation');
+                }}
               />
             )}
 

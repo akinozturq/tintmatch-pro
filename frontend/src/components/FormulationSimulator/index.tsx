@@ -5,8 +5,10 @@ import type {
   RecipeSimulation,
   RecipeMatch,
   SensitivityItem,
+  CanSize,
+  CanScaledRecipe,
 } from '../../types';
-import { predictRecipe, matchColor } from '../../services/api';
+import { predictRecipe, matchColor, fetchCanSizes, scaleRecipeToCan } from '../../services/api';
 import { RecipeCards } from './RecipeCards';
 import { RecipeComparisonMatrix } from './RecipeComparisonMatrix';
 import { ConcentrationSliders } from './ConcentrationSliders';
@@ -14,6 +16,7 @@ import { SpectralPreview } from './SpectralPreview';
 import { ColorMetrics } from './ColorMetrics';
 import { SolverDiagnosticsView } from './SolverDiagnosticsView';
 import { SensitivityMatrixView } from './SensitivityMatrixView';
+import { CanSizingView } from './CanSizingView';
 import { MAX_TOTAL_COLORANT_LOAD } from '../../constants/limits';
 import {
   Wand2,
@@ -25,12 +28,14 @@ interface SimulatorProps {
   bases: BasePaint[];
   pastes: ColorantPaste[];
   initialPaste?: ColorantPaste | null;
+  initialTarget?: { reflectance: number[]; name: string; hex?: string } | null;
 }
 
 export const FormulationSimulator: React.FC<SimulatorProps> = ({
   bases,
   pastes,
   initialPaste,
+  initialTarget,
 }) => {
   const [selectedBaseId, setSelectedBaseId] = useState<number>(bases[0]?.id || 1);
   const [k1] = useState<number>(0.04);
@@ -122,28 +127,34 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
     setDiagnostics(null);
   };
 
-  const handleRunAutoMatch = async () => {
+  // Innovatint Can Sizing State
+  const [canSizes, setCanSizes] = useState<CanSize[]>([]);
+  const [selectedCanSizeId, setSelectedCanSizeId] = useState<number | null>(null);
+  const [canQuantity, setCanQuantity] = useState<number>(1);
+  const [scaledRecipe, setScaledRecipe] = useState<CanScaledRecipe | null>(null);
+  const [isScalingLoading, setIsScalingLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchCanSizes()
+      .then((data) => {
+        setCanSizes(data);
+        if (data.length > 0) {
+          const defaultCan = data.find((c) => c.nominal_volume_l === 15.0) || data[0];
+          setSelectedCanSizeId(defaultCan.id);
+        }
+      })
+      .catch((err) => console.error('Can sizes load error:', err));
+  }, []);
+
+  const runAutoMatchWithReflectance = async (refl: number[], hex?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
-
-    const r_num = parseInt(targetHex.slice(1, 3), 16) / 255.0;
-    const g_num = parseInt(targetHex.slice(3, 5), 16) / 255.0;
-    const b_num = parseInt(targetHex.slice(5, 7), 16) / 255.0;
-
-    const synthTargetReflectance = Array.from({ length: 31 }, (_, i) => {
-      const wl = 400 + i * 10;
-      let val = 0.05;
-      if (wl < 490) val += b_num * 0.7;
-      if (wl >= 490 && wl < 580) val += g_num * 0.7;
-      if (wl >= 580) val += r_num * 0.7;
-      return Math.max(0.02, Math.min(0.95, val));
-    });
-
-    setTargetReflectance(synthTargetReflectance);
+    if (hex) setTargetHex(hex);
+    setTargetReflectance(refl);
 
     try {
       const matchRes = await matchColor({
-        target_reflectance: synthTargetReflectance,
+        target_reflectance: refl,
         base_id: selectedBaseId,
         k1,
         k2,
@@ -179,6 +190,57 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (initialTarget && initialTarget.reflectance && initialTarget.reflectance.length === 31) {
+      setMode('automatch');
+      if (initialTarget.hex) setTargetHex(initialTarget.hex);
+      runAutoMatchWithReflectance(initialTarget.reflectance, initialTarget.hex);
+    }
+  }, [initialTarget]);
+
+  useEffect(() => {
+    if (!selectedCanSizeId) return;
+    const activePastes = Object.entries(concentrations)
+      .filter(([_, conc]) => (conc as number) > 0)
+      .map(([id, conc]) => ({
+        paste_id: Number(id),
+        concentration: conc as number,
+      }));
+
+    if (activePastes.length === 0) {
+      setScaledRecipe(null);
+      return;
+    }
+
+    setIsScalingLoading(true);
+    scaleRecipeToCan({
+      can_size_id: selectedCanSizeId,
+      base_id: selectedBaseId,
+      pastes: activePastes,
+      number_of_cans: canQuantity,
+    })
+      .then((data) => setScaledRecipe(data))
+      .catch((err) => console.warn('Scale recipe error:', err))
+      .finally(() => setIsScalingLoading(false));
+  }, [selectedCanSizeId, selectedBaseId, concentrations, canQuantity]);
+
+  const handleRunAutoMatch = async () => {
+    const r_num = parseInt(targetHex.slice(1, 3), 16) / 255.0;
+    const g_num = parseInt(targetHex.slice(3, 5), 16) / 255.0;
+    const b_num = parseInt(targetHex.slice(5, 7), 16) / 255.0;
+
+    const synthTargetReflectance = Array.from({ length: 31 }, (_, i) => {
+      const wl = 400 + i * 10;
+      let val = 0.05;
+      if (wl < 490) val += b_num * 0.7;
+      if (wl >= 490 && wl < 580) val += g_num * 0.7;
+      if (wl >= 580) val += r_num * 0.7;
+      return Math.max(0.02, Math.min(0.95, val));
+    });
+
+    await runAutoMatchWithReflectance(synthTargetReflectance, targetHex);
   };
 
   const handleSelectRecipe = (key: 'recipe_a' | 'recipe_b' | 'recipe_c') => {
@@ -372,6 +434,18 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
           <SensitivityMatrixView sensitivityMatrix={sensitivityMatrix} />
         </div>
       </div>
+
+      {/* Innovatint Can Sizing & Scaling Engine */}
+      <CanSizingView
+        canSizes={canSizes}
+        selectedCanSizeId={selectedCanSizeId}
+        onSelectCanSizeId={(id) => setSelectedCanSizeId(id)}
+        canQuantity={canQuantity}
+        onChangeCanQuantity={(qty) => setCanQuantity(qty)}
+        scaledRecipe={scaledRecipe}
+        isLoading={isScalingLoading}
+        activeBase={bases.find((b) => b.id === selectedBaseId)}
+      />
     </div>
   );
 };
