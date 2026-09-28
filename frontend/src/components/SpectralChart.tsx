@@ -152,7 +152,7 @@ export const SpectralChart: React.FC<SpectralChartProps> = ({
       </div>
 
       {/* Wavelength Spectrum Bar */}
-      <div className="mt-3 pt-3 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+      <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between text-[10px] text-[var(--text-muted)] font-mono">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />

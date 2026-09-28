@@ -325,40 +325,40 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 w-full space-y-6">
       {/* Top Banner & Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-950/70 border border-blue-800/80 flex items-center justify-center text-blue-400 shadow-md">
+            <div className="w-9 h-9 rounded-[var(--radius-lg)] bg-[var(--surface-0)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)] shadow-sm">
               <Cpu className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-zinc-100 flex items-center gap-2.5">
+              <h1 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2.5">
                 <span>Spektrofotometre Yönetim & Kalibrasyon Masası</span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-secondary)]">
                   CHNSpec DS-36D & X-Rite RM400
                 </span>
               </h1>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
                 Donanım bağlantısı, optik karo kalibrasyonu, vardiya denetimi ve anlık canlı reflektans ölçümü
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-auto font-mono">
+        <div className="flex items-center gap-2.5 self-start md:self-auto font-mono">
           <button
             onClick={refreshAll}
             disabled={isLoading}
-            className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 rounded-[var(--radius)] bg-[var(--surface-0)] hover:bg-[var(--surface-3)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-[var(--accent)]' : ''}`} />
             <span>Yenile</span>
           </button>
 
           {onNavigateToWizard && (
             <button
               onClick={onNavigateToWizard}
-              className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 flex items-center gap-1.5 transition-colors hover:text-white"
+              className="px-3 py-1.5 rounded-[var(--radius)] bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
             >
               <span>Karakterizasyona Git</span>
               <ArrowRight className="h-3 w-3" />
@@ -370,27 +370,27 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
       {/* Notifications / Feedback Bar */}
       {feedback && (
         <div
-          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+          className={`p-3.5 rounded-[var(--radius-lg)] border text-xs flex items-center justify-between gap-3 shadow-sm ${
             feedback.type === 'success'
-              ? 'bg-emerald-950/40 border-emerald-900/70 text-emerald-300'
+              ? 'bg-[var(--surface-3)] border-[var(--success)] text-[var(--success-text)]'
               : feedback.type === 'error'
-              ? 'bg-red-950/40 border-red-900/70 text-red-300'
-              : 'bg-blue-950/40 border-blue-900/70 text-blue-300'
+              ? 'bg-[var(--surface-3)] border-[var(--danger)] text-[var(--danger-text)]'
+              : 'bg-[var(--surface-3)] border-[var(--accent)] text-[var(--accent-text)]'
           }`}
         >
           <div className="flex items-center gap-2.5">
             {feedback.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--success)]" />
             ) : feedback.type === 'error' ? (
-              <AlertCircle className="h-4 w-4 shrink-0" />
+              <AlertCircle className="h-4 w-4 shrink-0 text-[var(--danger)]" />
             ) : (
-              <Activity className="h-4 w-4 shrink-0 animate-pulse" />
+              <Activity className="h-4 w-4 shrink-0 animate-pulse text-[var(--accent)]" />
             )}
-            <span className="font-medium">{feedback.message}</span>
+            <span className="font-medium text-[var(--text-primary)]">{feedback.message}</span>
           </div>
           <button
             onClick={() => setFeedback(null)}
-            className="text-[11px] font-mono opacity-70 hover:opacity-100 uppercase"
+            className="text-[11px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase"
           >
             Kapat
           </button>
@@ -398,21 +398,21 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
       )}
 
       {/* Device Selector Tabs */}
-      <div className="flex border-b border-zinc-800 bg-[#0c0c0e] px-4 rounded-xl">
+      <div className="flex border-b border-[var(--border)] bg-[var(--surface-0)] px-2 rounded-[var(--radius-lg)]">
         <button
           onClick={() => setActiveDevice('chnspec')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+          className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all ${
             activeDevice === 'chnspec'
-              ? 'border-blue-500 text-blue-400 bg-blue-950/20'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              ? 'border-[var(--brand-clay)] text-[var(--brand-clay)] bg-[var(--surface-3)]/60'
+              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
         >
           <Radio className="h-4 w-4" />
           <span>CHNSpec DS-36D (d/8° Küre Geometrisi)</span>
           {isChnConnected && (
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                isChnReal ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+              className={`w-2 h-2 rounded-full ${
+                isChnReal ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--warning)]'
               }`}
             />
           )}
@@ -420,16 +420,16 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveDevice('rm400')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-semibold border-b-2 transition-all ${
+          className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all ${
             activeDevice === 'rm400'
-              ? 'border-blue-500 text-blue-400 bg-blue-950/20'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              ? 'border-[var(--brand-clay)] text-[var(--brand-clay)] bg-[var(--surface-3)]/60'
+              : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
         >
           <Sliders className="h-4 w-4" />
           <span>X-Rite RM400 (45°:0° Dairesel Algılama)</span>
           {isRmConnected && (
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
           )}
         </button>
       </div>
@@ -441,25 +441,25 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
           {/* ======================================================== */}
           {/* 1. BAĞLANTI & PORT PANELİ */}
           {/* ======================================================== */}
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)] transition-colors">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div className="flex items-center gap-2">
-                <Radio className="h-4 w-4 text-blue-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200 font-mono">
+                <Radio className="h-4 w-4 text-[var(--brand-clay)]" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                   1. Cihaz Bağlantı Portu
                 </h3>
               </div>
               <span
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                className={`px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono font-medium border ${
                   activeDevice === 'chnspec'
                     ? isChnReal
-                      ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+                      ? 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--success-text)] font-semibold'
                       : isChnConnected
-                      ? 'bg-amber-950/80 border-amber-800 text-amber-300'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                      ? 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--warning-text)]'
+                      : 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--text-muted)]'
                     : isRmReal
-                    ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                    ? 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--success-text)] font-semibold'
+                    : 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--text-muted)]'
                 }`}
               >
                 {activeDevice === 'chnspec'
@@ -477,14 +477,14 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
             {activeDevice === 'chnspec' ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-zinc-400 block mb-1.5 font-medium">
+                  <label className="text-xs text-[var(--text-secondary)] block mb-1.5 font-medium">
                     Seri COM Portu Seçimi:
                   </label>
                   <select
                     value={selectedPort}
                     onChange={(e) => setSelectedPort(e.target.value)}
                     disabled={isConnecting || isChnConnected}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-blue-500 font-mono disabled:opacity-50"
+                    className="w-full bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-mono disabled:opacity-50"
                   >
                     {availablePorts.length === 0 ? (
                       <option value="">Port bulunamadı</option>
@@ -503,7 +503,7 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                     <button
                       onClick={handleConnectChnspec}
                       disabled={isConnecting}
-                      className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-blue-900/30"
+                      className="flex-1 py-2.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm"
                     >
                       <Zap className="h-4 w-4 fill-current" />
                       <span>{isConnecting ? 'Bağlanıyor...' : 'DS-36D Cihaza Bağlan'}</span>
@@ -512,7 +512,7 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                     <button
                       onClick={handleDisconnectChnspec}
                       disabled={isConnecting}
-                      className="flex-1 py-2.5 bg-red-950/60 hover:bg-red-900/80 border border-red-800 text-red-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--danger)] text-[var(--danger-text)] rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                     >
                       <span>{isConnecting ? 'Ayrılıyor...' : 'Bağlantıyı Kes'}</span>
                     </button>
@@ -520,30 +520,30 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                   <button
                     onClick={refreshAll}
                     title="Portları Yeniden Tara"
-                    className="p-2.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors"
+                    className="p-2.5 bg-[var(--surface-0)] border border-[var(--border)] hover:bg-[var(--surface-1)] rounded-[var(--radius)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                   >
                     <RefreshCw className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-400 space-y-1">
+                <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[11px] font-mono text-[var(--text-secondary)] space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Cihaz Modeli:</span>
-                    <span className="text-zinc-200">CHNSpec DS-36D</span>
+                    <span className="text-[var(--text-muted)]">Cihaz Modeli:</span>
+                    <span className="text-[var(--text-primary)]">CHNSpec DS-36D</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Optik Geometri:</span>
-                    <span className="text-zinc-200">d/8° Difüz Entegre Küre</span>
+                    <span className="text-[var(--text-muted)]">Optik Geometri:</span>
+                    <span className="text-[var(--text-primary)]">d/8° Difüz Entegre Küre</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Kanal Sayısı:</span>
-                    <span className="text-zinc-200">400-700 nm @ 10 nm (31 Kanal)</span>
+                    <span className="text-[var(--text-muted)]">Kanal Sayısı:</span>
+                    <span className="text-[var(--text-primary)]">400-700 nm @ 10 nm (31 Kanal)</span>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-xs text-zinc-400 leading-relaxed">
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                   X-Rite RM400 cihazı 45°:0° optik geometriye sahip olup `RM400.dll` sürücüsü üzerinden USB ile kontrol edilir.
                 </p>
 
@@ -552,7 +552,7 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                     <button
                       onClick={handleConnectRm400}
                       disabled={isConnecting}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-blue-900/30"
+                      className="w-full py-2.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm"
                     >
                       <Zap className="h-4 w-4 fill-current" />
                       <span>{isConnecting ? 'Bağlanıyor...' : 'RM400 Cihaza Bağlan'}</span>
@@ -561,25 +561,25 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                     <button
                       onClick={handleDisconnectRm400}
                       disabled={isConnecting}
-                      className="w-full py-2.5 bg-red-950/60 hover:bg-red-900/80 border border-red-800 text-red-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                      className="w-full py-2.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--danger)] text-[var(--danger-text)] rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                     >
                       <span>Bağlantıyı Kes</span>
                     </button>
                   )}
                 </div>
 
-                <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-400 space-y-1">
+                <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[11px] font-mono text-[var(--text-secondary)] space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Model:</span>
-                    <span className="text-zinc-200">X-Rite RM400</span>
+                    <span className="text-[var(--text-muted)]">Model:</span>
+                    <span className="text-[var(--text-primary)]">X-Rite RM400</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Geometri:</span>
-                    <span className="text-zinc-200">45°/0° SPEX</span>
+                    <span className="text-[var(--text-muted)]">Geometri:</span>
+                    <span className="text-[var(--text-primary)]">45°/0° SPEX</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-500">Sürücü Durumu:</span>
-                    <span className={rm400Status?.driver_available ? 'text-emerald-400' : 'text-zinc-500'}>
+                    <span className="text-[var(--text-muted)]">Sürücü Durumu:</span>
+                    <span className={rm400Status?.driver_available ? 'text-[var(--success-text)] font-semibold' : 'text-[var(--text-muted)]'}>
                       {rm400Status?.driver_available ? 'DLL Hazır' : 'Sürücü Yok (Simülasyon)'}
                     </span>
                   </div>
@@ -591,21 +591,21 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
           {/* ======================================================== */}
           {/* 2. KALİBRASYON MASASI */}
           {/* ======================================================== */}
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)] transition-colors">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200 font-mono">
+                <ShieldCheck className="h-4 w-4 text-[var(--success-text)]" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                   2. Kalibrasyon Masası
                 </h3>
               </div>
               <span
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                className={`px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono font-medium border ${
                   isCalValid
-                    ? 'bg-emerald-950 border-emerald-800 text-emerald-300'
+                    ? 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--success-text)] font-semibold'
                     : isCalExpiring
-                    ? 'bg-amber-950 border-amber-800 text-amber-300'
-                    : 'bg-red-950 border-red-800 text-red-300'
+                    ? 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--warning-text)]'
+                    : 'bg-[var(--surface-0)] border-[var(--border)] text-[var(--danger-text)]'
                 }`}
               >
                 {isCalValid
@@ -617,19 +617,19 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
             </div>
 
             {/* Health Info Card */}
-            <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800 text-xs font-mono space-y-2">
+            <div className="p-3 rounded-[var(--radius)] bg-[var(--surface-0)] border border-[var(--border)] text-xs font-mono space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                <span className="text-[var(--text-secondary)] flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                   Vardiya Sayacı (8 Saat ISO):
                 </span>
-                <span className="text-zinc-200 font-semibold">
+                <span className="text-[var(--text-primary)] font-semibold">
                   {chnspecHealth?.remaining_hours !== undefined
                     ? `${chnspecHealth.remaining_hours.toFixed(1)} saat kaldı`
                     : 'Kalibrasyon yapılmadı'}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-[var(--text-muted)]">
                 {chnspecHealth?.message || 'Cihazla doğru ölçüm almak için beyaz ve siyah kalibrasyonu yapınız.'}
               </p>
             </div>
@@ -637,27 +637,27 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
             {activeDevice === 'chnspec' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 {/* Beyaz Karo Kalibrasyonu */}
-                <div className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-950/60 flex flex-col justify-between space-y-3">
+                <div className="p-3.5 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-0)] flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="text-[10px] font-mono text-zinc-500 uppercase block mb-1">Adım 1</span>
-                    <h4 className="text-xs font-semibold text-zinc-200">Beyaz Karo</h4>
-                    <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                    <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase block mb-1">Adım 1</span>
+                    <h4 className="text-xs font-semibold text-[var(--text-primary)]">Beyaz Karo</h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
                       Beyaz seramik kalibrasyon karosunu açıklığa kilitleyin.
                     </p>
                   </div>
                   <button
                     onClick={() => handleCalibrateChnspec('White')}
                     disabled={isCalibrating !== null}
-                    className="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm flex items-center justify-center gap-1.5"
+                    className="w-full py-2 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold transition-all disabled:opacity-50 shadow-sm flex items-center justify-center gap-1.5"
                   >
                     {isCalibrating === 'White' ? (
                       <>
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-zinc-900" />
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-white" />
                         <span>Flaş Patlıyor...</span>
                       </>
                     ) : (
                       <>
-                        <Zap className="h-3.5 w-3.5 text-zinc-950 fill-current" />
+                        <Zap className="h-3.5 w-3.5 fill-current" />
                         <span>Beyazı Kalibre Et</span>
                       </>
                     )}
@@ -665,27 +665,27 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                 </div>
 
                 {/* Siyah Tuzak Kalibrasyonu */}
-                <div className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-950/60 flex flex-col justify-between space-y-3">
+                <div className="p-3.5 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-0)] flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="text-[10px] font-mono text-zinc-500 uppercase block mb-1">Adım 2</span>
-                    <h4 className="text-xs font-semibold text-zinc-200">Siyah Tuzak</h4>
-                    <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                    <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase block mb-1">Adım 2</span>
+                    <h4 className="text-xs font-semibold text-[var(--text-primary)]">Siyah Tuzak</h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
                       Siyah ışık tuzağını (Black Cavity) açıklığa yerleştirin.
                     </p>
                   </div>
                   <button
                     onClick={() => handleCalibrateChnspec('Black')}
                     disabled={isCalibrating !== null}
-                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    className="w-full py-2 bg-[var(--surface-1)] hover:bg-[var(--surface-3)] text-[var(--text-primary)] border border-[var(--border)] rounded-[var(--radius)] text-xs font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     {isCalibrating === 'Black' ? (
                       <>
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-zinc-300" />
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--text-primary)]" />
                         <span>Flaş Patlıyor...</span>
                       </>
                     ) : (
                       <>
-                        <Zap className="h-3.5 w-3.5 text-zinc-400 fill-current" />
+                        <Zap className="h-3.5 w-3.5 fill-current text-[var(--text-muted)]" />
                         <span>Siyahı Kalibre Et</span>
                       </>
                     )}
@@ -697,7 +697,7 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                 <button
                   onClick={handleCalibrateRm400}
                   disabled={isCalibrating !== null}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  className="w-full py-2.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm"
                 >
                   <Zap className="h-4 w-4 fill-current" />
                   <span>{isCalibrating ? 'RM400 Kalibre Ediliyor...' : 'RM400 Standart Kalibrasyonu Yap'}</span>
@@ -712,22 +712,22 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
           {/* ======================================================== */}
           {/* 3. CANLI ÖLÇÜM MASASI */}
           {/* ======================================================== */}
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)] transition-colors">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div className="flex items-center gap-2">
-                <Play className="h-4 w-4 text-blue-400 fill-current" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200 font-mono">
+                <Play className="h-4 w-4 text-[var(--brand-clay)] fill-current" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                   3. Canlı Test Ölçüm Masası
                 </h3>
               </div>
-              <span className="text-[11px] font-mono text-zinc-500">
+              <span className="text-[11px] font-mono text-[var(--text-muted)]">
                 Tek Tıkla Spektrum Okuma
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
               <div className="sm:col-span-5">
-                <label className="text-xs text-zinc-400 block mb-1 font-medium">
+                <label className="text-xs text-[var(--text-secondary)] block mb-1 font-medium">
                   Numune Adı / Seri No:
                 </label>
                 <input
@@ -735,19 +735,19 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                   value={sampleName}
                   onChange={(e) => setSampleName(e.target.value)}
                   placeholder="Numune 01"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
+                  className="w-full bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-mono"
                 />
               </div>
 
               {activeDevice === 'chnspec' && (
                 <div className="sm:col-span-4">
-                  <label className="text-xs text-zinc-400 block mb-1 font-medium">
+                  <label className="text-xs text-[var(--text-secondary)] block mb-1 font-medium">
                     Optik Mod:
                   </label>
                   <select
                     value={measureMode}
                     onChange={(e: any) => setMeasureMode(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
+                    className="w-full bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-mono"
                   >
                     <option value="SCI">SCI (Speküler Dahil - Toplam)</option>
                     <option value="SCE">SCE (Speküler Hariç - Doku)</option>
@@ -760,7 +760,7 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
                 <button
                   onClick={activeDevice === 'chnspec' ? handleMeasureChnspec : handleMeasureRm400}
                   disabled={isMeasuring}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-emerald-950/40"
+                  className="w-full py-2.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm"
                 >
                   <Play className={`h-3.5 w-3.5 fill-current ${isMeasuring ? 'animate-ping' : ''}`} />
                   <span>{isMeasuring ? 'Flaş Patlıyor...' : 'Canlı Ölçüm Al'}</span>
@@ -770,17 +770,17 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
 
             {/* Quick Result Preview Card */}
             {latestMeasurement && (
-              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="p-4 rounded-[var(--radius)] bg-[var(--surface-0)] border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3.5">
                   <div
-                    className="w-12 h-12 rounded-xl border border-zinc-700 shadow-md flex-shrink-0"
+                    className="w-12 h-12 rounded-[var(--radius)] border border-[var(--border-strong)] shadow-md flex-shrink-0"
                     style={{ backgroundColor: latestMeasurement.hex || '#777777' }}
                   />
                   <div>
-                    <h4 className="text-xs font-bold text-zinc-200 font-mono">
+                    <h4 className="text-xs font-bold text-[var(--text-primary)] font-mono">
                       {latestMeasurement.sample_name || sampleName}
                     </h4>
-                    <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
+                    <p className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
                       {latestMeasurement.instrument || 'Spektrofotometre'} • {latestMeasurement.geometry || 'd/8°'}
                     </p>
                   </div>
@@ -788,24 +788,24 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
 
                 <div className="flex items-center gap-4 text-xs font-mono">
                   <div className="text-center">
-                    <span className="text-[10px] text-zinc-500 block">L*</span>
-                    <span className="text-zinc-200 font-bold">{labObj.L.toFixed(2)}</span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">L*</span>
+                    <span className="text-[var(--text-primary)] font-bold">{labObj.L.toFixed(2)}</span>
                   </div>
                   <div className="text-center">
-                    <span className="text-[10px] text-zinc-500 block">a*</span>
-                    <span className={`font-bold ${labObj.a >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    <span className="text-[10px] text-[var(--text-muted)] block">a*</span>
+                    <span className={`font-bold ${labObj.a >= 0 ? 'text-[var(--danger-text)]' : 'text-[var(--success-text)]'}`}>
                       {labObj.a.toFixed(2)}
                     </span>
                   </div>
                   <div className="text-center">
-                    <span className="text-[10px] text-zinc-500 block">b*</span>
-                    <span className={`font-bold ${labObj.b >= 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                    <span className="text-[10px] text-[var(--text-muted)] block">b*</span>
+                    <span className={`font-bold ${labObj.b >= 0 ? 'text-[var(--warning-text)]' : 'text-[var(--accent-text)]'}`}>
                       {labObj.b.toFixed(2)}
                     </span>
                   </div>
-                  <div className="text-center pl-2 border-l border-zinc-800">
-                    <span className="text-[10px] text-zinc-500 block">HEX</span>
-                    <span className="text-zinc-300 font-bold">{latestMeasurement.hex || '#---'}</span>
+                  <div className="text-center pl-2 border-l border-[var(--border)]">
+                    <span className="text-[10px] text-[var(--text-muted)] block">HEX</span>
+                    <span className="text-[var(--text-primary)] font-bold">{latestMeasurement.hex || '#---'}</span>
                   </div>
                 </div>
               </div>
@@ -815,20 +815,20 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
           {/* ======================================================== */}
           {/* 4. SPEKTRAL GRAFİK & REFLEKTANS EĞRİSİ */}
           {/* ======================================================== */}
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)] transition-colors">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-emerald-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200 font-mono">
+                <Activity className="h-4 w-4 text-[var(--brand-clay)]" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-primary)] font-mono">
                   4. Canlı Spektral Yansıma Eğrisi (400 - 700 nm)
                 </h3>
               </div>
               {latestMeasurement && (
                 <button
                   onClick={handleCopyCsv}
-                  className="px-2.5 py-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-mono text-zinc-300 rounded flex items-center gap-1.5 transition-colors"
+                  className="px-2.5 py-1 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[11px] font-mono text-[var(--text-primary)] rounded-[var(--radius-xs)] flex items-center gap-1.5 transition-colors shadow-sm"
                 >
-                  {copiedCsv ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                  {copiedCsv ? <Check className="h-3 w-3 text-[var(--success-text)]" /> : <Copy className="h-3 w-3" />}
                   <span>{copiedCsv ? 'Kopyalandı' : 'CSV Kopyala'}</span>
                 </button>
               )}
@@ -836,23 +836,24 @@ export const SpectroSettingsView: React.FC<SpectroSettingsViewProps> = ({
 
             <div className="h-64 w-full">
               {chartData.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-2 border border-dashed border-zinc-800/80 rounded-xl bg-zinc-950/30">
+                <div className="h-full flex flex-col items-center justify-center text-[var(--text-muted)] gap-2 border border-dashed border-[var(--border)] rounded-[var(--radius-lg)] bg-[var(--surface-0)]">
                   <Radio className="h-6 w-6 opacity-40" />
                   <p className="text-xs font-mono">Henüz ölçüm alınmadı. 'Canlı Ölçüm Al' düğmesine basınız.</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                    <XAxis dataKey="wl" stroke="#71717a" fontSize={10} tickLine={false} />
-                    <YAxis stroke="#71717a" fontSize={10} domain={[0, 100]} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="wl" stroke="var(--text-muted)" fontSize={10} tickLine={false} />
+                    <YAxis stroke="var(--text-muted)" fontSize={10} domain={[0, 100]} tickLine={false} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#18181b',
-                        borderColor: '#27272a',
+                        backgroundColor: 'var(--surface-3)',
+                        borderColor: 'var(--border-strong)',
                         borderRadius: '0.5rem',
                         fontSize: '11px',
-                        fontFamily: 'monospace'
+                        fontFamily: 'monospace',
+                        color: 'var(--text-primary)'
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace' }} />

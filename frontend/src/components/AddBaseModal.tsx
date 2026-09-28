@@ -155,22 +155,22 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface-1)]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <div className="w-8 h-8 rounded-lg bg-[var(--brand-blue)]/10 border border-[var(--brand-blue)]/30 flex items-center justify-center text-[var(--brand-blue)]">
               <Layers className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Yeni Taşıyıcı Baz Boya Tanımla</h2>
-              <p className="text-[11px] text-zinc-400">Kubelka-Munk ve Saunderson modelleri için baz parametreleri</p>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Yeni Taşıyıcı Baz Boya Tanımla</h2>
+              <p className="text-[11px] text-[var(--text-muted)]">Kubelka-Munk ve Saunderson modelleri için baz parametreleri</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-0)] transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -179,8 +179,8 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto font-sans">
           {submitError && (
-            <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-xl text-xs text-red-300 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+            <div className="p-3 bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-xl text-xs text-[var(--danger)] flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{submitError}</span>
             </div>
           )}
@@ -188,28 +188,28 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
           {/* Baz Adı & Kodu */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Baz Boya Adı <span className="text-red-400">*</span>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+                Baz Boya Adı <span className="text-[var(--danger)]">*</span>
               </label>
               <input
                 type="text"
                 placeholder="Örn: Süper Beyaz Opak Baz"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--brand-clay)] transition-colors"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Baz Kodu <span className="text-red-400">*</span>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+                Baz Kodu <span className="text-[var(--danger)]">*</span>
               </label>
               <input
                 type="text"
                 placeholder="Örn: BASE-A-WHITE"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 font-mono focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono focus:outline-none focus:border-[var(--brand-clay)] transition-colors"
                 required
               />
             </div>
@@ -218,13 +218,13 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
           {/* Baz Tipi ve Yoğunluk */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
                 Baz Sınıfı (Kubelka-Munk Tipi)
               </label>
               <select
                 value={baseType}
                 onChange={(e) => applyTemplate(e.target.value as any)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)] transition-colors"
               >
                 <option value="white_a">Base A (Opak Beyaz - Yüksek TiO2, S=1.0)</option>
                 <option value="medium_b">Base B (Orta / Yarı-Opak - S=0.65)</option>
@@ -233,7 +233,7 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
                 Yoğunluk (g/cm³)
               </label>
               <input
@@ -243,38 +243,38 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
                 max="2.50"
                 value={density}
                 onChange={(e) => setDensity(parseFloat(e.target.value) || 1.45)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors font-mono"
+                className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)] transition-colors font-mono"
               />
             </div>
           </div>
 
           {/* Spektral Yansıma Ölçümü (31 Nokta) */}
-          <div className="p-4 bg-zinc-950/70 border border-zinc-800/90 rounded-xl space-y-3">
+          <div className="p-4 bg-[var(--surface-1)] border border-[var(--border)] rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                  <Activity className="h-3.5 w-3.5 text-blue-400" />
+                <span className="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5 text-[var(--brand-blue)]" />
                   Spektral Yansıma Eğrisi ($R_\lambda$ 400-700 nm @ 10 nm)
                 </span>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
                   Bağlı spektrofotometre ile baz çekimini ölçün veya tipik referans şablonu uygulayın.
                 </p>
               </div>
               {reflectance ? (
-                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] flex items-center gap-1 font-medium">
                   <Check className="h-3 w-3" />
                   31 Kanal Hazır
                 </span>
               ) : (
-                <span className="px-2 py-0.5 rounded bg-amber-950/50 border border-amber-800/60 text-amber-400 font-mono text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-medium">
                   Ölçüm Bekleniyor
                 </span>
               )}
             </div>
 
             {measureError && (
-              <div className="p-2.5 bg-red-950/30 border border-red-900/60 rounded-lg text-[11px] text-red-300 flex items-center gap-2">
-                <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+              <div className="p-2.5 bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg text-[11px] text-[var(--danger)] flex items-center gap-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 <span>{measureError}</span>
               </div>
             )}
@@ -284,7 +284,7 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
                 type="button"
                 onClick={handleMeasureFromDevice}
                 disabled={isMeasuring}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                className="px-3 py-1.5 bg-[var(--brand-blue)] hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
               >
                 {isMeasuring ? (
                   <>
@@ -302,25 +302,25 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
               <button
                 type="button"
                 onClick={() => applyTemplate(baseType)}
-                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                <Sparkles className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
                 <span>Şablon Eğri Doldur</span>
               </button>
             </div>
 
             {/* Spektrum Önizleme (Mini bar chart) */}
             {reflectance && reflectance.length === 31 && (
-              <div className="mt-3 pt-3 border-t border-zinc-800/80">
-                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1.5">
+              <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-muted)] mb-1.5">
                   <span>Ort. Yansıma: %{(reflectance.reduce((a, b) => a + b, 0) / 31 * 100).toFixed(1)}</span>
                   <span>400 nm → 700 nm</span>
                 </div>
-                <div className="h-10 flex items-end gap-1 bg-zinc-900 p-1.5 rounded-lg border border-zinc-800">
+                <div className="h-10 flex items-end gap-1 bg-[var(--surface-neutral)] p-1.5 rounded-lg border border-[var(--border)]">
                   {reflectance.map((val, idx) => (
                     <div
                       key={idx}
-                      className="flex-1 bg-blue-500/80 hover:bg-blue-400 rounded-t transition-all"
+                      className="flex-1 bg-[var(--brand-blue)]/80 hover:bg-[var(--brand-blue)] rounded-t transition-all"
                       style={{ height: `${Math.min(100, Math.max(5, val * 100))}%` }}
                       title={`${400 + idx * 10} nm: %${(val * 100).toFixed(1)}`}
                     />
@@ -331,52 +331,52 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
           </div>
 
           {/* Saunderson ve Film Kalınlığı Ayarları (Gelişmiş) */}
-          <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xl text-xs">
+          <div className="grid grid-cols-3 gap-3 p-3 bg-[var(--surface-1)] border border-[var(--border)] rounded-xl text-xs">
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">Saunderson k1 (Dış)</label>
+              <label className="block text-[11px] text-[var(--text-muted)] mb-1">Saunderson k1 (Dış)</label>
               <input
                 type="number"
                 step="0.005"
                 value={k1}
                 onChange={(e) => setK1(parseFloat(e.target.value) || 0.04)}
-                className="w-full px-2 py-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-300 font-mono text-xs"
+                className="w-full px-2 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded text-[var(--text-primary)] font-mono text-xs focus:outline-none focus:border-[var(--brand-clay)]"
               />
             </div>
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">Saunderson k2 (İç)</label>
+              <label className="block text-[11px] text-[var(--text-muted)] mb-1">Saunderson k2 (İç)</label>
               <input
                 type="number"
                 step="0.01"
                 value={k2}
                 onChange={(e) => setK2(parseFloat(e.target.value) || 0.60)}
-                className="w-full px-2 py-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-300 font-mono text-xs"
+                className="w-full px-2 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded text-[var(--text-primary)] font-mono text-xs focus:outline-none focus:border-[var(--brand-clay)]"
               />
             </div>
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">Film Kalınlığı (µm)</label>
+              <label className="block text-[11px] text-[var(--text-muted)] mb-1">Film Kalınlığı (µm)</label>
               <input
                 type="number"
                 step="10"
                 value={thickness}
                 onChange={(e) => setThickness(parseFloat(e.target.value) || 100.0)}
-                className="w-full px-2 py-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-300 font-mono text-xs"
+                className="w-full px-2 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded text-[var(--text-primary)] font-mono text-xs focus:outline-none focus:border-[var(--brand-clay)]"
               />
             </div>
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium transition-colors"
+              className="px-4 py-2 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded-lg text-xs font-medium transition-colors cursor-pointer"
             >
               Vazgeç
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !reflectance}
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+              className="px-5 py-2 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
             >
               {isSubmitting ? (
                 <>

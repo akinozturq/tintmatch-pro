@@ -19,8 +19,8 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
   if (!allRecipes) return null;
 
   return (
-    <div className="space-y-2 pt-2 border-t border-zinc-800">
-      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+    <div className="space-y-2 pt-2 border-t border-[var(--border)]">
+      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)]">
         <span>CCM OPTİMİZASYON PROFİLLERİ</span>
         <span>Aktif: {activeRecipeKey.toUpperCase()}</span>
       </div>
@@ -29,18 +29,18 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
         <button
           type="button"
           onClick={() => onSelectRecipe('recipe_a')}
-          className={`p-2 rounded-lg border text-left transition-all ${
+          className={`p-2 rounded-[var(--radius)] border text-left transition-all ${
             activeRecipeKey === 'recipe_a'
-              ? 'bg-zinc-800 border-sky-500 shadow-sm shadow-sky-950 text-zinc-100'
-              : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+              ? 'bg-[var(--surface-1)] border-[var(--brand-clay)] ring-1 ring-[var(--brand-clay)] shadow-sm text-[var(--text-primary)]'
+              : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete A</div>
-          <div className="text-[9px] text-zinc-400">Color Match</div>
-          <div className="mt-1 font-mono text-[11px] font-bold text-sky-400">
+          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete A</div>
+          <div className="text-[9px] text-[var(--text-muted)]">Color Match</div>
+          <div className="mt-1 font-mono text-[11px] font-bold text-[var(--brand-clay)]">
             ΔE {allRecipes.recipe_a?.delta_e00?.toFixed(2) || '0.00'}
           </div>
-          <div className="text-[9px] font-mono text-zinc-400">
+          <div className="text-[9px] font-mono text-[var(--text-muted)]">
             %{allRecipes.recipe_a?.total_load?.toFixed(1) || '0.0'} yük
           </div>
         </button>
@@ -49,18 +49,18 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
         <button
           type="button"
           onClick={() => onSelectRecipe('recipe_b')}
-          className={`p-2 rounded-lg border text-left transition-all ${
+          className={`p-2 rounded-[var(--radius)] border text-left transition-all ${
             activeRecipeKey === 'recipe_b'
-              ? 'bg-zinc-800 border-amber-500 shadow-sm shadow-amber-950 text-zinc-100'
-              : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+              ? 'bg-[var(--surface-1)] border-[var(--warning-border)] ring-1 ring-[var(--warning-border)] shadow-sm text-[var(--text-primary)]'
+              : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete B</div>
-          <div className="text-[9px] text-zinc-400">Light Stability</div>
-          <div className="mt-1 font-mono text-[11px] font-bold text-amber-400">
+          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete B</div>
+          <div className="text-[9px] text-[var(--text-muted)]">Light Stability</div>
+          <div className="mt-1 font-mono text-[11px] font-bold text-[var(--warning-text)]">
             MI {allRecipes.recipe_b?.composite_mi?.toFixed(2) || '0.00'}
           </div>
-          <div className="text-[9px] font-mono text-zinc-400">
+          <div className="text-[9px] font-mono text-[var(--text-muted)]">
             ΔE {allRecipes.recipe_b?.delta_e00?.toFixed(2) || '0.00'}
           </div>
         </button>
@@ -69,18 +69,18 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
         <button
           type="button"
           onClick={() => onSelectRecipe('recipe_c')}
-          className={`p-2 rounded-lg border text-left transition-all ${
+          className={`p-2 rounded-[var(--radius)] border text-left transition-all ${
             activeRecipeKey === 'recipe_c'
-              ? 'bg-zinc-800 border-emerald-500 shadow-sm shadow-emerald-950 text-zinc-100'
-              : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+              ? 'bg-[var(--surface-1)] border-[var(--success-border)] ring-1 ring-[var(--success-border)] shadow-sm text-[var(--text-primary)]'
+              : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-zinc-200 truncate">Reçete C</div>
-          <div className="text-[9px] text-zinc-400">Ekonomi / Yük</div>
-          <div className="mt-1 font-mono text-[11px] font-bold text-emerald-400">
+          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete C</div>
+          <div className="text-[9px] text-[var(--text-muted)]">Ekonomi / Yük</div>
+          <div className="mt-1 font-mono text-[11px] font-bold text-[var(--success-text)]">
             %{allRecipes.recipe_c?.total_load?.toFixed(1) || '0.0'}
           </div>
-          <div className="text-[9px] font-mono text-zinc-400">
+          <div className="text-[9px] font-mono text-[var(--text-muted)]">
             ΔE {allRecipes.recipe_c?.delta_e00?.toFixed(2) || '0.00'}
           </div>
         </button>

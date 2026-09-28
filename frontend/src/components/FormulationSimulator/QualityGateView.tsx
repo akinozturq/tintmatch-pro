@@ -9,25 +9,25 @@ interface QualityGateViewProps {
 export const QualityGateView: React.FC<QualityGateViewProps> = ({ comparison }) => {
   return (
     <div className="space-y-1">
-      <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+      <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)] block">
         Kalite Gate & Tolerans Denetimi
       </span>
 
       {comparison && (
-        <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 space-y-1 font-mono text-xs">
+        <div className="p-2.5 bg-[var(--surface-0)] rounded-[var(--radius)] border border-[var(--border)] space-y-1 font-mono text-xs">
           <div className="flex justify-between items-center">
-            <span className="text-zinc-400">CIEDE2000 (ΔE00):</span>
+            <span className="text-[var(--text-secondary)]">CIEDE2000 (ΔE00):</span>
             <span
-              className={`font-semibold px-1.5 py-0.5 rounded text-[11px] ${
+              className={`font-semibold px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[11px] ${
                 comparison.delta_e00 <= DEFAULT_TOLERANCE_DE00
-                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/80'
-                  : 'bg-amber-950/80 text-amber-400 border border-amber-800/80'
+                  ? 'bg-[var(--success-subtle)] text-[var(--success-text)] border border-[var(--success-border)]'
+                  : 'bg-[var(--warning-subtle)] text-[var(--warning-text)] border border-[var(--warning-border)]'
               }`}
             >
               {comparison.delta_e00.toFixed(3)}
             </span>
           </div>
-          <div className="flex justify-between text-[10px] text-zinc-400 pt-1 border-t border-zinc-900">
+          <div className="flex justify-between text-[10px] text-[var(--text-secondary)] pt-1 border-t border-[var(--border)]">
             <span>
               ΔL: {comparison.delta_L > 0 ? `+${comparison.delta_L.toFixed(2)}` : comparison.delta_L.toFixed(2)}
             </span>

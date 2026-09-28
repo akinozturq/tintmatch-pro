@@ -84,9 +84,9 @@ const AppContent: React.FC = () => {
         )}
 
         {isLoading ? (
-          <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-zinc-500">
-            <div className="w-6 h-6 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-xs font-mono text-zinc-400">TintMatch PRO motoru başlatılıyor...</p>
+          <div className="h-[60vh] flex flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
+            <div className="w-6 h-6 border-2 border-[var(--brand-clay)] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-xs font-mono text-[var(--text-secondary)]">TintMatch PRO motoru başlatılıyor...</p>
           </div>
         ) : (
           <>

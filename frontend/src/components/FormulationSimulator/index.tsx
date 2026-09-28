@@ -265,29 +265,29 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 w-full space-y-5">
       {/* Top Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-zinc-100">
+            <h2 className="text-base font-semibold text-[var(--text-primary)]">
               Canlı CCM Reçete Simülatörü & Otomasyon
             </h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-950/70 border border-sky-800/80 text-sky-300">
+            <span className="px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono font-semibold bg-[var(--accent-subtle)] border border-[var(--accent-border)] text-[var(--accent-text)]">
               CCM Engine 2.0 (SLSQP)
             </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
             Dinamik pasta kaydırıcıları ile çoklu aydınlatıcı analizi, duyarlılık matrisi ve 3 bağımsız formülasyon profili
           </p>
         </div>
 
         {/* Mode Switcher */}
-        <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-lg text-xs">
+        <div className="flex items-center bg-[var(--surface-0)] border border-[var(--border)] p-1 rounded-[var(--radius)] text-xs shadow-inner">
           <button
             onClick={() => setMode('manual')}
-            className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-[var(--radius-xs)] font-medium transition-colors flex items-center gap-1.5 ${
               mode === 'manual'
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm border border-[var(--border)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Sliders className="h-3.5 w-3.5" />
@@ -295,10 +295,10 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
           </button>
           <button
             onClick={() => setMode('automatch')}
-            className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-[var(--radius-xs)] font-medium transition-colors flex items-center gap-1.5 ${
               mode === 'automatch'
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] font-semibold shadow-sm border border-[var(--border)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Wand2 className="h-3.5 w-3.5" />
@@ -308,7 +308,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
       </div>
 
       {errorMessage && (
-        <div className="p-3 bg-red-950/40 border border-red-900/60 rounded-lg text-xs text-red-300 font-mono">
+        <div className="p-3 bg-[var(--danger-subtle)] border border-[var(--danger-border)] rounded-[var(--radius)] text-xs text-[var(--danger-text)] font-mono shadow-sm">
           {errorMessage}
         </div>
       )}
@@ -318,8 +318,8 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
         {/* SOL: Reçete Girişleri (5 Cols) */}
         <div className="lg:col-span-5 space-y-4">
           {/* Base selector */}
-          <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-2.5">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-2.5 shadow-[var(--shadow-sm)]">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)] block">
               Taşıyıcı Baz Boya
             </span>
             <div className="grid grid-cols-2 gap-2">
@@ -327,14 +327,14 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
                 <button
                   key={b.id}
                   onClick={() => setSelectedBaseId(b.id)}
-                  className={`p-2 rounded-lg border text-left text-xs transition-colors flex items-center gap-2 ${
+                  className={`p-2 rounded-[var(--radius)] border text-left text-xs transition-colors flex items-center gap-2 ${
                     b.id === selectedBaseId
-                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100 font-medium'
-                      : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      ? 'bg-[var(--surface-1)] border-[var(--brand-clay)] text-[var(--text-primary)] font-semibold ring-1 ring-[var(--brand-clay)] shadow-sm'
+                      : 'bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]'
                   }`}
                 >
                   <span
-                    className="w-2.5 h-2.5 rounded-full border border-zinc-700"
+                    className="w-2.5 h-2.5 rounded-full border border-[var(--border-strong)]"
                     style={{ backgroundColor: b.hex }}
                   />
                   <span className="truncate">{b.name}</span>
@@ -345,12 +345,12 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
 
           {/* Auto-Match Target Picker */}
           {mode === 'automatch' && (
-            <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3">
+            <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-3 shadow-[var(--shadow-sm)]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)]">
                   Hedef Spektral Eşleme
                 </span>
-                <span className="text-xs font-mono text-zinc-300">{targetHex}</span>
+                <span className="text-xs font-mono text-[var(--text-primary)]">{targetHex}</span>
               </div>
 
               {/* Presets */}
@@ -359,13 +359,13 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
                   <button
                     key={idx}
                     onClick={() => setTargetHex(pt.hex)}
-                    className="p-1.5 bg-zinc-950 border border-zinc-800 rounded-md hover:border-zinc-700 flex items-center gap-1.5 text-left transition-colors"
+                    className="p-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius-xs)] hover:border-[var(--border-strong)] flex items-center gap-1.5 text-left transition-colors"
                   >
                     <span
-                      className="w-3 h-3 rounded flex-shrink-0 border border-zinc-700"
+                      className="w-3 h-3 rounded flex-shrink-0 border border-[var(--border-strong)]"
                       style={{ backgroundColor: pt.hex }}
                     />
-                    <span className="text-[10px] text-zinc-300 font-mono truncate">{pt.name}</span>
+                    <span className="text-[10px] text-[var(--text-primary)] font-mono truncate">{pt.name}</span>
                   </button>
                 ))}
               </div>
@@ -376,20 +376,20 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
                   type="color"
                   value={targetHex}
                   onChange={(e) => setTargetHex(e.target.value)}
-                  className="w-8 h-8 rounded border border-zinc-700 cursor-pointer bg-transparent"
+                  className="w-8 h-8 rounded border border-[var(--border-strong)] cursor-pointer bg-transparent"
                 />
                 <input
                   type="text"
                   value={targetHex}
                   onChange={(e) => setTargetHex(e.target.value)}
-                  className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs font-mono uppercase text-zinc-200 focus:outline-none focus:border-zinc-600"
+                  className="flex-1 px-2.5 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius-xs)] text-xs font-mono uppercase text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
                 />
                 <button
                   onClick={handleRunAutoMatch}
                   disabled={isLoading}
-                  className="px-3.5 py-1 bg-zinc-100 hover:bg-white text-zinc-900 rounded text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-3.5 py-1 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius-xs)] text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                  <Sparkles className="h-3.5 w-3.5" />
                   <span>{isLoading ? 'Hesaplanıyor...' : '3 Reçete Türet'}</span>
                 </button>
               </div>

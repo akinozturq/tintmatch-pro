@@ -33,24 +33,24 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
       key: 'recipe_a',
       label: 'Reçete A',
       sublabel: 'Color Match (D65)',
-      color: 'text-sky-400',
-      borderActive: 'border-sky-500 bg-sky-950/20',
+      color: 'text-[var(--brand-clay)]',
+      borderActive: 'border-[var(--brand-clay)] bg-[var(--surface-1)]',
       data: allRecipes.recipe_a,
     },
     {
       key: 'recipe_b',
       label: 'Reçete B',
       sublabel: 'Light Stability (Metamerizm)',
-      color: 'text-amber-400',
-      borderActive: 'border-amber-500 bg-amber-950/20',
+      color: 'text-[var(--warning-text)]',
+      borderActive: 'border-[var(--warning-border)] bg-[var(--surface-1)]',
       data: allRecipes.recipe_b,
     },
     {
       key: 'recipe_c',
       label: 'Reçete C',
       sublabel: 'Ekonomi (Düşük Yük)',
-      color: 'text-emerald-400',
-      borderActive: 'border-emerald-500 bg-emerald-950/20',
+      color: 'text-[var(--success-text)]',
+      borderActive: 'border-[var(--success-border)] bg-[var(--surface-1)]',
       data: allRecipes.recipe_c,
     },
   ];
@@ -69,28 +69,28 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
   });
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 space-y-4">
-      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
+    <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-4 shadow-[var(--shadow-sm)]">
+      <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-sky-400" />
-          <h4 className="text-xs font-semibold text-zinc-100 uppercase tracking-wide">
+          <Layers className="h-4 w-4 text-[var(--brand-clay)]" />
+          <h4 className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wide">
             Çoklu Reçete Karşılaştırma Matrisi (Recipe A vs B vs C)
           </h4>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400">
+        <div className="flex items-center gap-2 text-[10px] font-mono text-[var(--text-secondary)]">
           <span>DIN 6172 / ASTM E805</span>
           {allRecipes.recipe_a?.engine_version && (
-            <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
+            <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-secondary)]">
               v{allRecipes.recipe_a.engine_version}
             </span>
           )}
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-[var(--radius)] border border-[var(--border)]">
         <table className="w-full text-xs font-mono text-left border-collapse">
           <thead>
-            <tr className="border-b border-zinc-800 text-zinc-400 text-[11px]">
+            <tr className="border-b border-[var(--border)] text-[var(--text-secondary)] text-[11px] bg-[var(--surface-1)]">
               <th className="py-2 px-2.5 w-1/4 font-medium">Metrik / Parametre</th>
               {columns.map((col) => {
                 const isActive = activeRecipeKey === col.key;
@@ -98,20 +98,20 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                   <th
                     key={col.key}
                     className={`py-2 px-2.5 w-1/4 text-center transition-colors rounded-t-lg ${
-                      isActive ? `${col.borderActive} border-t-2 border-x-2` : 'bg-zinc-950/40'
+                      isActive ? `${col.borderActive} border-t-2 border-x-2` : 'bg-[var(--surface-0)]'
                     }`}
                   >
                     <div className={`font-bold ${col.color}`}>{col.label}</div>
-                    <div className="text-[9px] text-zinc-400 font-normal">{col.sublabel}</div>
+                    <div className="text-[9px] text-[var(--text-muted)] font-normal">{col.sublabel}</div>
                   </th>
                 );
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/50 text-[11px]">
+          <tbody className="divide-y divide-[var(--border)] text-[11px] bg-[var(--surface-0)]">
             {/* Primary ΔE00 */}
             <tr>
-              <td className="py-2 px-2.5 text-zinc-300 font-medium flex items-center gap-1.5">
+              <td className="py-2 px-2.5 text-[var(--text-primary)] font-medium flex items-center gap-1.5">
                 <span>D65 Renk Farkı (ΔE00)</span>
               </td>
               {columns.map((col) => {
@@ -123,7 +123,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                     key={col.key}
                     className={`py-2 px-2.5 text-center font-bold text-sm ${
                       isActive ? col.borderActive : ''
-                    } ${isGood ? 'text-emerald-400' : 'text-amber-400'}`}
+                    } ${isGood ? 'text-[var(--success-text)]' : 'text-[var(--warning-text)]'}`}
                   >
                     {de !== undefined ? de.toFixed(2) : '-'}
                   </td>
@@ -133,7 +133,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
 
             {/* Composite Metamerism Index */}
             <tr>
-              <td className="py-2 px-2.5 text-zinc-300 font-medium">
+              <td className="py-2 px-2.5 text-[var(--text-primary)] font-medium">
                 Metamerizm İndeksi (MI_comp)
               </td>
               {columns.map((col) => {
@@ -144,7 +144,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                     key={col.key}
                     className={`py-2 px-2.5 text-center font-semibold ${
                       isActive ? col.borderActive : ''
-                    } ${mi !== undefined && mi < 0.30 ? 'text-emerald-400' : 'text-amber-300'}`}
+                    } ${mi !== undefined && mi < 0.30 ? 'text-[var(--success-text)]' : 'text-[var(--warning-text)]'}`}
                   >
                     {mi !== undefined ? mi.toFixed(2) : '-'}
                   </td>
@@ -154,14 +154,14 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
 
             {/* Total Load */}
             <tr>
-              <td className="py-2 px-2.5 text-zinc-300 font-medium">Toplam Boyar Madde (%wt)</td>
+              <td className="py-2 px-2.5 text-[var(--text-primary)] font-medium">Toplam Boyar Madde (%wt)</td>
               {columns.map((col) => {
                 const load = col.data?.total_load;
                 const isActive = activeRecipeKey === col.key;
                 return (
                   <td
                     key={col.key}
-                    className={`py-2 px-2.5 text-center font-semibold text-zinc-200 ${
+                    className={`py-2 px-2.5 text-center font-semibold text-[var(--text-primary)] ${
                       isActive ? col.borderActive : ''
                     }`}
                   >
@@ -173,14 +173,14 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
 
             {/* Active Pigment Count */}
             <tr>
-              <td className="py-2 px-2.5 text-zinc-300 font-medium">Pasta Sayısı</td>
+              <td className="py-2 px-2.5 text-[var(--text-primary)] font-medium">Pasta Sayısı</td>
               {columns.map((col) => {
                 const count = col.data?.matched_pastes?.length || 0;
                 const isActive = activeRecipeKey === col.key;
                 return (
                   <td
                     key={col.key}
-                    className={`py-2 px-2.5 text-center text-zinc-300 ${
+                    className={`py-2 px-2.5 text-center text-[var(--text-secondary)] ${
                       isActive ? col.borderActive : ''
                     }`}
                   >
@@ -192,7 +192,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
 
             {/* Quality Gate Status */}
             <tr>
-              <td className="py-2 px-2.5 text-zinc-300 font-medium">Kalite Kapısı (Gate)</td>
+              <td className="py-2 px-2.5 text-[var(--text-primary)] font-medium">Kalite Kapısı (Gate)</td>
               {columns.map((col) => {
                 const isActive = activeRecipeKey === col.key;
                 const status = col.data?.status || 'OPTIMAL_CONVERGED';
@@ -203,10 +203,10 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                     className={`py-2 px-2.5 text-center ${isActive ? col.borderActive : ''}`}
                   >
                     <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-semibold ${
                         isOptimal
-                          ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
-                          : 'bg-amber-950/80 text-amber-300 border border-amber-800'
+                          ? 'bg-[var(--success-subtle)] text-[var(--success-text)] border border-[var(--success-border)]'
+                          : 'bg-[var(--warning-subtle)] text-[var(--warning-text)] border border-[var(--warning-border)]'
                       }`}
                     >
                       {isOptimal ? (
@@ -222,7 +222,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
             </tr>
 
             {/* Pigment Breakdown Header */}
-            <tr className="bg-zinc-950/70 text-zinc-400 text-[10px]">
+            <tr className="bg-[var(--surface-1)] text-[var(--text-secondary)] text-[10px]">
               <td colSpan={4} className="py-1 px-2.5 font-bold uppercase tracking-wider">
                 Pigment Pasta Dağılımı (%wt)
               </td>
@@ -233,9 +233,9 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
               const pInfo = pasteInfoMap.get(pasteId);
               return (
                 <tr key={pasteId}>
-                  <td className="py-1.5 px-2.5 text-zinc-300 flex items-center gap-2">
+                  <td className="py-1.5 px-2.5 text-[var(--text-primary)] flex items-center gap-2">
                     <span
-                      className="w-2.5 h-2.5 rounded-full border border-zinc-700 flex-shrink-0"
+                      className="w-2.5 h-2.5 rounded-full border border-[var(--border-strong)] flex-shrink-0"
                       style={{ backgroundColor: pInfo?.hex || '#777777' }}
                     />
                     <span className="truncate">{pInfo?.name || `Pigment #${pasteId}`}</span>
@@ -248,7 +248,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                         key={col.key}
                         className={`py-1.5 px-2.5 text-center ${
                           isActive ? col.borderActive : ''
-                        } ${match ? 'text-zinc-200 font-semibold' : 'text-zinc-600'}`}
+                        } ${match ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'}`}
                       >
                         {match ? `%${match.concentration.toFixed(2)}` : '—'}
                       </td>
@@ -260,7 +260,7 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
 
             {/* Selection Buttons */}
             <tr>
-              <td className="py-2.5 px-2.5 text-zinc-400 text-[10px]">Aksiyon</td>
+              <td className="py-2.5 px-2.5 text-[var(--text-muted)] text-[10px]">Aksiyon</td>
               {columns.map((col) => {
                 const isActive = activeRecipeKey === col.key;
                 return (
@@ -273,15 +273,15 @@ export const RecipeComparisonMatrix: React.FC<RecipeComparisonMatrixProps> = ({
                     <button
                       type="button"
                       onClick={() => onSelectRecipe(col.key)}
-                      className={`w-full py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                      className={`w-full py-1.5 px-2 rounded-[var(--radius)] text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                         isActive
-                          ? 'bg-zinc-100 text-zinc-900 shadow-sm font-bold'
-                          : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                          ? 'bg-[var(--brand-clay)] text-white shadow-sm font-bold'
+                          : 'bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-primary)]'
                       }`}
                     >
                       {isActive ? (
                         <>
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <CheckCircle2 className="h-3.5 w-3.5 text-white" />
                           <span>Seçili Reçete</span>
                         </>
                       ) : (

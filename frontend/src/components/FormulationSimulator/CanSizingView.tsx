@@ -42,23 +42,23 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
   };
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 space-y-4 shadow-lg">
+    <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)]">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-blue-950/60 border border-blue-800 text-blue-400">
+          <div className="p-2 rounded-[var(--radius)] bg-[var(--accent-subtle)] border border-[var(--accent-border)] text-[var(--accent-text)]">
             <Package className="h-4 w-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider font-mono">
+              <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider font-mono">
                 Ambalaj Ölçekleme & Endüstriyel Dozajlama
               </h3>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400">
+              <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-secondary)]">
                 Innovatint Scaling Engine
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400">
+            <p className="text-[11px] text-[var(--text-secondary)]">
               Laboratuvar formülünü seçilen teneke/kova ambalaj hacmine göre net gram ve mililitreye ölçekler
             </p>
           </div>
@@ -67,11 +67,11 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
         {/* Can size & quantity controls */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <label className="text-[11px] font-mono text-zinc-400">Ambalaj:</label>
+            <label className="text-[11px] font-mono text-[var(--text-secondary)]">Ambalaj:</label>
             <select
               value={selectedCanSizeId || ''}
               onChange={(e) => onSelectCanSizeId(Number(e.target.value))}
-              className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-blue-500"
+              className="px-2.5 py-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
             >
               {canSizes.map((can) => (
                 <option key={can.id} value={can.id}>
@@ -82,27 +82,27 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <label className="text-[11px] font-mono text-zinc-400">Adet:</label>
+            <label className="text-[11px] font-mono text-[var(--text-secondary)]">Adet:</label>
             <input
               type="number"
               min="1"
               max="5000"
               value={canQuantity}
               onChange={(e) => onChangeCanQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-16 px-2 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs font-mono text-zinc-200 text-center focus:outline-none focus:border-blue-500"
+              className="w-16 px-2 py-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-xs font-mono text-[var(--text-primary)] text-center focus:outline-none focus:border-[var(--brand-clay)]"
             />
           </div>
         </div>
       </div>
 
       {isLoading && (
-        <div className="py-6 text-center text-xs text-zinc-500 font-mono animate-pulse">
+        <div className="py-6 text-center text-xs text-[var(--text-muted)] font-mono animate-pulse">
           Ambalaj dozajı ve maliyet matrisi hesaplanıyor...
         </div>
       )}
 
       {!isLoading && !scaledRecipe && (
-        <div className="p-6 border border-dashed border-zinc-800 rounded-lg text-center text-xs text-zinc-500 font-mono">
+        <div className="p-6 border border-dashed border-[var(--border)] rounded-[var(--radius)] text-center text-xs text-[var(--text-muted)] font-mono bg-[var(--surface-0)]">
           Reçetede renklendirici konsantrasyonu bulunmuyor. Kaydırıcılardan konsantrasyon verin veya Auto-Match çalıştırın.
         </div>
       )}
@@ -111,17 +111,17 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
         <div className="space-y-4">
           {/* Headspace Safety Banner */}
           <div
-            className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono ${
+            className={`p-3 rounded-[var(--radius)] border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono shadow-sm ${
               scaledRecipe.headspace.status === 'HEADSPACE_SAFE'
-                ? 'bg-emerald-950/30 border-emerald-800/80 text-emerald-300'
-                : 'bg-red-950/40 border-red-800 text-red-300'
+                ? 'bg-[var(--success-subtle)] border-[var(--success-border)] text-[var(--success-text)]'
+                : 'bg-[var(--danger-subtle)] border-[var(--danger-border)] text-[var(--danger-text)]'
             }`}
           >
             <div className="flex items-center gap-2">
               {scaledRecipe.headspace.status === 'HEADSPACE_SAFE' ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="h-4 w-4 text-[var(--success-text)] shrink-0" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 animate-bounce" />
+                <AlertTriangle className="h-4 w-4 text-[var(--danger-text)] shrink-0 animate-bounce" />
               )}
               <div>
                 <span className="font-semibold uppercase tracking-wider text-[11px]">
@@ -141,18 +141,18 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsLabelModalOpen(true)}
-                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-zinc-700 shadow-sm"
+                className="px-3 py-1.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] text-[var(--text-primary)] rounded-[var(--radius)] text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[var(--border)] shadow-sm"
               >
-                <Printer className="h-3.5 w-3.5 text-blue-400" />
+                <Printer className="h-3.5 w-3.5 text-[var(--brand-clay)]" />
                 <span>Kutu Etiketi & Dozaj Fişi</span>
               </button>
             </div>
           </div>
 
           {/* Scaled Dispense Table */}
-          <div className="overflow-x-auto rounded-lg border border-zinc-800">
+          <div className="overflow-x-auto rounded-[var(--radius)] border border-[var(--border)]">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-zinc-950 text-zinc-400 text-[10px] uppercase border-b border-zinc-800">
+              <thead className="bg-[var(--surface-1)] text-[var(--text-secondary)] text-[10px] uppercase border-b border-[var(--border)]">
                 <tr>
                   <th className="p-2.5">Bileşen</th>
                   <th className="p-2.5">Tür</th>
@@ -165,63 +165,63 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
                   <th className="p-2.5 text-right">Maliyet (₺)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/60">
+              <tbody className="divide-y divide-[var(--border)]">
                 {/* Carrier Base Row */}
-                <tr className="bg-zinc-950/40 text-zinc-200 font-medium">
+                <tr className="bg-[var(--surface-0)] text-[var(--text-primary)] font-medium">
                   <td className="p-2.5 flex items-center gap-2">
                     <span
-                      className="w-2.5 h-2.5 rounded-full border border-zinc-700"
+                      className="w-2.5 h-2.5 rounded-full border border-[var(--border-strong)]"
                       style={{ backgroundColor: activeBase?.hex || '#ffffff' }}
                     />
                     <span>{scaledRecipe.base.name}</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">({scaledRecipe.base.code})</span>
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono">({scaledRecipe.base.code})</span>
                   </td>
-                  <td className="p-2.5 text-zinc-400">Taşıyıcı Baz</td>
-                  <td className="p-2.5 text-zinc-400">Ana Gövde</td>
-                  <td className="p-2.5 text-right text-zinc-200">
+                  <td className="p-2.5 text-[var(--text-secondary)]">Taşıyıcı Baz</td>
+                  <td className="p-2.5 text-[var(--text-secondary)]">Ana Gövde</td>
+                  <td className="p-2.5 text-right text-[var(--text-primary)]">
                     {(scaledRecipe.base.per_can_mass_kg * 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} g
                   </td>
-                  <td className="p-2.5 text-right text-zinc-200">
+                  <td className="p-2.5 text-right text-[var(--text-primary)]">
                     {scaledRecipe.base.per_can_volume_l.toFixed(2)} L
                   </td>
-                  <td className="p-2.5 text-right font-semibold text-zinc-100">
+                  <td className="p-2.5 text-right font-semibold text-[var(--text-primary)]">
                     {scaledRecipe.base.total_mass_kg.toFixed(2)} kg ({scaledRecipe.base.total_volume_l.toFixed(1)} L)
                   </td>
-                  <td className="p-2.5 text-right text-zinc-300">
+                  <td className="p-2.5 text-right text-[var(--text-secondary)]">
                     {scaledRecipe.base.total_cost.toFixed(2)} ₺
                   </td>
                 </tr>
 
                 {/* Colorant Pastes */}
                 {scaledRecipe.pastes.map((p) => (
-                  <tr key={p.paste_id} className="hover:bg-zinc-800/30 text-zinc-300">
+                  <tr key={p.paste_id} className="hover:bg-[var(--surface-1)] text-[var(--text-primary)]">
                     <td className="p-2.5 flex items-center gap-2">
                       <span
-                        className="w-2.5 h-2.5 rounded-full border border-zinc-700"
+                        className="w-2.5 h-2.5 rounded-full border border-[var(--border-strong)]"
                         style={{ backgroundColor: p.color_hex }}
                       />
-                      <span className="font-semibold text-zinc-100">{p.name}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">({p.code})</span>
+                      <span className="font-semibold text-[var(--text-primary)]">{p.name}</span>
+                      <span className="text-[10px] text-[var(--text-muted)] font-mono">({p.code})</span>
                     </td>
-                    <td className="p-2.5 text-zinc-400">Renklendirici</td>
-                    <td className="p-2.5 font-semibold text-blue-400">%{p.concentration_pct.toFixed(2)}</td>
-                    <td className="p-2.5 text-right text-amber-300 font-mono">
+                    <td className="p-2.5 text-[var(--text-secondary)]">Renklendirici</td>
+                    <td className="p-2.5 font-semibold text-[var(--accent-text)]">%{p.concentration_pct.toFixed(2)}</td>
+                    <td className="p-2.5 text-right text-[var(--brand-clay)] font-mono font-medium">
                       {p.per_can.mass_g < 10 ? p.per_can.mass_g.toFixed(2) : p.per_can.mass_g.toFixed(1)} g
                     </td>
-                    <td className="p-2.5 text-right text-cyan-300 font-mono">
+                    <td className="p-2.5 text-right text-[var(--accent-text)] font-mono">
                       {p.per_can.volume_ml.toFixed(1)} ml
                     </td>
-                    <td className="p-2.5 text-right font-semibold text-zinc-200 font-mono">
+                    <td className="p-2.5 text-right font-semibold text-[var(--text-primary)] font-mono">
                       {p.total.mass_g >= 1000
                         ? `${(p.total.mass_g / 1000).toFixed(2)} kg`
                         : `${p.total.mass_g.toFixed(1)} g`}
-                      <span className="text-[11px] text-zinc-500 ml-1">
+                      <span className="text-[11px] text-[var(--text-muted)] ml-1">
                         ({p.total.volume_ml >= 1000
                           ? `${(p.total.volume_ml / 1000).toFixed(2)} L`
                           : `${p.total.volume_ml.toFixed(0)} ml`})
                       </span>
                     </td>
-                    <td className="p-2.5 text-right text-zinc-300 font-mono">
+                    <td className="p-2.5 text-right text-[var(--text-secondary)] font-mono">
                       {p.total_cost.toFixed(2)} ₺
                     </td>
                   </tr>
@@ -232,38 +232,38 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
 
           {/* Cost Breakdown Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
-              <span className="text-[10px] text-zinc-500 block uppercase">Kutu Başına Maliyet</span>
-              <span className="text-sm font-bold text-emerald-400">
+            <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm">
+              <span className="text-[10px] text-[var(--text-muted)] block uppercase">Kutu Başına Maliyet</span>
+              <span className="text-sm font-bold text-[var(--success-text)]">
                 {scaledRecipe.costing.cost_per_can.toFixed(2)} ₺
               </span>
-              <span className="text-[10px] text-zinc-500 block mt-0.5">Ambalaj + Baz + Pasta</span>
+              <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Ambalaj + Baz + Pasta</span>
             </div>
 
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
-              <span className="text-[10px] text-zinc-500 block uppercase">Litre Başına Maliyet</span>
-              <span className="text-sm font-bold text-cyan-400">
+            <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm">
+              <span className="text-[10px] text-[var(--text-muted)] block uppercase">Litre Başına Maliyet</span>
+              <span className="text-sm font-bold text-[var(--accent-text)]">
                 {scaledRecipe.costing.cost_per_liter.toFixed(2)} ₺/L
               </span>
-              <span className="text-[10px] text-zinc-500 block mt-0.5">Net boya birim maliyeti</span>
+              <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Net boya birim maliyeti</span>
             </div>
 
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
-              <span className="text-[10px] text-zinc-500 block uppercase">Pasta Gideri (Parti)</span>
-              <span className="text-sm font-semibold text-amber-300">
+            <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm">
+              <span className="text-[10px] text-[var(--text-muted)] block uppercase">Pasta Gideri (Parti)</span>
+              <span className="text-sm font-semibold text-[var(--warning-text)]">
                 {scaledRecipe.costing.colorant_cost.toFixed(2)} ₺
               </span>
-              <span className="text-[10px] text-zinc-500 block mt-0.5">
+              <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">
                 %{((scaledRecipe.costing.colorant_cost / (scaledRecipe.costing.total_batch_cost || 1)) * 100).toFixed(1)} pay
               </span>
             </div>
 
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
-              <span className="text-[10px] text-zinc-500 block uppercase">Toplam Parti Tutarı</span>
-              <span className="text-sm font-bold text-zinc-100">
+            <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm">
+              <span className="text-[10px] text-[var(--text-muted)] block uppercase">Toplam Parti Tutarı</span>
+              <span className="text-sm font-bold text-[var(--text-primary)]">
                 {scaledRecipe.costing.total_batch_cost.toFixed(2)} ₺
               </span>
-              <span className="text-[10px] text-zinc-500 block mt-0.5">
+              <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">
                 {scaledRecipe.number_of_cans} Kutu için toplam
               </span>
             </div>
@@ -280,13 +280,13 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
             {/* Modal Top Actions (Hidden on Print) */}
             <div className="flex items-center justify-between pb-3 border-b border-zinc-200 print:hidden">
               <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-600" />
+                <FileText className="h-5 w-5 text-[var(--brand-clay)]" />
                 <h4 className="text-sm font-bold font-mono">Endüstriyel Kutu Etiketi & Dozaj Fişi</h4>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handlePrint}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                 >
                   <Printer className="h-3.5 w-3.5" />
                   <span>Yazdır</span>

@@ -215,29 +215,29 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 w-full space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-zinc-100">
+            <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
               Endüstriyel Yapılandırma ve İş Akışı
             </h1>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-950 border border-blue-800 text-blue-300">
+            <span className="px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono bg-[var(--accent-subtle)] border border-[var(--accent-border)] text-[var(--accent-text)] font-semibold">
               Innovatint Mimarisi
             </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
             Ambalaj kutu boyutları, ürün serileri & soyut bazlar (SW, W, TR) ve renk kartelası kütüphanesi
           </p>
         </div>
 
         {/* Sub-tab Navigation */}
-        <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-[var(--surface-0)] border border-[var(--border)] p-1 rounded-[var(--radius)] shadow-inner">
           <button
             onClick={() => setSubTab('cans')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-xs)] text-xs font-medium transition-all ${
               subTab === 'cans'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Package className="h-3.5 w-3.5" />
@@ -246,10 +246,10 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
           <button
             onClick={() => setSubTab('products')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-xs)] text-xs font-medium transition-all ${
               subTab === 'products'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Layers className="h-3.5 w-3.5" />
@@ -258,10 +258,10 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
           <button
             onClick={() => setSubTab('cards')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-xs)] text-xs font-medium transition-all ${
               subTab === 'cards'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-[var(--surface-3)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Palette className="h-3.5 w-3.5" />
@@ -273,23 +273,23 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
       {/* Global Feedback Banner */}
       {actionMessage && (
         <div
-          className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+          className={`p-3 rounded-[var(--radius)] border text-xs flex items-center justify-between shadow-sm ${
             actionMessage.type === 'success'
-              ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-300'
-              : 'bg-red-950/40 border-red-800/80 text-red-300'
+              ? 'bg-[var(--success-subtle)] border-[var(--success-border)] text-[var(--success-text)]'
+              : 'bg-[var(--danger-subtle)] border-[var(--danger-border)] text-[var(--danger-text)]'
           }`}
         >
           <div className="flex items-center gap-2">
             {actionMessage.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="h-4 w-4 text-[var(--success-text)] shrink-0" />
             ) : (
-              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              <AlertCircle className="h-4 w-4 text-[var(--danger-text)] shrink-0" />
             )}
             <span>{actionMessage.text}</span>
           </div>
           <button
             onClick={() => setActionMessage(null)}
-            className="text-zinc-400 hover:text-zinc-200 text-xs px-2 py-0.5"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs px-2 py-0.5"
           >
             Kapat
           </button>
@@ -303,14 +303,14 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-200">Ön Dolumlu Ambalaj Boyutları (Pre-filled Cans)</h2>
-              <p className="text-xs text-zinc-400">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Ön Dolumlu Ambalaj Boyutları (Pre-filled Cans)</h2>
+              <p className="text-xs text-[var(--text-secondary)]">
                 Kutu nominal hacmi, fabrika baz dolumu ve renklendirici tepe boşluğu (headspace capacity)
               </p>
             </div>
             <button
               onClick={() => setIsAddCanOpen(true)}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              className="px-3 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Yeni Ambalaj Boyutu</span>
@@ -324,23 +324,23 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
               return (
                 <div
                   key={can.id}
-                  className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3 relative group hover:border-zinc-700 transition-all"
+                  className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-3 relative group hover:border-[var(--border-strong)] transition-all shadow-[var(--shadow-sm)]"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 font-mono font-bold text-xs">
+                      <div className="w-8 h-8 rounded-[var(--radius)] bg-[var(--surface-0)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] font-mono font-bold text-xs">
                         {can.code}
                       </div>
                       <div>
-                        <h3 className="text-xs font-semibold text-zinc-100">{can.name}</h3>
-                        <p className="text-[11px] font-mono text-zinc-400">
+                        <h3 className="text-xs font-semibold text-[var(--text-primary)]">{can.name}</h3>
+                        <p className="text-[11px] font-mono text-[var(--text-secondary)]">
                           Nominal: {can.nominal_volume_l} Litre
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleDeleteCanSize(can.id)}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-1"
+                      className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--danger-text)] transition-all p-1"
                       title="Ambalajı Sil"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -349,18 +349,18 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
                   {/* Visual Fill Gauge */}
                   <div className="space-y-1.5">
-                    <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                    <div className="flex justify-between text-[10px] font-mono text-[var(--text-secondary)]">
                       <span>Baz Dolum: {can.default_base_fill_l} L (%{basePct})</span>
-                      <span className="text-amber-400">Max Renklendirici: {can.max_colorant_volume_l} L</span>
+                      <span className="text-[var(--warning-text)]">Max Renklendirici: {can.max_colorant_volume_l} L</span>
                     </div>
-                    <div className="h-2.5 bg-zinc-950 rounded-full overflow-hidden flex border border-zinc-800">
+                    <div className="h-2.5 bg-[var(--surface-0)] rounded-full overflow-hidden flex border border-[var(--border)]">
                       <div
-                        className="bg-blue-600 transition-all"
+                        className="bg-[var(--accent)] transition-all"
                         style={{ width: `${basePct}%` }}
                         title={`Baz: ${can.default_base_fill_l} L`}
                       />
                       <div
-                        className="bg-amber-500 transition-all"
+                        className="bg-[var(--brand-clay)] transition-all"
                         style={{ width: `${maxColorantPct}%` }}
                         title={`Tepe Boşluğu: ${can.max_colorant_volume_l} L`}
                       />
@@ -368,11 +368,11 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                   </div>
 
                   {/* Specs & Cost */}
-                  <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[11px] font-mono">
-                    <span className="text-zinc-400">
-                      Tepe Boşluğu: <strong className="text-zinc-200">{(can.nominal_volume_l - can.default_base_fill_l).toFixed(2)} L</strong>
+                  <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-[var(--text-secondary)]">
+                      Tepe Boşluğu: <strong className="text-[var(--text-primary)]">{(can.nominal_volume_l - can.default_base_fill_l).toFixed(2)} L</strong>
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-emerald-400">
+                    <span className="px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-0)] border border-[var(--border)] text-[var(--success-text)] font-semibold">
                       Ambalaj: ₺{can.package_cost.toFixed(2)}
                     </span>
                   </div>
@@ -383,16 +383,16 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
           {/* Add Can Modal */}
           {isAddCanOpen && (
-            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <Package className="h-4 w-4 text-blue-400" />
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <Package className="h-4 w-4 text-[var(--brand-clay)]" />
                     Yeni Ambalaj Boyutu Ekle
                   </h3>
                   <button
                     onClick={() => setIsAddCanOpen(false)}
-                    className="text-zinc-400 hover:text-zinc-200 text-xs"
+                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs"
                   >
                     Kapat
                   </button>
@@ -400,87 +400,87 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
                 <form onSubmit={handleCreateCanSize} className="space-y-3.5 text-xs">
                   <div>
-                    <label className="block text-zinc-300 mb-1">Ambalaj Kodu (Örn: 20L, 5L)</label>
+                    <label className="block text-[var(--text-secondary)] mb-1">Ambalaj Kodu (Örn: 20L, 5L)</label>
                     <input
                       type="text"
                       required
                       value={newCanCode}
                       onChange={(e) => setNewCanCode(e.target.value.toUpperCase())}
                       placeholder="15L"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                      className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-300 mb-1">Ambalaj Tanımı</label>
+                    <label className="block text-[var(--text-secondary)] mb-1">Ambalaj Tanımı</label>
                     <input
                       type="text"
                       required
                       value={newCanName}
                       onChange={(e) => setNewCanName(e.target.value)}
                       placeholder="15 Litre Standart Teneke"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200"
+                      className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-zinc-300 mb-1">Nominal Hacim (L)</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">Nominal Hacim (L)</label>
                       <input
                         type="number"
                         step="0.1"
                         required
                         value={newCanNominal}
                         onChange={(e) => setNewCanNominal(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-zinc-300 mb-1">Ön Baz Dolumu (L)</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">Ön Baz Dolumu (L)</label>
                       <input
                         type="number"
                         step="0.1"
                         required
                         value={newCanBaseFill}
                         onChange={(e) => setNewCanBaseFill(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-zinc-300 mb-1">Max Renklendirici Hacmi (L)</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">Max Renklendirici Hacmi (L)</label>
                       <input
                         type="number"
                         step="0.05"
                         required
                         value={newCanMaxColorant}
                         onChange={(e) => setNewCanMaxColorant(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-zinc-300 mb-1">Ambalaj Maliyeti (TL)</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">Ambalaj Maliyeti (TL)</label>
                       <input
                         type="number"
                         step="1"
                         required
                         value={newCanCost}
                         onChange={(e) => setNewCanCost(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       />
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                  <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                     <button
                       type="button"
                       onClick={() => setIsAddCanOpen(false)}
-                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg"
+                      className="px-3 py-1.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-primary)] rounded-[var(--radius)] transition-colors shadow-sm"
                     >
                       Vazgeç
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium"
+                      className="px-4 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] font-medium shadow-sm transition-colors"
                     >
                       Kaydet
                     </button>
@@ -499,14 +499,14 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-200">Ürün Serileri ve Soyut Bazlar (SW, W, TR)</h2>
-              <p className="text-xs text-zinc-400">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Ürün Serileri ve Soyut Bazlar (SW, W, TR)</h2>
+              <p className="text-xs text-[var(--text-secondary)]">
                 Örnek ürün serisi (PT.505.25), soyut baz atamaları (Süper Beyaz, Beyaz, Şeffaf) ve yoğunluklar
               </p>
             </div>
             <button
               onClick={() => setIsAddProductOpen(true)}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              className="px-3 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Yeni Ürün Serisi Tanımla</span>
@@ -517,16 +517,16 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
             {products.map((prod) => (
               <div
                 key={prod.id}
-                className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-5 space-y-4"
+                className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 space-y-4 shadow-[var(--shadow-sm)]"
               >
-                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
                   <div className="flex items-center gap-3">
-                    <span className="px-2.5 py-1 rounded bg-blue-950 border border-blue-800 text-blue-300 font-mono font-bold text-xs">
+                    <span className="px-2.5 py-1 rounded-[var(--radius-xs)] bg-[var(--accent-subtle)] border border-[var(--accent-border)] text-[var(--accent-text)] font-mono font-bold text-xs">
                       {prod.code}
                     </span>
                     <div>
-                      <h3 className="text-sm font-semibold text-zinc-100">{prod.name}</h3>
-                      <p className="text-[11px] text-zinc-400 font-mono">
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">{prod.name}</h3>
+                      <p className="text-[11px] text-[var(--text-secondary)] font-mono">
                         Tip: {prod.product_type} • VOC Sınırı: {prod.voc_limit} g/L
                       </p>
                     </div>
@@ -537,7 +537,7 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                         deleteProduct(prod.id).then(() => loadAll());
                       }
                     }}
-                    className="text-zinc-500 hover:text-red-400 text-xs flex items-center gap-1 transition-colors"
+                    className="text-[var(--text-muted)] hover:text-[var(--danger-text)] text-xs flex items-center gap-1 transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>Sil</span>
@@ -546,31 +546,31 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
                 {/* Abstract Bases Table */}
                 <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider font-mono">
+                  <span className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider font-mono">
                     Soyut Baz Matrisi (Abstract Bases)
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {prod.bases.map((b) => (
                       <div
                         key={b.id}
-                        className="bg-zinc-950/70 border border-zinc-800/80 rounded-lg p-3 space-y-2"
+                        className="bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] p-3 space-y-2"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono font-bold text-[11px]">
+                          <span className="px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-1)] text-[var(--text-primary)] font-mono font-bold text-[11px] border border-[var(--border)]">
                             {b.abstract_base_code}
                           </span>
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-zinc-700"
+                            className="w-3.5 h-3.5 rounded-full border border-[var(--border-strong)]"
                             style={{ backgroundColor: b.base_hex }}
                           />
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-zinc-200 truncate">{b.base_name}</p>
-                          <p className="text-[10px] font-mono text-zinc-400">Kod: {b.base_code}</p>
+                          <p className="text-xs font-medium text-[var(--text-primary)] truncate">{b.base_name}</p>
+                          <p className="text-[10px] font-mono text-[var(--text-secondary)]">Kod: {b.base_code}</p>
                         </div>
-                        <div className="pt-2 border-t border-zinc-800 flex justify-between text-[10px] font-mono text-zinc-400">
+                        <div className="pt-2 border-t border-[var(--border)] flex justify-between text-[10px] font-mono text-[var(--text-secondary)]">
                           <span>SG: {b.specific_gravity} g/cm³</span>
-                          <span className="text-emerald-400">₺{b.cost_per_liter}/L</span>
+                          <span className="text-[var(--success-text)] font-semibold">₺{b.cost_per_liter}/L</span>
                         </div>
                       </div>
                     ))}
@@ -582,47 +582,47 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
           {/* Add Product Modal */}
           {isAddProductOpen && (
-            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-blue-400" />
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-[var(--brand-clay)]" />
                     Yeni Ürün & Soyut Baz Tanımla
                   </h3>
-                  <button onClick={() => setIsAddProductOpen(false)} className="text-zinc-400 text-xs">
+                  <button onClick={() => setIsAddProductOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs">
                     Kapat
                   </button>
                 </div>
                 <form onSubmit={handleCreateProduct} className="space-y-3.5 text-xs">
                   <div>
-                    <label className="block text-zinc-300 mb-1">Ürün Kodu (Örn: PT.505.25)</label>
+                    <label className="block text-[var(--text-secondary)] mb-1">Ürün Kodu (Örn: PT.505.25)</label>
                     <input
                       type="text"
                       required
                       value={newProdCode}
                       onChange={(e) => setNewProdCode(e.target.value.toUpperCase())}
                       placeholder="PT.505.25"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                      className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-300 mb-1">Ürün Serisi Adı</label>
+                    <label className="block text-[var(--text-secondary)] mb-1">Ürün Serisi Adı</label>
                     <input
                       type="text"
                       required
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
                       placeholder="Süper Mat İç Cephe Boyası"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200"
+                      className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-zinc-300 mb-1">Ürün Tipi</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">Ürün Tipi</label>
                       <select
                         value={newProdType}
                         onChange={(e) => setNewProdType(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       >
                         <option value="interior_matte">İç Cephe Mat</option>
                         <option value="exterior_acrylic">Dış Cephe Akrilik</option>
@@ -631,27 +631,27 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-zinc-300 mb-1">VOC Limiti (g/L)</label>
+                      <label className="block text-[var(--text-secondary)] mb-1">VOC Limiti (g/L)</label>
                       <input
                         type="number"
                         value={newProdVoc}
                         onChange={(e) => setNewProdVoc(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 font-mono"
+                        className="w-full px-3 py-2 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-[var(--text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                       />
                     </div>
                   </div>
 
                   {/* Abstract Base mapping */}
-                  <div className="p-3 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-2">
-                    <span className="block text-[11px] font-semibold text-zinc-300 font-mono">
+                  <div className="p-3 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] space-y-2">
+                    <span className="block text-[11px] font-semibold text-[var(--text-primary)] font-mono">
                       Soyut Baz Eşleştirmeleri:
                     </span>
                     <div>
-                      <label className="block text-[10px] text-zinc-400 mb-0.5">SW (Süper Beyaz / Super White)</label>
+                      <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">SW (Süper Beyaz / Super White)</label>
                       <select
                         value={selectedSwBase}
                         onChange={(e) => setSelectedSwBase(parseInt(e.target.value))}
-                        className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-200"
+                        className="w-full px-2 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded-[var(--radius-xs)] text-xs text-[var(--text-primary)]"
                       >
                         {bases.map((b) => (
                           <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
@@ -659,11 +659,11 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-zinc-400 mb-0.5">W (Beyaz / Standart White)</label>
+                      <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">W (Beyaz / Standart White)</label>
                       <select
                         value={selectedWBase}
                         onChange={(e) => setSelectedWBase(parseInt(e.target.value))}
-                        className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-200"
+                        className="w-full px-2 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded-[var(--radius-xs)] text-xs text-[var(--text-primary)]"
                       >
                         {bases.map((b) => (
                           <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
@@ -671,11 +671,11 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-zinc-400 mb-0.5">TR (Şeffaf / Transparent Clear)</label>
+                      <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">TR (Şeffaf / Transparent Clear)</label>
                       <select
                         value={selectedTrBase}
                         onChange={(e) => setSelectedTrBase(parseInt(e.target.value))}
-                        className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-200"
+                        className="w-full px-2 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded-[var(--radius-xs)] text-xs text-[var(--text-primary)]"
                       >
                         {bases.map((b) => (
                           <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
@@ -684,17 +684,17 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                  <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
                     <button
                       type="button"
                       onClick={() => setIsAddProductOpen(false)}
-                      className="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg"
+                      className="px-3 py-1.5 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-primary)] rounded-[var(--radius)] transition-colors shadow-sm"
                     >
                       Vazgeç
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-medium"
+                      className="px-4 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] font-medium shadow-sm transition-colors"
                     >
                       Kaydet
                     </button>
@@ -713,8 +713,8 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-200">Renk Kartelası Kütüphanesi</h2>
-              <p className="text-xs text-zinc-400">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Renk Kartelası Kütüphanesi</h2>
+              <p className="text-xs text-[var(--text-secondary)]">
                 Endüstriyel renk kartelaları (RAL Classic vb.), standart spektrumlar ve toplu reçete eşleme
               </p>
             </div>
@@ -723,7 +723,7 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
               <button
                 onClick={handleRunBatchMatch}
                 disabled={isBatchMatching || cardColors.length === 0}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                className="px-3.5 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] disabled:opacity-50 text-white rounded-[var(--radius)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
               >
                 {isBatchMatching ? (
                   <>
@@ -744,8 +744,8 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Left: Cards List & Search (4 Cols) */}
             <div className="lg:col-span-4 space-y-3">
-              <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3">
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider font-mono">
+              <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-3 shadow-[var(--shadow-sm)]">
+                <span className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider font-mono">
                   Mevcut Kartelalar
                 </span>
                 <div className="space-y-1.5">
@@ -753,31 +753,31 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                     <div
                       key={card.id}
                       onClick={() => setSelectedCardId(card.id)}
-                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                      className={`p-3 rounded-[var(--radius)] border transition-all cursor-pointer ${
                         selectedCardId === card.id
-                          ? 'bg-zinc-800 border-zinc-600'
-                          : 'bg-zinc-950/40 border-zinc-800 hover:bg-zinc-800/40'
+                          ? 'bg-[var(--surface-1)] border-[var(--brand-clay)] ring-1 ring-[var(--brand-clay)] shadow-sm'
+                          : 'bg-[var(--surface-0)] border border-[var(--border)] hover:bg-[var(--surface-1)]'
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-zinc-200">{card.name}</span>
-                        <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-blue-400">
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">{card.name}</span>
+                        <span className="px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-0)] border border-[var(--border)] text-[10px] font-mono text-[var(--accent-text)] font-semibold">
                           {card.color_count} Renk
                         </span>
                       </div>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-1">{card.code}</p>
+                      <p className="text-[10px] text-[var(--text-secondary)] font-mono mt-1">{card.code}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="pt-2 border-t border-zinc-800 relative">
-                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-5 text-zinc-500" />
+                <div className="pt-2 border-t border-[var(--border)] relative">
+                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-5 text-[var(--text-muted)]" />
                   <input
                     type="text"
                     placeholder="Kartela içinde renk ara..."
                     value={cardSearch}
                     onChange={(e) => setCardSearch(e.target.value)}
-                    className="w-full pl-8 pr-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none"
+                    className="w-full pl-8 pr-2.5 py-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
                   />
                 </div>
               </div>
@@ -785,14 +785,14 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
             {/* Right: Colors Grid & Detail (8 Cols) */}
             <div className="lg:col-span-8 space-y-4">
-              <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-                  <span className="text-xs font-semibold text-zinc-200">
+              <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-3 shadow-[var(--shadow-sm)]">
+                <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                  <span className="text-xs font-semibold text-[var(--text-primary)]">
                     Kartela Renkleri ({filteredCardColors.length})
                   </span>
                   {selectedColor && (
-                    <span className="text-[11px] font-mono text-zinc-400">
-                      Seçili: <strong className="text-zinc-200">{selectedColor.color_code}</strong>
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)]">
+                      Seçili: <strong className="text-[var(--text-primary)]">{selectedColor.color_code}</strong>
                     </span>
                   )}
                 </div>
@@ -805,20 +805,20 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                       <div
                         key={col.id}
                         onClick={() => setSelectedColor(col)}
-                        className={`p-2 rounded-lg border transition-all cursor-pointer flex flex-col items-center text-center space-y-1.5 ${
+                        className={`p-2 rounded-[var(--radius)] border transition-all cursor-pointer flex flex-col items-center text-center space-y-1.5 ${
                           isSelected
-                            ? 'bg-zinc-800 border-blue-500 shadow-md ring-1 ring-blue-500'
-                            : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
+                            ? 'bg-[var(--surface-1)] border-[var(--brand-clay)] shadow-md ring-1 ring-[var(--brand-clay)]'
+                            : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)]'
                         }`}
                       >
                         <div
-                          className="w-full h-12 rounded-md border border-zinc-700 shadow-inner"
+                          className="w-full h-12 rounded-[var(--radius-xs)] border border-[var(--border-strong)] shadow-inner"
                           style={{ backgroundColor: col.hex }}
                         />
-                        <span className="text-[11px] font-bold text-zinc-200 font-mono truncate w-full">
+                        <span className="text-[11px] font-bold text-[var(--text-primary)] font-mono truncate w-full">
                           {col.color_code}
                         </span>
-                        <span className="text-[9px] text-zinc-400 truncate w-full">
+                        <span className="text-[9px] text-[var(--text-secondary)] truncate w-full">
                           {col.color_name}
                         </span>
                       </div>
@@ -828,17 +828,17 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
                 {/* Selected Color Inspector & Action */}
                 {selectedColor && (
-                  <div className="pt-3 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/60">
+                  <div className="pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3 bg-[var(--surface-0)] p-3 rounded-[var(--radius)] border border-[var(--border)]">
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-10 h-10 rounded-lg border border-zinc-700 shadow"
+                        className="w-10 h-10 rounded-[var(--radius)] border border-[var(--border-strong)] shadow"
                         style={{ backgroundColor: selectedColor.hex }}
                       />
                       <div>
-                        <h4 className="text-xs font-bold text-zinc-100">
+                        <h4 className="text-xs font-bold text-[var(--text-primary)]">
                           {selectedColor.color_code} — {selectedColor.color_name}
                         </h4>
-                        <p className="text-[11px] font-mono text-zinc-400">
+                        <p className="text-[11px] font-mono text-[var(--text-secondary)]">
                           L*: {selectedColor.lab.L} • a*: {selectedColor.lab.a} • b*: {selectedColor.lab.b} • Hex: {selectedColor.hex}
                         </p>
                       </div>
@@ -850,7 +850,7 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                           onNavigateToFormulationWithTarget(selectedColor.reflectance, selectedColor.color_code);
                         }
                       }}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-sm"
+                      className="px-3.5 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded-[var(--radius)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-sm"
                     >
                       <span>CCM Reçete Motoruna Gönder</span>
                       <ArrowRight className="h-3.5 w-3.5" />
@@ -861,15 +861,15 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
 
               {/* Batch Match Results Report */}
               {batchMatchResult && (
-                <div className="bg-zinc-900/90 border border-emerald-800/80 rounded-xl p-4 space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-3 animate-in fade-in duration-200 shadow-[var(--shadow-sm)]">
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
                     <div className="flex items-center gap-2">
-                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                      <h4 className="text-xs font-bold text-zinc-100">
+                      <ShieldCheck className="h-4 w-4 text-[var(--success-text)]" />
+                      <h4 className="text-xs font-bold text-[var(--text-primary)]">
                         Toplu Eşleme Raporu ({batchMatchResult.card.name})
                       </h4>
                     </div>
-                    <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-mono text-xs font-bold">
+                    <span className="px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--success-subtle)] border border-[var(--success-border)] text-[var(--success-text)] font-mono text-xs font-bold">
                       %{batchMatchResult.success_rate_pct} Başarı ({batchMatchResult.passed_colors}/{batchMatchResult.total_colors})
                     </span>
                   </div>
@@ -878,22 +878,22 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
                     {batchMatchResult.results.map((r) => (
                       <div
                         key={r.color_id}
-                        className={`p-2 rounded-lg border flex flex-col justify-between ${
+                        className={`p-2 rounded-[var(--radius)] border flex flex-col justify-between ${
                           r.passed
-                            ? 'bg-zinc-950 border-emerald-900/60 text-emerald-200'
-                            : 'bg-zinc-950 border-amber-900/60 text-amber-200'
+                            ? 'bg-[var(--surface-0)] border-[var(--success-border)] text-[var(--success-text)]'
+                            : 'bg-[var(--surface-0)] border-[var(--warning-border)] text-[var(--warning-text)]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-[11px]">{r.color_code}</span>
+                          <span className="font-mono font-bold text-[11px] text-[var(--text-primary)]">{r.color_code}</span>
                           <span
-                            className="w-3 h-3 rounded-full border border-zinc-700"
+                            className="w-3 h-3 rounded-full border border-[var(--border-strong)]"
                             style={{ backgroundColor: r.hex }}
                           />
                         </div>
                         <div className="mt-1 flex items-center justify-between font-mono text-[10px]">
-                          <span>ΔE00:</span>
-                          <strong className={r.passed ? 'text-emerald-400' : 'text-amber-400'}>
+                          <span className="text-[var(--text-secondary)]">ΔE00:</span>
+                          <strong className={r.passed ? 'text-[var(--success-text)]' : 'text-[var(--warning-text)]'}>
                             {r.delta_e00 !== null ? r.delta_e00.toFixed(2) : 'N/A'}
                           </strong>
                         </div>

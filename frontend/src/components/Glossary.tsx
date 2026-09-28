@@ -294,26 +294,26 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
   return (
     <div className="max-w-5xl mx-auto px-6 py-6 w-full space-y-4">
       {/* Header */}
-      <div className="bg-[#121215] border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
         <div>
-          <h2 className="text-sm font-medium text-zinc-100 flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-zinc-400" />
+          <h2 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-[var(--brand-clay)]" />
             <span>Renk Bilimi & Spektrofotometri Sözlüğü</span>
           </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
             CHNSpec DS-36D (d/8°), X-Rite RM400 (45°:0°), Saunderson, Kubelka-Munk, K-M Kalınlık (x_98), CxF3, LOOCV ve Multi-Start CCM
           </p>
         </div>
 
         {/* Search Input */}
         <div className="relative w-full sm:w-64">
-          <Search className="h-3.5 w-3.5 absolute left-3 top-2.5 text-zinc-500" />
+          <Search className="h-3.5 w-3.5 absolute left-3 top-2.5 text-[var(--text-muted)]" />
           <input
             type="text"
             placeholder="Terim, formül veya standart ara..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[#09090b] border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+            className="w-full pl-8 pr-3 py-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--brand-clay)] transition-colors"
           />
         </div>
       </div>
@@ -324,10 +324,10 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
               selectedCategory === cat
-                ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
-                : 'bg-[#121215] text-zinc-400 border border-zinc-850 hover:bg-zinc-900 hover:text-zinc-300'
+                ? 'bg-[var(--surface-0)] text-[var(--brand-clay)] border border-[var(--brand-clay)] font-semibold shadow-xs'
+                : 'bg-[var(--surface-3)] text-[var(--text-muted)] border border-[var(--border)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]'
             }`}
           >
             {cat === 'ALL' ? 'TÜM TERİMLER' : cat}
@@ -342,44 +342,44 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
           return (
             <div
               key={term.id}
-              className="bg-[#121215] border border-zinc-800 rounded-xl overflow-hidden transition-colors"
+              className="bg-[var(--surface-3)] border border-[var(--border)] rounded-xl overflow-hidden transition-colors shadow-xs"
             >
               {/* Header clickable */}
               <div
                 onClick={() => toggleItem(term.id)}
-                className="p-4 flex items-start justify-between cursor-pointer hover:bg-zinc-850/40 transition-colors"
+                className="p-4 flex items-start justify-between cursor-pointer hover:bg-[var(--surface-1)] transition-colors"
               >
                 <div className="space-y-1 pr-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 uppercase tracking-wider">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--surface-0)] text-[var(--text-secondary)] border border-[var(--border)] uppercase tracking-wider">
                       {term.category}
                     </span>
                     {term.standards &&
                       term.standards.map((std, i) => (
                         <span
                           key={i}
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900/80 text-zinc-500 border border-zinc-850"
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-0)] text-[var(--text-muted)] border border-[var(--border)]"
                         >
                           {std}
                         </span>
                       ))}
                   </div>
-                  <h3 className="text-sm font-medium text-zinc-100">{term.title}</h3>
-                  <p className="text-xs text-zinc-400">{term.shortDesc}</p>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">{term.title}</h3>
+                  <p className="text-xs text-[var(--text-secondary)]">{term.shortDesc}</p>
                 </div>
 
-                <button className="text-zinc-500 hover:text-zinc-300 mt-1 shrink-0">
+                <button className="text-[var(--text-muted)] hover:text-[var(--text-primary)] mt-1 shrink-0">
                   {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
               </div>
 
               {/* Collapsible Content */}
               {isOpen && (
-                <div className="px-4 pb-4 pt-1 border-t border-zinc-850 space-y-3">
+                <div className="px-4 pb-4 pt-1 border-t border-[var(--border)] space-y-3">
                   {/* Formula card if present */}
                   {term.formula && (
-                    <div className="p-3 bg-[#09090b] rounded-lg border border-zinc-850 font-mono text-xs text-zinc-300 overflow-x-auto whitespace-pre-wrap">
-                      <span className="block text-[10px] text-zinc-500 uppercase font-mono mb-1">
+                    <div className="p-3 bg-[var(--surface-0)] rounded-lg border border-[var(--border)] font-mono text-xs text-[var(--text-primary)] overflow-x-auto whitespace-pre-wrap">
+                      <span className="block text-[10px] text-[var(--text-muted)] uppercase font-mono mb-1">
                         Matematiksel Formülasyon / Kontrat:
                       </span>
                       {term.formula}
@@ -387,7 +387,7 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
                   )}
 
                   {/* Body text */}
-                  <div className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line font-sans">
+                  <div className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-line font-sans">
                     {term.content}
                   </div>
                 </div>
@@ -397,7 +397,7 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
         })}
 
         {filteredTerms.length === 0 && (
-          <div className="p-8 text-center text-xs text-zinc-500 bg-[#121215] border border-zinc-800 rounded-xl">
+          <div className="p-8 text-center text-xs text-[var(--text-muted)] bg-[var(--surface-3)] border border-[var(--border)] rounded-xl">
             Arama kriterinize uygun terim bulunamadı.
           </div>
         )}

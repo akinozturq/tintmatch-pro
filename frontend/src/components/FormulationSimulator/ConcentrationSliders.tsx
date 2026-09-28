@@ -19,14 +19,14 @@ export const ConcentrationSliders: React.FC<ConcentrationSlidersProps> = ({
   onResetSliders,
 }) => {
   return (
-    <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 space-y-4">
-      <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+    <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 space-y-4 shadow-[var(--shadow-sm)]">
+      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)]">
           Renklendirici Konsantrasyonları
         </span>
         <button
           onClick={onResetSliders}
-          className="text-[10px] text-zinc-400 hover:text-zinc-200 font-mono flex items-center gap-1"
+          className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] font-mono flex items-center gap-1 transition-colors"
         >
           <RotateCcw className="h-3 w-3" />
           <span>Sıfırla</span>
@@ -37,17 +37,17 @@ export const ConcentrationSliders: React.FC<ConcentrationSlidersProps> = ({
         {pastes.map((p) => {
           const conc = concentrations[p.id] || 0.0;
           return (
-            <div key={p.id} className="space-y-1 p-2 bg-zinc-950/60 rounded-lg border border-zinc-800/80">
+            <div key={p.id} className="space-y-1 p-2 bg-[var(--surface-0)] rounded-[var(--radius)] border border-[var(--border)]">
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span
-                    className="w-2.5 h-2.5 rounded-full border border-zinc-700"
+                    className="w-2.5 h-2.5 rounded-full border border-[var(--border-strong)]"
                     style={{ backgroundColor: p.color_hex }}
                   />
-                  <span className="font-medium text-zinc-200 text-xs">{p.name}</span>
-                  <span className="text-[10px] text-zinc-400 font-mono">({p.code})</span>
+                  <span className="font-medium text-[var(--text-primary)] text-xs">{p.name}</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">({p.code})</span>
                 </div>
-                <span className="font-mono font-medium text-zinc-100 text-xs">
+                <span className="font-mono font-bold text-[var(--brand-clay)] text-xs">
                   %{conc.toFixed(2)}
                 </span>
               </div>
@@ -60,7 +60,7 @@ export const ConcentrationSliders: React.FC<ConcentrationSlidersProps> = ({
                   step="0.05"
                   value={conc}
                   onChange={(e) => onConcChange(p.id, parseFloat(e.target.value))}
-                  className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                  className="flex-1 h-1 bg-[var(--surface-1)] rounded-lg appearance-none cursor-pointer accent-[var(--brand-clay)]"
                 />
                 <input
                   type="number"
@@ -69,7 +69,7 @@ export const ConcentrationSliders: React.FC<ConcentrationSlidersProps> = ({
                   step="0.05"
                   value={conc}
                   onChange={(e) => onConcChange(p.id, parseFloat(e.target.value) || 0)}
-                  className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-center text-xs font-mono text-zinc-200 focus:outline-none"
+                  className="w-14 px-1 py-0.5 bg-[var(--surface-1)] border border-[var(--border)] rounded-[var(--radius-xs)] text-center text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
                 />
               </div>
             </div>
@@ -77,12 +77,12 @@ export const ConcentrationSliders: React.FC<ConcentrationSlidersProps> = ({
         })}
       </div>
 
-      <div className="pt-2 border-t border-zinc-800 flex items-center justify-between text-xs font-mono">
-        <span className="text-zinc-400">Toplam Pasta Oranı:</span>
+      <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono">
+        <span className="text-[var(--text-secondary)]">Toplam Pasta Oranı:</span>
         <span className={`font-semibold ${
           (simulation?.total_colorant_load || 0) > MAX_TOTAL_COLORANT_LOAD
-            ? 'text-red-400'
-            : 'text-zinc-200'
+            ? 'text-[var(--danger-text)]'
+            : 'text-[var(--text-primary)]'
         }`}>
           %{simulation?.total_colorant_load.toFixed(2) || '0.00'} / max %{MAX_TOTAL_COLORANT_LOAD.toFixed(1)}
         </span>
