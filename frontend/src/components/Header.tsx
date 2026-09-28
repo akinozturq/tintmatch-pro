@@ -4,14 +4,15 @@ import {
   Wand2,
   Sliders,
   FileCheck,
-  BookOpen
+  BookOpen,
+  Cpu
 } from 'lucide-react';
 import { getChnspecStatus } from '../services/api';
 import type { ChnspecStatusInfo, DeviceConnectionState } from '../types';
 
 interface HeaderProps {
-  activeTab: 'dashboard' | 'wizard' | 'formulation' | 'glossary' | 'report';
-  setActiveTab: (tab: 'dashboard' | 'wizard' | 'formulation' | 'glossary' | 'report') => void;
+  activeTab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report';
+  setActiveTab: (tab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report') => void;
   onOpenInstruments?: () => void;
 }
 
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
 
   const tabs = [
     { id: 'dashboard', label: 'Laboratuvar', icon: Layers },
+    { id: 'spectro', label: 'Spektrofotometre', icon: Cpu },
     { id: 'wizard', label: 'K-M Karakterizasyon', icon: Wand2 },
     { id: 'formulation', label: 'CCM Reçete', icon: Sliders },
     { id: 'report', label: 'ISO 18314 Rapor', icon: FileCheck },
@@ -54,8 +56,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
     if (connState === 'CONNECTED_REAL') {
       return (
         <button
-          onClick={onOpenInstruments}
-          title="DS-36D Bağlı - Cihaz Masası & Kalibrasyon için tıklayın"
+          onClick={() => setActiveTab('spectro')}
+          title="DS-36D Bağlı - Spektrofotometre Yönetimi & Kalibrasyon için tıklayın"
           className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/80 text-emerald-300 transition-colors cursor-pointer text-left"
         >
           <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
@@ -67,8 +69,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
     if (connState === 'CONNECTED_MOCK') {
       return (
         <button
-          onClick={onOpenInstruments}
-          title="Simülasyon Modu - Cihaz Masası & Port Seçimi için tıklayın"
+          onClick={() => setActiveTab('spectro')}
+          title="Simülasyon Modu - Spektrofotometre Yönetimi & Port Seçimi için tıklayın"
           className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/50 hover:bg-amber-900/70 border border-amber-800/70 text-amber-300 transition-colors cursor-pointer text-left"
         >
           <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
@@ -79,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
     }
     return (
       <button
-        onClick={onOpenInstruments}
+        onClick={() => setActiveTab('spectro')}
         title="CHNSpec Bağlı Değil - Bağlanmak ve kalibre etmek için tıklayın"
         className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer text-left"
       >
@@ -104,8 +106,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
           <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-zinc-800 font-mono">
             {renderChnspecBadge()}
             <button
-              onClick={onOpenInstruments}
-              title="Cihaz Masası (RM400 / DS-36D)"
+              onClick={() => setActiveTab('spectro')}
+              title="Spektrofotometre Yönetimi (RM400 / DS-36D)"
               className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />

@@ -8,10 +8,11 @@ import { FormulationSimulator } from './components/FormulationSimulator';
 import { Glossary } from './components/Glossary';
 import { IsoReportView } from './components/IsoReportView';
 import { InstrumentModal } from './components/InstrumentModal';
+import { SpectroSettingsView } from './components/SpectroSettingsView';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'wizard' | 'formulation' | 'glossary' | 'report'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'glossary' | 'report'>('dashboard');
   const [bases, setBases] = useState<BasePaint[]>([]);
   const [pastes, setPastes] = useState<ColorantPaste[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -96,6 +97,13 @@ export const App: React.FC = () => {
               />
             )}
 
+            {activeTab === 'spectro' && (
+              <SpectroSettingsView
+                onNavigateToWizard={() => setActiveTab('wizard')}
+                onNavigateToFormulation={() => setActiveTab('formulation')}
+              />
+            )}
+
             {activeTab === 'wizard' && (
               <CharacterizationWizard
                 bases={bases}
@@ -104,6 +112,7 @@ export const App: React.FC = () => {
                   setActiveTab('dashboard');
                 }}
                 onOpenInstruments={() => setIsInstrumentModalOpen(true)}
+                onNavigateToSpectro={() => setActiveTab('spectro')}
               />
             )}
 

@@ -8,7 +8,6 @@ import type {
 } from '../types';
 import {
   calculateCharacterization,
-  importRm400,
   fetchSampleDatasets,
   fetchSampleDataset,
   saveCharacterization,
@@ -18,7 +17,6 @@ import {
 } from '../services/api';
 import { SpectralChart } from './SpectralChart';
 import {
-  UploadCloud,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
@@ -41,12 +39,14 @@ interface WizardProps {
   bases: BasePaint[];
   onComplete: () => void;
   onOpenInstruments?: () => void;
+  onNavigateToSpectro?: () => void;
 }
 
 export const CharacterizationWizard: React.FC<WizardProps> = ({
   bases,
   onComplete,
-  onOpenInstruments
+  onOpenInstruments,
+  onNavigateToSpectro
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -57,8 +57,8 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
   const [deviceStatus, setDeviceStatus] = useState<ChnspecStatusInfo | null>(null);
   const [calHealth, setCalHealth] = useState<CalibrationHealthInfo | null>(null);
 
-  // Acquisition mode: 'live' (device measurement) | 'file' (upload) | 'sample' (presets)
-  const [acquisitionMode, setAcquisitionMode] = useState<'live' | 'file' | 'sample'>('live');
+  // Acquisition mode: 'live' (device measurement) | 'sample' (presets)
+  const [acquisitionMode, setAcquisitionMode] = useState<'live' | 'sample'>('live');
 
   // Step 1: Raw data & Sample loading
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
@@ -132,41 +132,6 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
       setCurrentStep(2);
     } catch (err: any) {
       setErrorMessage(err.message || 'Numune yüklenemedi');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsLoading(true);
-    setErrorMessage(null);
-    setAcquisitionMode('file');
-    setUploadedFileName(file.name);
-
-    try {
-      const parsed = await importRm400(file);
-      if (parsed.samples.length === 0) {
-        throw new Error('Dosyada 31 kanallı (400-700 nm) spektral veri bulunamadı.');
-      }
-
-      const newLetdowns: Letdown[] = [];
-      parsed.samples.forEach((s, idx) => {
-        const conc = s.concentration !== null ? s.concentration : (idx === 0 ? 0.1 : idx * 2.0);
-        newLetdowns.push({
-          concentration: conc,
-          reflectance: s.reflectance,
-        });
-      });
-
-      setLetdowns(newLetdowns);
-      setPasteName(parsed.samples[0].name.replace(/\d+%/, '').trim() || file.name.split('.')[0]);
-      setSuccessMessage(`${parsed.samples.length} adet spektral okuma ayrıştırıldı.`);
-      setCurrentStep(2);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Dosya okuma hatası');
     } finally {
       setIsLoading(false);
     }
@@ -430,7 +395,7 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* ADIM 1: Veri Kaynağı Seçimi (Canlı Ölçüm / Dosya / Örnek) */}
+      {/* ADIM 1: Veri Kaynağı Seçimi (Canlı Cihaz Ölçümü / Hazır Referans Seti) */}
       {/* ======================================================== */}
       {currentStep === 1 && (
         <div className="space-y-4">
@@ -439,157 +404,118 @@ export const CharacterizationWizard: React.FC<WizardProps> = ({
               Adım 1: Karakterizasyon Veri Giriş Yöntemi
             </h3>
             <p className="text-xs text-zinc-400">
-              Spektrofotometreniz bağlıysa seyreltme kartlarını (drawdown) doğrudan masada adım adım ölçebilir veya önceden kaydedilmiş dosyaları içe aktarabilirsiniz.
+              Masanızdaki spektrofotometre ile seyreltme kartlarını (drawdown) doğrudan adım adım ölçebilir veya referans serisini yükleyebilirsiniz.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* OPTION 1: LIVE HARDWARE MEASUREMENT (RECOMMENDED) */}
             <div
-              className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
+              className={`p-6 rounded-xl border flex flex-col justify-between transition-all ${
                 isChnspecConnected
                   ? 'bg-blue-950/20 border-blue-800/80 shadow-lg shadow-blue-950/30'
                   : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
               }`}
             >
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-lg bg-blue-900/40 border border-blue-700/60 flex items-center justify-center text-blue-400">
-                    <Zap className="h-4 w-4" />
+                  <div className="w-10 h-10 rounded-xl bg-blue-900/40 border border-blue-700/60 flex items-center justify-center text-blue-400">
+                    <Zap className="h-5 w-5" />
                   </div>
                   {isChnspecConnected ? (
-                    <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-400 text-[10px] font-mono font-medium">
-                      ★ ÖNERİLEN
+                    <span className="px-2.5 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-400 text-[10px] font-mono font-medium">
+                      ★ DOĞRUDAN ÖLÇÜM
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-mono">
-                      DONANIM
+                    <span className="px-2.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-mono">
+                      DONANIM GEREKLİ
                     </span>
                   )}
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-semibold text-zinc-100">Cihazdan Canlı Ölçüm</h4>
+                  <h4 className="text-sm font-semibold text-zinc-100">Cihaz ile Canlı Ölçüm Serisi</h4>
                   <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                    Bağlı spektrofotometre ile seyreltme kartlarını doğrudan masada adım adım ölçün. Dosya yüklemeye gerek yoktur.
+                    Masanızdaki bağlı spektrofotometre ({activeDeviceLabel}) ile seyreltme kartlarını doğrudan ölçün. Dosya yüklemeye ihtiyaç yoktur; ölçümler doğrudan cihaz flaşıyla alınır.
                   </p>
                 </div>
 
                 {/* Device hardware badge info */}
-                <div className="p-2.5 rounded bg-zinc-950/80 border border-zinc-800/80 text-[11px] font-mono space-y-1">
+                <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800/80 text-xs font-mono space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Cihaz:</span>
-                    <span className="text-zinc-200">{activeDeviceLabel}</span>
+                    <span className="text-zinc-500">Aktif Cihaz:</span>
+                    <span className="text-zinc-200 font-semibold">{activeDeviceLabel}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Kalibrasyon:</span>
-                    <span className={isCalibrated ? 'text-emerald-400' : 'text-amber-400'}>
+                    <span className="text-zinc-500">Kalibrasyon Durumu:</span>
+                    <span className={isCalibrated ? 'text-emerald-400 font-medium' : 'text-amber-400 font-medium'}>
                       {isCalibrated ? 'Geçerli' : 'Kalibrasyon Gerekli'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-4 space-y-2">
+              <div className="pt-6 space-y-2">
                 <button
                   onClick={handleStartLiveAcquisition}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-blue-900/40"
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-md shadow-blue-900/40"
                 >
-                  <Play className="h-3.5 w-3.5 fill-current" />
+                  <Play className="h-4 w-4 fill-current" />
                   <span>Canlı Ölçüm Serisi Başlat</span>
                 </button>
-                {onOpenInstruments && (
+                {onNavigateToSpectro && (
                   <button
-                    onClick={onOpenInstruments}
-                    className="w-full py-1 text-center text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
+                    onClick={onNavigateToSpectro}
+                    className="w-full py-1.5 text-center text-xs font-mono text-zinc-400 hover:text-blue-400 transition-colors flex items-center justify-center gap-1"
                   >
-                    Donanım Masası & Kalibrasyon
+                    <span>Spektrofotometre Ayarları & Kalibrasyon Masasına Git</span>
+                    <ArrowRight className="h-3 w-3" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* OPTION 2: FILE UPLOAD (RM400 / CxF3 / CSV) */}
-            <div className="p-5 rounded-xl border bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 flex flex-col justify-between transition-all">
-              <div className="space-y-3">
+            {/* OPTION 2: INDUSTRIAL SAMPLE DATASETS */}
+            <div className="p-6 rounded-xl border bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 flex flex-col justify-between transition-all">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-800/60 border border-zinc-700 flex items-center justify-center text-zinc-300">
-                    <UploadCloud className="h-4 w-4" />
+                  <div className="w-10 h-10 rounded-xl bg-emerald-950/50 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
+                    <Sparkles className="h-5 w-5" />
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-mono">
-                    DIŞ DOSYA
+                  <span className="px-2.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-mono">
+                    REFERANS
                   </span>
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-semibold text-zinc-100">Ölçüm Dosyası Yükle</h4>
+                  <h4 className="text-sm font-semibold text-zinc-100">Hazır Endüstriyel Kalibrasyon Seti</h4>
                   <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                    X-Rite RM400, CxF3, CSV, TXT veya XML formatında önceden kaydedilmiş spektral yansıma dosyasını içe aktarın.
+                    Fiziksel seyreltme kartı olmadan sistemi ve matematiksel modeli incelemek için standart endüstriyel referans serisini yükleyin.
                   </p>
                 </div>
 
-                <div className="border border-dashed border-zinc-800 hover:border-zinc-600 bg-zinc-950/40 rounded-lg p-3 text-center transition-colors">
-                  <input
-                    type="file"
-                    id="rm400-upload"
-                    accept=".csv,.txt,.xml,.cxf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <label htmlFor="rm400-upload" className="cursor-pointer space-y-1 block">
-                    <span className="text-xs text-blue-400 hover:underline block font-medium">
-                      Dosya Seçin veya Bırakın
-                    </span>
-                    <span className="text-[10px] text-zinc-500 font-mono block">
-                      400-700 nm @ 10 nm
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {uploadedFileName && (
-                <div className="pt-3">
-                  <span className="text-[11px] font-mono text-zinc-400 truncate block">
-                    Yüklü: {uploadedFileName}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* OPTION 3: INDUSTRIAL SAMPLE DATASETS */}
-            <div className="p-5 rounded-xl border bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 flex flex-col justify-between transition-all">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-950/50 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-mono">
-                    ÖRNEKLER
-                  </span>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-semibold text-zinc-100">Hazır Kalibrasyon Seti</h4>
-                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                    Standart endüstriyel pigment kalibrasyon setlerini (6 seyreltme serisi) hızlıca yükleyip inceleyin.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {availableSamples.map((samp) => (
                     <div
                       key={samp.key}
                       onClick={() => handleLoadSample(samp.key)}
-                      className="p-2 bg-zinc-950/70 border border-zinc-800 rounded-lg hover:border-zinc-600 cursor-pointer transition-colors flex items-center gap-2"
+                      className="p-2.5 bg-zinc-950/70 border border-zinc-800 rounded-lg hover:border-zinc-600 cursor-pointer transition-colors flex items-center justify-between gap-3 group"
                     >
-                      <span
-                        className="w-3 h-3 rounded-full flex-shrink-0 border border-zinc-700"
-                        style={{ backgroundColor: samp.color_hex }}
-                      />
-                      <div className="overflow-hidden min-w-0">
-                        <p className="text-xs font-medium text-zinc-200 truncate">{samp.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono">{samp.code} • 6 Seyreltme</p>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className="w-4 h-4 rounded-full flex-shrink-0 border border-zinc-700 shadow-sm"
+                          style={{ backgroundColor: samp.color_hex }}
+                        />
+                        <div className="overflow-hidden min-w-0">
+                          <p className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
+                            {samp.name}
+                          </p>
+                          <p className="text-[10px] text-zinc-500 font-mono">{samp.code} • 6 Seyreltme Serisi</p>
+                        </div>
                       </div>
+                      <span className="text-[10px] font-mono text-zinc-500 group-hover:text-emerald-400 transition-colors">
+                        Yükle &rarr;
+                      </span>
                     </div>
                   ))}
                 </div>

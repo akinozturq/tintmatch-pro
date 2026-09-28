@@ -344,6 +344,15 @@ class CHNSpecDriver:
             try:
                 logger.info("Triggering CHNSpec physical White calibration (please wait while flashing)...")
                 self._dev.White()
+                # ConnectedMeasure.dll resets timer to 10000ms inside White().
+                # Extend it immediately so it doesn't fail prematurely while multi-flashes continue.
+                if self._internal_timer:
+                    try:
+                        self._internal_timer.Stop()
+                        self._internal_timer.Interval = 60000.0
+                        self._internal_timer.Start()
+                    except Exception:
+                        pass
             except Exception as e:
                 raise RuntimeError(f"White calibration trigger failed: {e}")
 
@@ -403,6 +412,15 @@ class CHNSpecDriver:
             try:
                 logger.info("Triggering CHNSpec physical Black calibration (please wait while flashing)...")
                 self._dev.Black()
+                # ConnectedMeasure.dll resets timer to 10000ms inside Black().
+                # Extend it immediately so it doesn't fail prematurely while multi-flashes continue.
+                if self._internal_timer:
+                    try:
+                        self._internal_timer.Stop()
+                        self._internal_timer.Interval = 60000.0
+                        self._internal_timer.Start()
+                    except Exception:
+                        pass
             except Exception as e:
                 raise RuntimeError(f"Black calibration trigger failed: {e}")
 
@@ -539,6 +557,13 @@ class CHNSpecDriver:
                 try:
                     logger.info(f"Triggering CHNSpec physical Measure mode={norm_mode}...")
                     self._dev.Measure(csharp_mode)
+                    if self._internal_timer:
+                        try:
+                            self._internal_timer.Stop()
+                            self._internal_timer.Interval = 60000.0
+                            self._internal_timer.Start()
+                        except Exception:
+                            pass
                 except Exception as e:
                     self._connection_state = "ERROR"
                     self._last_error = str(e)
