@@ -254,6 +254,7 @@ def calculate_km_jacobian_condition(
     scaled_conds = []
     raw_conds = []
     wl_scaled_pairs = []
+    skipped_wavelengths = []
     n_wl = len(base_k)
 
     for wl_idx in range(n_wl):
@@ -295,8 +296,18 @@ def calculate_km_jacobian_condition(
             if not np.isnan(c_s) and not np.isinf(c_s):
                 scaled_conds.append(c_s)
                 wl_scaled_pairs.append((int(WAVELENGTHS[wl_idx]), c_s))
-        except Exception:
-            pass
+            else:
+                skipped_wavelengths.append({
+                    "wavelength_nm": int(WAVELENGTHS[wl_idx]),
+                    "matrix": "scaled",
+                    "reason": "NaN_or_Inf"
+                })
+        except Exception as exc:
+            skipped_wavelengths.append({
+                "wavelength_nm": int(WAVELENGTHS[wl_idx]),
+                "matrix": "scaled",
+                "error": str(exc)
+            })
 
         try:
             c_r = np.linalg.cond(J_raw)
@@ -325,7 +336,9 @@ def calculate_km_jacobian_condition(
         "p95_condition_number": p95_scaled,
         "max_condition_number": max_scaled,
         "worst_wavelength_nm": worst_wl,
-        "status": status_str
+        "status": status_str,
+        "skipped_wavelengths": skipped_wavelengths,
+        "valid_wavelengths_count": len(scaled_conds)
     }
 
 

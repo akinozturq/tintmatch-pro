@@ -41,6 +41,7 @@ def evaluate_characterization_gate(
     max_spectral_residual: float | None = None,
     directional_residuals: dict | None = None,
     loocv_result: dict | None = None,
+    is_opaque: bool = True,
     profile: ColorScienceProfile = DEFAULT_SCIENCE_PROFILE,
     tolerance: ToleranceProfile = DEFAULT_TOLERANCE_PROFILE
 ) -> dict:
@@ -140,15 +141,25 @@ def evaluate_characterization_gate(
         })
 
     # 7. Contrast Ratio / Opacity
-    cr_pass = contrast_ratio >= tolerance.opacity_limit
+    if not is_opaque:
+        cr_pass = True
+        cr_status = "INFORMATIONAL"
+        cr_severity = "INFO"
+        cr_label = "Kontrast Oranı (Şeffaf / Derin Baz - Bilgilendirme Amaçlı)"
+    else:
+        cr_pass = contrast_ratio >= tolerance.opacity_limit
+        cr_status = "PASS" if cr_pass else "WARN"
+        cr_severity = "INFO" if cr_pass else "WARNING"
+        cr_label = "Kontrast Oranı (Opasite)"
+
     checks.append({
         "metric": "contrast_ratio",
-        "label": "Kontrast Oranı (Opasite)",
+        "label": cr_label,
         "actual": round(float(contrast_ratio), 2),
-        "limit": tolerance.opacity_limit,
-        "operator": ">=",
-        "status": "PASS" if cr_pass else "PARTIAL",
-        "severity": "INFO" if cr_pass else "INFO"
+        "limit": tolerance.opacity_limit if is_opaque else None,
+        "operator": ">=" if is_opaque else "N/A",
+        "status": cr_status,
+        "severity": cr_severity
     })
 
     # 8. Out-of-Sample Prediction Validation (LOOCV)
@@ -254,6 +265,7 @@ def evaluate_formulation_gate(
     composite_mi: float,
     total_load: float,
     max_total_load: float = 12.0,
+    min_total_load: float = 0.0,
     solver_status: str = "OPTIMAL_CONVERGED",
     constraint_slack: float = 0.0,
     directional_residuals: dict | None = None,
@@ -302,6 +314,20 @@ def evaluate_formulation_gate(
         "severity": "INFO" if load_pass else "CRITICAL"
     })
 
+    # 3b. Minimum Pigment Paste Mass Constraint (if configured)
+    min_load_pass = True
+    if min_total_load > 0.0:
+        min_load_pass = total_load >= min_total_load - 1e-4
+        checks.append({
+            "metric": "min_total_load",
+            "label": "Minimum Pasta Yükü (%)",
+            "actual": round(float(total_load), 3),
+            "limit": min_total_load,
+            "operator": ">=",
+            "status": "PASS" if min_load_pass else "FAIL",
+            "severity": "INFO" if min_load_pass else "CRITICAL"
+        })
+
     # 4. SLSQP Solver Convergence
     solver_pass = solver_status in ["OPTIMAL_CONVERGED", "FEASIBLE_LOCAL_MIN"]
     checks.append({
@@ -314,7 +340,7 @@ def evaluate_formulation_gate(
         "severity": "INFO" if solver_pass else "WARNING"
     })
 
-    overall_pass = de_pass and mi_pass and load_pass and solver_pass
+    overall_pass = de_pass and mi_pass and load_pass and min_load_pass and solver_pass
     return {
         "gate_type": "FORMULATION_GATE",
         "status": "PASS" if overall_pass else "FAIL",

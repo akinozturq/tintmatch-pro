@@ -24,7 +24,11 @@ def compute_formulation_input_hash(
     max_total_load: float = 12.0,
     k1: float = 0.04,
     k2: float = 0.60,
-    profile_id: str | None = None
+    profile_id: str | None = None,
+    min_total_load: float = 0.0,
+    profile_weights: dict | None = None,
+    tolerance_profile_id: str | None = None,
+    engine_version: str = "2.2.0"
 ) -> str:
     """
     Computes a canonical, order-independent SHA-256 hash of formulation input parameters.
@@ -52,16 +56,26 @@ def compute_formulation_input_hash(
     canonical_pastes.sort(key=lambda x: (x["id"], x["code"]))
 
     canonical_dict = {
+        "engine_version": str(engine_version),
         "target_reflectance": r_target_q,
         "base_k": bk_q,
         "base_s": bs_q,
         "pastes": canonical_pastes,
         "max_pastes": int(max_pastes),
         "max_total_load": round(float(max_total_load), 4),
+        "min_total_load": round(float(min_total_load), 4) if min_total_load > 0.0 else 0.0,
         "k1": round(float(k1), 4),
         "k2": round(float(k2), 4),
         "profile_id": str(profile_id or "default")
     }
+
+    if profile_weights:
+        canonical_dict["profile_weights"] = {
+            k: round(float(v), 4) for k, v in profile_weights.items()
+        }
+
+    if tolerance_profile_id:
+        canonical_dict["tolerance_profile_id"] = str(tolerance_profile_id)
 
     raw_json = json.dumps(canonical_dict, sort_keys=True)
     return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()

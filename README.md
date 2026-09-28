@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-158%20passed%20%7C%2086%25%20cov-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-167%20passed%20%7C%2086%25%20cov-brightgreen)](backend/tests/)
 [![CCM Validation](https://img.shields.io/badge/CCM%20Validation-1.0%20(12%20Pillars)-success)](#-ccm-validation-10-end-to-end-doğrulama-ve-kıyaslama-paketi)
 [![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20ISO%2017972--3-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
@@ -166,7 +166,7 @@ TintMatch PRO
 │   │   ├── formulation.py      # Canlı reçete simülasyonu, 3-profil CCM eşleme ve duyarlılık
 │   │   ├── instruments.py      # Cihaz bağlantı, ölçüm, kalibrasyon sert kapısı (HTTP 428)
 │   │   └── reports.py          # ISO 18314 metodolojik uygunluk raporu ve CSV/CxF3 dışa aktarımı
-│   ├── tests/                  # Pytest kapsamlı test paketi (147 test, %86 Kapsam)
+│   ├── tests/                  # Pytest kapsamlı test paketi (167 test, %86 Kapsam)
 │   │   ├── data/
 │   │   │   ├── synthetic_golden_dataset.json # 15 Altın standart hedef
 │   │   │   ├── blind_targets_dataset.json    # 15 Endüstriyel stres hedefi
@@ -184,6 +184,8 @@ TintMatch PRO
 │   │   ├── test_constraint_aware_sensitivity.py # Pillar 11
 │   │   ├── test_instrument_calibration_hard_gate.py # Pillar 12
 │   │   ├── test_ccm_execution_pipeline_hardening.py # Negative scenario & pipeline hardening
+│   │   ├── test_audit_round_2.py            # Geometry isolation, dual SCI/SCE, LOOCV guard
+│   │   ├── test_audit_round_3.py            # Authoritative constraints, dual-metric screening, CORS
 │   │   ├── test_chnspec_driver.py
 │   │   ├── test_spectrum_normalizer.py
 │   │   ├── test_instrument_comparison.py
@@ -191,7 +193,7 @@ TintMatch PRO
 │   │   ├── test_characterization_coverage.py
 │   │   ├── test_matching_coverage.py
 │   │   └── test_deterministic_regression.py
-│   └── main.py                 # FastAPI v2.0.0 girişi ve statik React SPA sunumu
+│   └── main.py                 # FastAPI v2.2.0 girişi ve statik React SPA sunumu
 ├── frontend/                   # React 19 + TypeScript + Vite + Tailwind CSS SPA
 │   ├── src/
 │   │   ├── components/         # Minimalist UI bileşenleri

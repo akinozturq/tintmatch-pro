@@ -451,8 +451,12 @@ def _optimize_single_profile(
     engine = ConstraintEngine(constraints_config)
     candidate_keys = [str(available_pastes[idx].get("id", idx)) for idx in candidate_indices]
 
-    # Initial guess vectors
-    x0_nnls = [float(initial_sol[idx]) for idx in candidate_indices]
+    # Initial guess vectors - strictly projected to feasible constraint set
+    x0_raw = [float(initial_sol[idx]) for idx in candidate_indices]
+    if np.sum(x0_raw) <= 0.0:
+        x0_raw = [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active
+    x0_nnls = engine.project_to_feasible(x0_raw, candidate_keys).tolist()
+
     bounds = engine.build_scipy_bounds(candidate_keys, default_upper_bound=constraints_config.max_total_load)
     constraints = engine.build_scipy_constraints(candidate_keys)
 
@@ -473,19 +477,28 @@ def _optimize_single_profile(
         )
 
     if enable_multistart and num_starts > 1:
-        # Multi-start candidate initial points
+        # Multi-start candidate initial points - all strictly projected to feasible set
         starts = [x0_nnls]
         # Uniform initial point
-        x0_uniform = [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active
+        x0_uniform = engine.project_to_feasible(
+            [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active,
+            candidate_keys
+        ).tolist()
         starts.append(x0_uniform)
         # Perturbed initial point
-        x0_pert = [val * 1.25 if i == 0 else max(0.0, val * 0.75) for i, val in enumerate(x0_nnls)]
+        x0_pert = engine.project_to_feasible(
+            [val * 1.25 if i == 0 else max(0.0, val * 0.75) for i, val in enumerate(x0_nnls)],
+            candidate_keys
+        ).tolist()
         starts.append(x0_pert)
 
         if num_starts > 3:
             rng = np.random.default_rng(42)
             for _ in range(num_starts - 3):
-                rand_start = [float(rng.uniform(0.0, constraints_config.max_total_load / max(n_active, 1))) for _ in range(n_active)]
+                # Simplex Dirichlet distribution ensures sum of weights is 1.0
+                weights = rng.dirichlet(np.ones(n_active))
+                load_fraction = float(rng.uniform(0.20, 0.90) * constraints_config.max_total_load)
+                rand_start = engine.project_to_feasible(weights * load_fraction, candidate_keys).tolist()
                 starts.append(rand_start)
 
         best_res = None
@@ -493,7 +506,7 @@ def _optimize_single_profile(
         best_start_idx = 0
 
         for s_idx, st in enumerate(starts[:num_starts]):
-            st_clamped = [min(max(st[k], bounds[k][0]), bounds[k][1] if bounds[k][1] is not None else 100.0) for k in range(n_active)]
+            st_clamped = engine.project_to_feasible(st, candidate_keys).tolist()
             res_cand = minimize(
                 objective,
                 st_clamped,
@@ -523,7 +536,7 @@ def _optimize_single_profile(
     opt_raw = np.maximum(res.x, 0.0)
     slack_info = engine.evaluate_constraint_slack(opt_raw, candidate_keys)
 
-    # Diagnostic status evaluation
+    # Preliminary solver convergence status
     if not slack_info["is_feasible"]:
         diag_status = "CONSTRAINTS_VIOLATED"
     elif res.success:
@@ -595,6 +608,31 @@ def _optimize_single_profile(
             for p_i in pruned_concs:
                 pruned_concs[p_i] *= scale
 
+    # Authoritative final constraint validation and feasible projection fallback
+    final_concs_arr = np.array([pruned_concs.get(p_idx, 0.0) for p_idx in candidate_indices], dtype=float)
+    val_result = engine.validate_solution(final_concs_arr, candidate_keys)
+    if not val_result["is_valid"]:
+        proj_concs = engine.project_to_feasible(final_concs_arr, candidate_keys)
+        pruned_concs = {}
+        for i, p_idx in enumerate(candidate_indices):
+            c = float(proj_concs[i])
+            if c >= 0.005:
+                pruned_concs[p_idx] = c
+        final_concs_arr = np.array([pruned_concs.get(p_idx, 0.0) for p_idx in candidate_indices], dtype=float)
+        val_result = engine.validate_solution(final_concs_arr, candidate_keys)
+
+    slack_info = val_result["slack_info"]
+
+    # Final diagnostic status evaluation based on authoritative validation
+    if not val_result["is_valid"]:
+        diag_status = "CONSTRAINTS_VIOLATED"
+    elif res.success:
+        diag_status = "OPTIMAL_CONVERGED"
+    elif res.status == 9:
+        diag_status = "MAX_ITERATIONS"
+    else:
+        diag_status = "FEASIBLE_LOCAL_MIN"
+
     # Compile matched pastes list
     matched_pastes = []
     for p_idx, conc in pruned_concs.items():
@@ -653,6 +691,7 @@ def _optimize_single_profile(
         composite_mi=float(comp_mi),
         total_load=float(sim["total_colorant_load"]),
         max_total_load=constraints_config.max_total_load,
+        min_total_load=constraints_config.min_total_load,
         solver_status=diag_status,
         constraint_slack=float(constraints_config.max_total_load - sim["total_colorant_load"]),
         directional_residuals=dir_res
@@ -680,6 +719,7 @@ def _optimize_single_profile(
             "final_loss": round(float(res.fun), 4),
             "constraint_slack": round(float(constraints_config.max_total_load - sim["total_colorant_load"]), 3),
             "slack_details": slack_info,
+            "constraint_validation": val_result,
             "multistart": multistart_meta
         },
         "sensitivity_matrix": sensitivity
@@ -748,9 +788,6 @@ def match_color_ccm(
     b_s = np.asarray(base_s, dtype=float)
     base_ks = b_k / np.maximum(b_s, 1e-6)
 
-    # Positive absorption demand in linear K/S space for NNLS screening
-    delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
-
     # Construct spectral matrices for all available pastes
     A = np.zeros((N_WAVELENGTHS, n_pastes), dtype=float)
     paste_k_matrix = np.zeros((N_WAVELENGTHS, n_pastes), dtype=float)
@@ -763,15 +800,33 @@ def match_color_ccm(
         paste_s_matrix[:, idx] = us
         A[:, idx] = uk / np.maximum(b_s, 1e-6)
 
-    # Step 1: Initial NNLS across full library for candidate pre-screening
+    # Dual-metric candidate pre-screening:
+    # 1. Primary NNLS positive absorption demand
+    delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
     initial_sol, _ = nnls(A, delta_ks_req)
-
-    # Screen candidate pigments based on positive absorption demand
     positive_indices = [idx for idx in np.argsort(initial_sol)[::-1] if initial_sol[idx] > 0.001]
-    if len(positive_indices) < 2:
-        # Fallback to top correlated pigments if NNLS is too sparse
-        corr_scores = [float(np.dot(A[:, i], delta_ks_req)) for i in range(n_pastes)]
-        positive_indices = list(np.argsort(corr_scores)[::-1][:min(4, n_pastes)])
+
+    # 2. Secondary spectral shape and scattering metric:
+    # Activated when target requires lightening (scattering power) or when NNLS absorption demand is sparse (< 2 pigments).
+    r_base_int = ks_to_reflectance(base_ks)
+    lightening_demand = np.maximum(target_r_int - r_base_int, 0.0)
+    has_lightening = bool(np.any(lightening_demand > 0.01))
+
+    if len(positive_indices) < 2 or has_lightening:
+        spec_scores = []
+        for i in range(n_pastes):
+            uk = paste_k_matrix[:, i]
+            us = paste_s_matrix[:, i]
+            abs_score = float(np.dot(A[:, i], delta_ks_req)) if np.any(delta_ks_req > 1e-4) else float(np.dot(A[:, i], np.abs(target_ks - base_ks)))
+            scat_score = float(np.dot(us, lightening_demand)) if has_lightening else 0.0
+            spec_scores.append((i, abs_score + 10.0 * scat_score))
+
+        sorted_by_spec = [kv[0] for kv in sorted(spec_scores, key=lambda kv: kv[1], reverse=True)]
+        for cand_idx in sorted_by_spec:
+            if cand_idx not in positive_indices:
+                positive_indices.append(cand_idx)
+            if len(positive_indices) >= min(4, n_pastes):
+                break
 
     # Select candidate pool (up to max_pastes + 2 candidates for SLSQP to choose from)
     candidate_indices = positive_indices[:min(len(positive_indices), max(max_pastes + 2, 4))]

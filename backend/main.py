@@ -34,7 +34,7 @@ import os
 app = FastAPI(
     title="TintMatch Pro API",
     description="B2B Spectrophotometric Colorant Paste and Base Characterization / CCM (Computer Color Matching) Web API",
-    version="2.0.0",
+    version="2.2.0",
     lifespan=lifespan
 )
 
@@ -48,13 +48,17 @@ else:
         "http://127.0.0.1:5173",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "*"
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ]
+
+# Per W3C CORS specification, allow_credentials=True cannot be combined with wildcard '*'
+allow_creds = "*" not in origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )

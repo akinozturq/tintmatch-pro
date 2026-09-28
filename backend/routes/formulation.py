@@ -16,6 +16,7 @@ from ..color_engine.constants import WAVELENGTHS
 from ..color_engine.formulation import predict_recipe, match_color_ccm
 from ..color_engine.colorimetry import reflectance_to_lab, reflectance_to_hex
 from ..color_engine.profiles import STANDARD_OPTIMIZATION_PROFILES
+from ..color_engine.constraints import FormulationConstraints
 
 router = APIRouter(prefix="/api/formulation", tags=["formulation"])
 
@@ -44,6 +45,13 @@ class MatchTargetRequest(BaseModel):
     paste_ids: list[int] | None = Field(None, description="Candidate paste IDs; if None, all library pastes are used")
     max_pastes: int = Field(4, json_schema_extra={"example": 4})
     max_total_load: float = Field(12.0, json_schema_extra={"example": 12.0})
+    min_total_load: float = Field(0.0, description="Minimum allowed total colorant load (wt%)")
+    min_dispense_threshold: float = Field(0.0, description="Minimum dispenser thresholding below which paste is pruned (wt%)")
+    individual_bounds: dict[str, tuple[float, float]] | None = Field(None, description="Optional paste-specific [min, max] concentration bounds")
+    group_bounds: dict[str, float] | None = Field(None, description="Optional chemical group upper limits (e.g. {'organic_yellow': 4.0})")
+    pigment_groups: dict[str, list[str]] | None = Field(None, description="Mapping of chemical group names to paste IDs")
+    enable_multistart: bool = Field(False, description="Enable multi-start SLSQP global search")
+    num_starts: int = Field(3, description="Number of multi-start candidate points")
     k1: float = Field(0.04, json_schema_extra={"example": 0.04})
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
     profile_id: str | None = Field(None, description="Preferred profile: 'color_match', 'light_stability', 'economy'")
@@ -227,6 +235,14 @@ def match_color(req: MatchTargetRequest):
         })
 
     try:
+        constraints_config = FormulationConstraints(
+            max_total_load=req.max_total_load,
+            min_total_load=req.min_total_load,
+            individual_bounds=req.individual_bounds or {},
+            group_bounds=req.group_bounds or {},
+            pigment_groups=req.pigment_groups or {},
+            min_dispense_threshold=req.min_dispense_threshold
+        )
         match_result = match_color_ccm(
             target_reflectance=req.target_reflectance,
             base_k=base_k,
@@ -236,7 +252,10 @@ def match_color(req: MatchTargetRequest):
             max_total_load=req.max_total_load,
             k1=req.k1,
             k2=req.k2,
-            profile_id=req.profile_id
+            profile_id=req.profile_id,
+            constraints=constraints_config,
+            enable_multistart=req.enable_multistart,
+            num_starts=req.num_starts
         )
         match_result["geometry"] = target_geo
     except Exception as e:
@@ -308,11 +327,12 @@ def compute_canonical_execution_hash(
     total_load: float | None = None,
     illuminant: str = "D65",
     observer: str = "10",
-    algorithm: str = "TintMatch-CCM-2.0-SLSQP",
+    algorithm: str = "TintMatch-CCM-2.2-SLSQP",
     target_reflectance: list[float] | None = None,
     tolerance_profile_id: str | None = None,
     max_pastes: int | None = None,
     max_total_load: float | None = None,
+    min_total_load: float | None = None,
     geometry: str = "45°/0°",
     characterization_version: str | None = None,
 ) -> str:
@@ -333,6 +353,19 @@ def compute_canonical_execution_hash(
 
     calc_total_load = total_load if total_load is not None else sum(p["concentration"] for p in sorted_pastes)
 
+    # Enrich with optimization profile objective weights
+    prof_id = profile_id or "color_match"
+    matched_prof = next((p for p in STANDARD_OPTIMIZATION_PROFILES if p.id == prof_id), None)
+    profile_weights = None
+    if matched_prof:
+        profile_weights = {
+            "d65": round(float(matched_prof.weight_d65), 4),
+            "a": round(float(matched_prof.weight_a), 4),
+            "f11": round(float(matched_prof.weight_f11), 4),
+            "metamerism": round(float(matched_prof.weight_metamerism), 4),
+            "load": round(float(matched_prof.weight_load), 4)
+        }
+
     payload = {
         "algorithm_version": algorithm,
         "base_hash": base_hash,
@@ -341,11 +374,14 @@ def compute_canonical_execution_hash(
         "illuminant": illuminant,
         "observer": observer,
         "pastes": sorted_pastes,
-        "profile_id": profile_id or "color_match",
+        "profile_id": prof_id,
         "saunderson_k1": round(float(k1), 4),
         "saunderson_k2": round(float(k2), 4),
         "total_load": round(float(calc_total_load), 6),
     }
+
+    if profile_weights:
+        payload["profile_weights"] = profile_weights
 
     if characterization_version:
         payload["characterization_version"] = str(characterization_version)
@@ -362,6 +398,9 @@ def compute_canonical_execution_hash(
 
     if max_total_load is not None:
         payload["max_total_load"] = round(float(max_total_load), 4)
+
+    if min_total_load is not None and min_total_load > 0.0:
+        payload["min_total_load"] = round(float(min_total_load), 4)
 
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
