@@ -50,7 +50,7 @@ class MatchTargetRequest(BaseModel):
     individual_bounds: dict[str, tuple[float, float]] | None = Field(None, description="Optional paste-specific [min, max] concentration bounds")
     group_bounds: dict[str, float] | None = Field(None, description="Optional chemical group upper limits (e.g. {'organic_yellow': 4.0})")
     pigment_groups: dict[str, list[str]] | None = Field(None, description="Mapping of chemical group names to paste IDs")
-    enable_multistart: bool = Field(False, description="Enable multi-start SLSQP global search")
+    enable_multistart: bool = Field(False, description="Enable multi-start SLSQP local optimization / multi-start search")
     num_starts: int = Field(3, description="Number of multi-start candidate points")
     k1: float = Field(0.04, json_schema_extra={"example": 0.04})
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
@@ -82,6 +82,13 @@ class SaveRecipeRequest(BaseModel):
     tolerance_profile_id: str | None = None
     max_pastes: int | None = None
     max_total_load: float | None = None
+    min_total_load: float | None = None
+    individual_bounds: dict[str, tuple[float, float]] | None = None
+    group_bounds: dict[str, float] | None = None
+    pigment_groups: dict[str, list[str]] | None = None
+    min_dispense_threshold: float | None = None
+    enable_multistart: bool | None = None
+    num_starts: int | None = None
     operator_notes: str | None = None
 
 
@@ -258,6 +265,27 @@ def match_color(req: MatchTargetRequest):
             num_starts=req.num_starts
         )
         match_result["geometry"] = target_geo
+        base_hash = hashlib.sha256(f"{base_row['absorption_k']}:{base_row['scattering_s']}".encode()).hexdigest()
+        match_result["calculation_hash"] = compute_canonical_execution_hash(
+            base_id=req.base_id,
+            base_hash=base_hash,
+            pastes=match_result.get("matched_pastes", []),
+            k1=req.k1,
+            k2=req.k2,
+            profile_id=req.profile_id or "color_match",
+            total_load=match_result.get("total_colorant_load"),
+            target_reflectance=req.target_reflectance,
+            max_pastes=req.max_pastes,
+            max_total_load=req.max_total_load,
+            min_total_load=req.min_total_load,
+            geometry=target_geo,
+            individual_bounds=req.individual_bounds,
+            group_bounds=req.group_bounds,
+            pigment_groups=req.pigment_groups,
+            min_dispense_threshold=req.min_dispense_threshold,
+            enable_multistart=req.enable_multistart,
+            num_starts=req.num_starts
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Color matching solver error: {str(e)}")
 
@@ -335,6 +363,13 @@ def compute_canonical_execution_hash(
     min_total_load: float | None = None,
     geometry: str = "45°/0°",
     characterization_version: str | None = None,
+    individual_bounds: dict[str, tuple[float, float]] | None = None,
+    group_bounds: dict[str, float] | None = None,
+    pigment_groups: dict[str, list[str]] | None = None,
+    min_dispense_threshold: float | None = None,
+    enforce_simplex_sum: bool | None = None,
+    enable_multistart: bool | None = None,
+    num_starts: int | None = None,
 ) -> str:
     """Computes a canonical SHA-256 execution context hash capturing all optical, formulation, and solver parameters."""
     def paste_sort_key(p):
@@ -402,6 +437,34 @@ def compute_canonical_execution_hash(
     if min_total_load is not None and min_total_load > 0.0:
         payload["min_total_load"] = round(float(min_total_load), 4)
 
+    if individual_bounds:
+        payload["individual_bounds"] = {
+            str(k): [round(float(b[0]), 4), round(float(b[1]), 4)]
+            for k, b in sorted(individual_bounds.items())
+        }
+
+    if group_bounds:
+        payload["group_bounds"] = {
+            str(k): round(float(v), 4) for k, v in sorted(group_bounds.items())
+        }
+
+    if pigment_groups:
+        payload["pigment_groups"] = {
+            str(k): sorted([str(item) for item in v]) for k, v in sorted(pigment_groups.items())
+        }
+
+    if min_dispense_threshold is not None and min_dispense_threshold > 0.0:
+        payload["min_dispense_threshold"] = round(float(min_dispense_threshold), 4)
+
+    if enforce_simplex_sum:
+        payload["enforce_simplex_sum"] = True
+
+    if enable_multistart:
+        payload["multistart"] = {
+            "enabled": True,
+            "num_starts": int(num_starts or 3)
+        }
+
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -434,8 +497,15 @@ def save_recipe(req: SaveRecipeRequest):
             tolerance_profile_id=req.tolerance_profile_id,
             max_pastes=req.max_pastes,
             max_total_load=req.max_total_load,
+            min_total_load=req.min_total_load,
             geometry=recipe_geo,
-            characterization_version=char_ver
+            characterization_version=char_ver,
+            individual_bounds=req.individual_bounds,
+            group_bounds=req.group_bounds,
+            pigment_groups=req.pigment_groups,
+            min_dispense_threshold=req.min_dispense_threshold,
+            enable_multistart=req.enable_multistart,
+            num_starts=req.num_starts
         )
 
     qg_json = json.dumps(req.quality_gate) if req.quality_gate else None

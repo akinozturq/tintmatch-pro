@@ -13,6 +13,12 @@ Manages physical, dispensing, chemical, and economic constraints for CCM formula
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
+from scipy.optimize import minimize
+
+
+class InfeasibleConstraintSet(ValueError):
+    """Raised when formulation constraints are mutually contradictory or impossible to satisfy."""
+    pass
 
 
 @dataclass
@@ -275,41 +281,139 @@ class ConstraintEngine:
     ) -> np.ndarray:
         """
         Projects an arbitrary concentration vector onto the feasible set defined by
-        individual bounds, group bounds, and max total load constraints.
+        individual bounds, group bounds, simplex sum, and [min_total_load, max_total_load]
+        via Euclidean Quadratic Programming (QP): min 0.5 * ||x - x0||^2 subject to constraints.
+
+        Raises InfeasibleConstraintSet if the constraint set is mutually contradictory or empty.
         """
-        projected = np.maximum(np.asarray(concentrations, dtype=float, copy=True), 0.0)
-        n = len(projected)
+        concs = np.maximum(np.asarray(concentrations, dtype=float, copy=True), 0.0)
+        n = len(concs)
+        if n == 0:
+            if self.constraints.min_total_load > 1e-6:
+                raise InfeasibleConstraintSet(
+                    f"Empty pigment vector cannot satisfy min_total_load ({self.constraints.min_total_load}%)."
+                )
+            return np.array([], dtype=float)
 
-        # 1. Clamp to individual upper bounds
-        for idx in range(min(n, len(pigment_keys))):
-            key = pigment_keys[idx]
-            if key in self.constraints.individual_bounds:
-                lb, ub = self.constraints.individual_bounds[key]
-                projected[idx] = min(max(projected[idx], max(0.0, float(lb))), float(ub))
+        # 0. Fast-path: Check if already strictly valid
+        val_check = self.validate_solution(concs, pigment_keys)
+        if val_check["is_valid"]:
+            return concs
 
-        # 2. Enforce chemical group limits
-        for group_name, group_limit in self.constraints.group_bounds.items():
-            member_ids = set(self.constraints.pigment_groups.get(group_name, []))
-            member_indices = [i for i, key in enumerate(pigment_keys) if key in member_ids and i < n]
-            if member_indices:
-                grp_sum = float(np.sum(projected[member_indices]))
-                if grp_sum > group_limit + 1e-6:
-                    scale = float(group_limit / max(grp_sum, 1e-6))
-                    for mi in member_indices:
-                        projected[mi] *= scale
+        # 1. Structural infeasibility pre-checks
+        bounds = self.build_scipy_bounds(pigment_keys, default_upper_bound=self.constraints.max_total_load)
+        if len(bounds) < n:
+            bounds.extend([(0.0, float(self.constraints.max_total_load))] * (n - len(bounds)))
+        active_bounds = bounds[:n]
 
-        # 3. Enforce maximum total load
-        tot = float(np.sum(projected))
-        max_load = float(self.constraints.max_total_load)
-        if tot > max_load + 1e-6:
-            scale = max_load / max(tot, 1e-6)
-            projected *= scale
+        sum_lb = sum(b[0] for b in active_bounds)
+        sum_ub = sum(b[1] for b in active_bounds)
 
-        # 4. Enforce minimum total load (scale up proportionally if active, non-zero)
-        min_load = float(self.constraints.min_total_load)
-        tot_after = float(np.sum(projected))
-        if min_load > 0.0 and 0.0 < tot_after < min_load - 1e-6:
-            scale_up = min(min_load / max(tot_after, 1e-6), max_load / max(tot_after, 1e-6))
-            projected *= scale_up
+        if self.constraints.min_total_load > self.constraints.max_total_load + 1e-6:
+            raise InfeasibleConstraintSet(
+                f"Contradictory total load bounds: min_total_load ({self.constraints.min_total_load}%) > "
+                f"max_total_load ({self.constraints.max_total_load}%)."
+            )
 
-        return projected
+        if self.constraints.min_total_load > sum_ub + 1e-6:
+            raise InfeasibleConstraintSet(
+                f"Unsatisfiable constraints: min_total_load ({self.constraints.min_total_load}%) exceeds sum of "
+                f"individual upper bounds ({sum_ub:.4f}%)."
+            )
+
+        if self.constraints.max_total_load < sum_lb - 1e-6:
+            raise InfeasibleConstraintSet(
+                f"Unsatisfiable constraints: max_total_load ({self.constraints.max_total_load}%) is below sum of "
+                f"individual lower bounds ({sum_lb:.4f}%)."
+            )
+
+        for grp_name, grp_limit in self.constraints.group_bounds.items():
+            member_ids = set(self.constraints.pigment_groups.get(grp_name, []))
+            grp_indices = [i for i, key in enumerate(pigment_keys) if key in member_ids and i < n]
+            grp_lb = sum(active_bounds[i][0] for i in grp_indices)
+            if grp_lb > grp_limit + 1e-6:
+                raise InfeasibleConstraintSet(
+                    f"Unsatisfiable constraints: chemical group '{grp_name}' limit ({grp_limit}%) is below "
+                    f"sum of member lower bounds ({grp_lb:.4f}%)."
+                )
+
+        # 2. Build QP objective and gradient
+        x0_target = concs.copy()
+
+        def qp_objective(x: np.ndarray) -> float:
+            diff = x - x0_target
+            return 0.5 * float(np.dot(diff, diff))
+
+        def qp_gradient(x: np.ndarray) -> np.ndarray:
+            return x - x0_target
+
+        scipy_constraints = self.build_scipy_constraints(pigment_keys)
+
+        # 3. Candidate starting points for SLSQP
+        # Start A: Clamped x0
+        x_init_a = np.array([
+            min(max(x0_target[i], active_bounds[i][0]), active_bounds[i][1])
+            for i in range(n)
+        ], dtype=float)
+
+        tot_a = float(np.sum(x_init_a))
+        if tot_a > self.constraints.max_total_load + 1e-6 and tot_a > 1e-6:
+            x_init_a = np.clip(x_init_a * (self.constraints.max_total_load / tot_a), [b[0] for b in active_bounds], [b[1] for b in active_bounds])
+        elif tot_a < self.constraints.min_total_load - 1e-6 and self.constraints.min_total_load > 0.0:
+            deficit = self.constraints.min_total_load - tot_a
+            room = np.array([active_bounds[i][1] - x_init_a[i] for i in range(n)], dtype=float)
+            room_tot = float(np.sum(room))
+            if room_tot > 1e-6:
+                x_init_a = np.clip(x_init_a + (deficit * room / room_tot), [b[0] for b in active_bounds], [b[1] for b in active_bounds])
+
+        candidate_starts = [x_init_a]
+
+        # Start B: Centroid / midpoint between bounds
+        target_sum = 0.5 * (
+            max(self.constraints.min_total_load, sum_lb) +
+            min(self.constraints.max_total_load, sum_ub)
+        )
+        x_mid = np.array([0.5 * (b[0] + min(b[1], self.constraints.max_total_load)) for b in active_bounds], dtype=float)
+        tot_mid = float(np.sum(x_mid))
+        if tot_mid > 1e-6:
+            x_mid = np.clip(x_mid * (target_sum / tot_mid), [b[0] for b in active_bounds], [b[1] for b in active_bounds])
+        candidate_starts.append(x_mid)
+
+        best_projected = None
+        best_dist = float("inf")
+
+        for st in candidate_starts:
+            res = minimize(
+                qp_objective,
+                st,
+                jac=qp_gradient,
+                method="SLSQP",
+                bounds=active_bounds,
+                constraints=scipy_constraints,
+                options={"maxiter": 250, "ftol": 1e-7}
+            )
+
+            cand = np.clip(res.x, [b[0] for b in active_bounds], [b[1] for b in active_bounds])
+            tot_cand = float(np.sum(cand))
+            if tot_cand > self.constraints.max_total_load and tot_cand <= self.constraints.max_total_load + 1e-4:
+                cand *= (self.constraints.max_total_load / tot_cand)
+            elif tot_cand < self.constraints.min_total_load and tot_cand >= self.constraints.min_total_load - 1e-4 and self.constraints.min_total_load > 0.0:
+                cand *= (self.constraints.min_total_load / tot_cand)
+
+            val_res = self.validate_solution(cand, pigment_keys)
+            if val_res["is_valid"]:
+                dist = qp_objective(cand)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_projected = cand
+
+        if best_projected is not None:
+            return best_projected
+
+        # If neither start resulted in a valid vector, evaluate violations and raise
+        final_val = self.validate_solution(cand, pigment_keys)
+        raise InfeasibleConstraintSet(
+            f"Cannot project vector to feasible domain: constraints are mutually contradictory or unsatisfiable. "
+            f"Violations: {final_val['violations']}"
+        )
+

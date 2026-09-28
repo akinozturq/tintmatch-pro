@@ -28,6 +28,13 @@ def compute_formulation_input_hash(
     min_total_load: float = 0.0,
     profile_weights: dict | None = None,
     tolerance_profile_id: str | None = None,
+    individual_bounds: dict[str, tuple[float, float]] | None = None,
+    group_bounds: dict[str, float] | None = None,
+    pigment_groups: dict[str, list[str]] | None = None,
+    min_dispense_threshold: float = 0.0,
+    enforce_simplex_sum: bool = False,
+    enable_multistart: bool = False,
+    num_starts: int = 3,
     engine_version: str = "2.2.0"
 ) -> str:
     """
@@ -76,6 +83,34 @@ def compute_formulation_input_hash(
 
     if tolerance_profile_id:
         canonical_dict["tolerance_profile_id"] = str(tolerance_profile_id)
+
+    if individual_bounds:
+        canonical_dict["individual_bounds"] = {
+            str(k): [round(float(b[0]), 4), round(float(b[1]), 4)]
+            for k, b in sorted(individual_bounds.items())
+        }
+
+    if group_bounds:
+        canonical_dict["group_bounds"] = {
+            str(k): round(float(v), 4) for k, v in sorted(group_bounds.items())
+        }
+
+    if pigment_groups:
+        canonical_dict["pigment_groups"] = {
+            str(k): sorted([str(item) for item in v]) for k, v in sorted(pigment_groups.items())
+        }
+
+    if min_dispense_threshold > 0.0:
+        canonical_dict["min_dispense_threshold"] = round(float(min_dispense_threshold), 4)
+
+    if enforce_simplex_sum:
+        canonical_dict["enforce_simplex_sum"] = True
+
+    if enable_multistart:
+        canonical_dict["multistart"] = {
+            "enabled": True,
+            "num_starts": int(num_starts)
+        }
 
     raw_json = json.dumps(canonical_dict, sort_keys=True)
     return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()

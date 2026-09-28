@@ -34,7 +34,7 @@ from .profiles import (
     PROFILE_ECONOMY,
     STANDARD_OPTIMIZATION_PROFILES,
 )
-from .constraints import FormulationConstraints, ConstraintEngine
+from .constraints import FormulationConstraints, ConstraintEngine, InfeasibleConstraintSet
 
 
 def predict_recipe(
@@ -439,10 +439,43 @@ def _optimize_single_profile(
             "profile_name": profile.name,
             "description": profile.description,
             "matched_pastes": [],
-            "status": "NO_ACTIVE_PIGMENTS",
+            "prediction": None,
             "delta_e00": 99.0,
             "composite_mi": 99.0,
-            "total_load": 0.0
+            "total_load": 0.0,
+            "passed_target_threshold": False,
+            "status": "NO_ACTIVE_PIGMENTS",
+            "formulation_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": ["No active colorant pastes available for formulation."]
+            },
+            "quality_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": ["No active colorant pastes available for formulation."]
+            },
+            "diagnostics": {
+                "solver": "SLSQP",
+                "iterations": 0,
+                "function_evaluations": 0,
+                "success": False,
+                "message": "No active colorant pastes available.",
+                "final_loss": 999.0,
+                "constraint_slack": 0.0,
+                "slack_details": {},
+                "constraint_validation": {"is_valid": False, "violations": ["No active pigments"]},
+                "multistart": {"enabled": False, "num_starts_evaluated": 0, "chosen_start_index": 0}
+            },
+            "sensitivity_matrix": {}
         }
 
     if constraints_config is None:
@@ -455,7 +488,52 @@ def _optimize_single_profile(
     x0_raw = [float(initial_sol[idx]) for idx in candidate_indices]
     if np.sum(x0_raw) <= 0.0:
         x0_raw = [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active
-    x0_nnls = engine.project_to_feasible(x0_raw, candidate_keys).tolist()
+    try:
+        x0_nnls = engine.project_to_feasible(x0_raw, candidate_keys).tolist()
+    except InfeasibleConstraintSet as e:
+        return {
+            "profile_id": profile.id,
+            "profile_name": profile.name,
+            "description": profile.description,
+            "matched_pastes": [],
+            "prediction": None,
+            "delta_e00": 99.0,
+            "composite_mi": 99.0,
+            "total_load": 0.0,
+            "passed_target_threshold": False,
+            "status": "INFEASIBLE_CONSTRAINT_SET",
+            "formulation_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": [str(e)]
+            },
+            "quality_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": [str(e)]
+            },
+            "diagnostics": {
+                "solver": "SLSQP",
+                "iterations": 0,
+                "function_evaluations": 0,
+                "success": False,
+                "message": f"Infeasible constraint set: {str(e)}",
+                "final_loss": 999.0,
+                "constraint_slack": 0.0,
+                "slack_details": {},
+                "constraint_validation": {"is_valid": False, "violations": [str(e)]},
+                "multistart": {"enabled": enable_multistart, "num_starts_evaluated": 0, "chosen_start_index": 0}
+            },
+            "sensitivity_matrix": {}
+        }
 
     bounds = engine.build_scipy_bounds(candidate_keys, default_upper_bound=constraints_config.max_total_load)
     constraints = engine.build_scipy_constraints(candidate_keys)
@@ -480,17 +558,24 @@ def _optimize_single_profile(
         # Multi-start candidate initial points - all strictly projected to feasible set
         starts = [x0_nnls]
         # Uniform initial point
-        x0_uniform = engine.project_to_feasible(
-            [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active,
-            candidate_keys
-        ).tolist()
-        starts.append(x0_uniform)
+        try:
+            x0_uniform = engine.project_to_feasible(
+                [constraints_config.max_total_load / (2.0 * max(n_active, 1))] * n_active,
+                candidate_keys
+            ).tolist()
+            starts.append(x0_uniform)
+        except InfeasibleConstraintSet:
+            pass
+
         # Perturbed initial point
-        x0_pert = engine.project_to_feasible(
-            [val * 1.25 if i == 0 else max(0.0, val * 0.75) for i, val in enumerate(x0_nnls)],
-            candidate_keys
-        ).tolist()
-        starts.append(x0_pert)
+        try:
+            x0_pert = engine.project_to_feasible(
+                [val * 1.25 if i == 0 else max(0.0, val * 0.75) for i, val in enumerate(x0_nnls)],
+                candidate_keys
+            ).tolist()
+            starts.append(x0_pert)
+        except InfeasibleConstraintSet:
+            pass
 
         if num_starts > 3:
             rng = np.random.default_rng(42)
@@ -498,15 +583,21 @@ def _optimize_single_profile(
                 # Simplex Dirichlet distribution ensures sum of weights is 1.0
                 weights = rng.dirichlet(np.ones(n_active))
                 load_fraction = float(rng.uniform(0.20, 0.90) * constraints_config.max_total_load)
-                rand_start = engine.project_to_feasible(weights * load_fraction, candidate_keys).tolist()
-                starts.append(rand_start)
+                try:
+                    rand_start = engine.project_to_feasible(weights * load_fraction, candidate_keys).tolist()
+                    starts.append(rand_start)
+                except InfeasibleConstraintSet:
+                    pass
 
         best_res = None
         best_fun = float("inf")
         best_start_idx = 0
 
         for s_idx, st in enumerate(starts[:num_starts]):
-            st_clamped = engine.project_to_feasible(st, candidate_keys).tolist()
+            try:
+                st_clamped = engine.project_to_feasible(st, candidate_keys).tolist()
+            except InfeasibleConstraintSet:
+                st_clamped = st
             res_cand = minimize(
                 objective,
                 st_clamped,
@@ -612,20 +703,67 @@ def _optimize_single_profile(
     final_concs_arr = np.array([pruned_concs.get(p_idx, 0.0) for p_idx in candidate_indices], dtype=float)
     val_result = engine.validate_solution(final_concs_arr, candidate_keys)
     if not val_result["is_valid"]:
-        proj_concs = engine.project_to_feasible(final_concs_arr, candidate_keys)
-        pruned_concs = {}
-        for i, p_idx in enumerate(candidate_indices):
-            c = float(proj_concs[i])
-            if c >= 0.005:
-                pruned_concs[p_idx] = c
-        final_concs_arr = np.array([pruned_concs.get(p_idx, 0.0) for p_idx in candidate_indices], dtype=float)
-        val_result = engine.validate_solution(final_concs_arr, candidate_keys)
+        try:
+            proj_concs = engine.project_to_feasible(final_concs_arr, candidate_keys)
+            final_concs_arr = proj_concs
+            val_result = engine.validate_solution(final_concs_arr, candidate_keys)
+            if val_result["is_valid"]:
+                pruned_concs = {
+                    candidate_indices[i]: float(proj_concs[i])
+                    for i in range(len(candidate_indices))
+                    if proj_concs[i] > 1e-4
+                }
+        except InfeasibleConstraintSet:
+            pass
 
     slack_info = val_result["slack_info"]
 
-    # Final diagnostic status evaluation based on authoritative validation
+    # Final diagnostic status evaluation based on authoritative validation:
+    # If final solution fails constraint validation, DO NOT return an unusable recipe!
     if not val_result["is_valid"]:
-        diag_status = "CONSTRAINTS_VIOLATED"
+        return {
+            "profile_id": profile.id,
+            "profile_name": profile.name,
+            "description": profile.description,
+            "matched_pastes": [],
+            "prediction": None,
+            "delta_e00": 99.0,
+            "composite_mi": 99.0,
+            "total_load": 0.0,
+            "passed_target_threshold": False,
+            "status": "INFEASIBLE_CONSTRAINT_SET",
+            "formulation_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": val_result.get("violations", ["Constraints infeasible or contradictory."])
+            },
+            "quality_gate": {
+                "overall_pass": False,
+                "de_pass": False,
+                "mi_pass": False,
+                "load_pass": False,
+                "min_load_pass": False,
+                "solver_pass": False,
+                "failures": val_result.get("violations", ["Constraints infeasible or contradictory."])
+            },
+            "diagnostics": {
+                "solver": "SLSQP",
+                "iterations": int(getattr(res, "nit", 0)),
+                "function_evaluations": int(getattr(res, "nfev", 0)),
+                "success": False,
+                "message": "Optimization ended in an infeasible constraint state; recipe discarded.",
+                "final_loss": 999.0,
+                "constraint_slack": 0.0,
+                "slack_details": slack_info,
+                "constraint_validation": val_result,
+                "multistart": multistart_meta
+            },
+            "sensitivity_matrix": {}
+        }
     elif res.success:
         diag_status = "OPTIMAL_CONVERGED"
     elif res.status == 9:
@@ -801,13 +939,20 @@ def match_color_ccm(
         A[:, idx] = uk / np.maximum(b_s, 1e-6)
 
     # Dual-metric candidate pre-screening:
-    # 1. Primary NNLS positive absorption demand
+    # 1. Primary NNLS positive absorption demand:
+    #    delta_ks_req = max(target_ks - base_ks, 0) represents the positive absorption demand
+    #    (absorption deficit required above base paint). Non-negative least squares identifies the optimal
+    #    absorption pigment combination for tinting darker/saturated targets.
+    # 2. Secondary spectral shape and scattering alignment metric:
+    #    Activated when the target requires lightening (R_target > R_base, scattering demand)
+    #    or when NNLS positive absorption demand is sparse (< 2 pigments).
+    #    Incorporates pigment scattering power S(lambda) and absolute spectral curvature to guarantee
+    #    high-scattering colorants (e.g. TiO2 white) and toning pigments are preserved in the candidate pool.
     delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
     initial_sol, _ = nnls(A, delta_ks_req)
     positive_indices = [idx for idx in np.argsort(initial_sol)[::-1] if initial_sol[idx] > 0.001]
 
-    # 2. Secondary spectral shape and scattering metric:
-    # Activated when target requires lightening (scattering power) or when NNLS absorption demand is sparse (< 2 pigments).
+    # Secondary scattering & spectral shape metric
     r_base_int = ks_to_reflectance(base_ks)
     lightening_demand = np.maximum(target_r_int - r_base_int, 0.0)
     has_lightening = bool(np.any(lightening_demand > 0.01))

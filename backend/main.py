@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
+from .color_engine.formulation import ENGINE_VERSION
 from .database.db import init_db
 from .routes.bases import router as bases_router
 from .routes.pastes import router as pastes_router
@@ -76,8 +77,9 @@ app.include_router(instruments_router)
 def health_check():
     return {
         "status": "healthy",
-        "service": "TintMatch Pro CCM Engine 2.0",
-        "version": "2.0.0",
+        "service": f"TintMatch Pro CCM Engine {ENGINE_VERSION[:3]}",
+        "version": ENGINE_VERSION,
+        "algorithm_id": "TintMatch-CCM-2.2-SLSQP",
         "spectral_channels": 31,
         "wavelength_range": "400-700 nm @ 10 nm",
         "optimizer": "SLSQP Constrained Multi-Profile Optimizer",
