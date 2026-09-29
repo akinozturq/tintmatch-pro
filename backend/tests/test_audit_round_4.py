@@ -374,3 +374,87 @@ def test_terminal_authoritative_validation_exact_returned_vector():
     assert val["is_valid"] is True
     assert len(val["violations"]) == 0
 
+
+def test_candidate_screening_recall_and_accuracy_across_5_regimes():
+    """
+    Verify candidate pre-screening achieves >= 98% recall and <= 0.050 worst Delta E00 degradation
+    against the unrestricted full-library reference solution across all 5 industrial regimes:
+    1. Lightening Targets
+    2. Dark Targets
+    3. Neutral Targets
+    4. Ultra-Pastel Targets
+    5. Metameric Targets
+    """
+    from pathlib import Path
+    from backend.database.db import get_db_connection
+    from backend.color_engine.benchmarks.benchmark_candidate_recall import run_candidate_recall_audit
+
+    data_dir = Path(__file__).resolve().parent / "data"
+    blind_targets = json.load(open(data_dir / "blind_targets_dataset.json"))
+    reg_targets = json.load(open(data_dir / "regression_targets.json"))
+
+    conn = get_db_connection()
+    base1 = conn.execute("SELECT * FROM bases WHERE id = 1").fetchone()
+    base4 = conn.execute("SELECT * FROM bases WHERE id = 4").fetchone()
+    paste_rows = conn.execute("SELECT * FROM pastes WHERE id <= 6").fetchall()
+    conn.close()
+
+    pastes = [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "code": r["code"],
+            "hex": r["color_hex"],
+            "unit_k": json.loads(r["unit_k"]),
+            "unit_s": json.loads(r["unit_s"])
+        }
+        for r in paste_rows
+    ]
+    # Add White TiO2 PW6 for lightening / scattering verification
+    pastes.append({
+        "id": 999,
+        "name": "White TiO2",
+        "code": "PW6",
+        "hex": "#ffffff",
+        "unit_k": [0.005] * N_WAVELENGTHS,
+        "unit_s": [1.50] * N_WAVELENGTHS
+    })
+
+    base_k = np.array(json.loads(base1["absorption_k"]))
+    base_s = np.array(json.loads(base1["scattering_s"]))
+    b4_k = np.array(json.loads(base4["absorption_k"]))
+    b4_s = np.array(json.loads(base4["scattering_s"]))
+
+    eval_targets = []
+    # 1. Metameric & Ultra-Pastel targets
+    eval_targets.extend(blind_targets[:5])
+    # 2. Dark & Neutral industrial targets
+    eval_targets.extend(reg_targets[:5])
+    # 3. Lightening target (evaluated on Clear Base D, demanding scattering)
+    eval_targets.append({
+        "id": "LIGHT_01_PASTEL",
+        "name": "Lightening on Clear Base",
+        "type": "lightening",
+        "target_reflectance": blind_targets[2]["target_reflectance"],
+        "base_k": b4_k.tolist(),
+        "base_s": b4_s.tolist()
+    })
+
+    audit = run_candidate_recall_audit(eval_targets, base_k, base_s, pastes, max_pastes=4)
+    summary = audit["summary"]
+    breakdown = audit["category_breakdown"]
+
+    # Overall Quality Thresholds
+    assert summary["candidate_recall_pct"] >= 98.0, f"Candidate recall too low: {summary['candidate_recall_pct']}%"
+    assert summary["worst_delta_e_degradation"] <= 0.050, f"Worst dE00 degradation exceeded: {summary['worst_delta_e_degradation']}"
+    assert summary["mean_delta_e_degradation"] <= 0.010, f"Mean dE00 degradation exceeded: {summary['mean_delta_e_degradation']}"
+
+    # Category Coverage & Quality Verification
+    expected_categories = ["Lightening", "Dark", "Neutral", "Ultra-Pastel", "Metameric"]
+    for cat in expected_categories:
+        cat_info = breakdown.get(cat, {})
+        assert cat_info.get("count", 0) > 0, f"Category {cat} was not evaluated in benchmark targets"
+        assert cat_info.get("status") == "PASS", f"Category {cat} failed audit gate: {cat_info}"
+        assert cat_info.get("candidate_recall", 0.0) >= 95.0, f"Category {cat} recall too low: {cat_info['candidate_recall']}%"
+
+

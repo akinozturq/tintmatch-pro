@@ -1081,43 +1081,59 @@ def match_color_ccm(
         paste_s_matrix[:, idx] = us
         A[:, idx] = uk / np.maximum(b_s, 1e-6)
 
-    # Dual-metric candidate pre-screening:
+    # Multi-Domain Signed Spectral Candidate Pre-Screening:
     # 1. Primary NNLS positive absorption demand:
-    #    delta_ks_req = max(target_ks - base_ks, 0) represents the positive absorption demand
-    #    (absorption deficit required above base paint). Non-negative least squares identifies the optimal
-    #    absorption pigment combination for tinting darker/saturated targets.
-    # 2. Secondary spectral shape and scattering alignment metric:
-    #    Activated when the target requires lightening (R_target > R_base, scattering demand)
-    #    or when NNLS positive absorption demand is sparse (< 2 pigments).
-    #    Incorporates pigment scattering power S(lambda) and absolute spectral curvature to guarantee
-    #    high-scattering colorants (e.g. TiO2 white) and toning pigments are preserved in the candidate pool.
+    #    delta_ks_req = max(target_ks - base_ks, 0) identifies primary absorption colorants.
     delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
     initial_sol, _ = nnls(A, delta_ks_req)
     positive_indices = [idx for idx in np.argsort(initial_sol)[::-1] if initial_sol[idx] > 0.001]
 
-    # Secondary scattering & spectral shape metric
+    # 2. Signed spectral magnitude demand:
+    #    Captures bidirectional absorption/scattering demand across wavelengths.
+    abs_delta_ks = np.abs(target_ks - base_ks)
+    abs_sol, _ = nnls(A, abs_delta_ks)
+    abs_indices = [idx for idx in np.argsort(abs_sol)[::-1] if abs_sol[idx] > 0.001]
+
+    # 3. Lightening and scattering demand:
     r_base_int = ks_to_reflectance(base_ks)
     lightening_demand = np.maximum(target_r_int - r_base_int, 0.0)
-    has_lightening = bool(np.any(lightening_demand > 0.01))
+    has_lightening = bool(np.any(lightening_demand > 0.005))
+    if has_lightening:
+        scat_sol, _ = nnls(paste_s_matrix, lightening_demand)
+    else:
+        scat_sol = np.zeros(n_pastes)
 
-    if len(positive_indices) < 2 or has_lightening:
-        spec_scores = []
-        for i in range(n_pastes):
-            uk = paste_k_matrix[:, i]
-            us = paste_s_matrix[:, i]
-            abs_score = float(np.dot(A[:, i], delta_ks_req)) if np.any(delta_ks_req > 1e-4) else float(np.dot(A[:, i], np.abs(target_ks - base_ks)))
-            scat_score = float(np.dot(us, lightening_demand)) if has_lightening else 0.0
-            spec_scores.append((i, abs_score + 10.0 * scat_score))
+    spec_scores = []
+    for i in range(n_pastes):
+        uk = paste_k_matrix[:, i]
+        us = paste_s_matrix[:, i]
+        scat_score = float(scat_sol[i]) + (float(np.dot(us, lightening_demand)) if has_lightening else 0.0)
+        norm_a = float(np.linalg.norm(A[:, i]))
+        norm_d = float(np.linalg.norm(abs_delta_ks))
+        shape_corr = float(np.dot(A[:, i], abs_delta_ks)) / (norm_a * norm_d + 1e-6) if norm_a > 1e-6 and norm_d > 1e-6 else 0.0
+        w_pos = 3.0 if initial_sol[i] > 0.001 else 0.0
+        w_abs = 2.0 if abs_sol[i] > 0.001 else 0.0
+        composite_score = 15.0 * scat_score + 5.0 * shape_corr + w_pos + w_abs
+        spec_scores.append((i, composite_score))
 
-        sorted_by_spec = [kv[0] for kv in sorted(spec_scores, key=lambda kv: kv[1], reverse=True)]
+    sorted_by_spec = [kv[0] for kv in sorted(spec_scores, key=lambda kv: kv[1], reverse=True)]
+
+    # Candidate pool sizing:
+    # For standard industrial dispensing machines (N <= 12 colorant canisters),
+    # retain all available canisters to guarantee 100% candidate recall.
+    # For large industrial databases (N > 12), retain top K + 6 (min 12) candidate colorants.
+    if n_pastes <= max(max_pastes + 6, 12):
+        candidate_indices = list(range(n_pastes))
+    else:
+        merged_indices = list(positive_indices)
+        for cand_idx in abs_indices:
+            if cand_idx not in merged_indices:
+                merged_indices.append(cand_idx)
         for cand_idx in sorted_by_spec:
-            if cand_idx not in positive_indices:
-                positive_indices.append(cand_idx)
-            if len(positive_indices) >= min(4, n_pastes):
-                break
-
-    # Select candidate pool (up to max_pastes + 2 candidates for SLSQP to choose from)
-    candidate_indices = positive_indices[:min(len(positive_indices), max(max_pastes + 2, 4))]
+            if cand_idx not in merged_indices:
+                merged_indices.append(cand_idx)
+        pool_size = min(len(merged_indices), max(max_pastes + 6, 12))
+        candidate_indices = merged_indices[:pool_size]
 
     # Step 2: Solve independently for Recipe A, B, and C
     recipe_a = _optimize_single_profile(
@@ -1218,6 +1234,7 @@ def match_color_ccm(
         "diagnostics": primary["diagnostics"],
         "sensitivity_matrix": primary["sensitivity_matrix"],
         "primary_recipe_key": primary_key,
+        "screened_candidate_ids": [available_pastes[idx]["id"] for idx in candidate_indices],
         "recipes": {
             "recipe_a": recipe_a,
             "recipe_b": recipe_b,
