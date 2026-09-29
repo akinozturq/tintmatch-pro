@@ -260,3 +260,117 @@ def test_api_formulation_match_returns_calculation_hash():
     data = resp.json()
     assert "calculation_hash" in data
     assert len(data["calculation_hash"]) == 64  # SHA-256 hex string length
+
+
+# ============================================================================
+# 6. Combinatorial Subset Optimization & Terminal Authoritative Validation
+# ============================================================================
+
+def test_combinatorial_subset_optimization_selects_low_conc_shading_pigment():
+    """
+    Verify combinatorial subset optimization evaluates pigment subsets and does not
+    blindly prune low-concentration shading pigments that dramatically improve Delta E00.
+    """
+    base_k = np.full(31, 0.02)
+    base_s = np.full(31, 1.00)
+
+    # 4 distinct pigments:
+    # 1: Blue primary
+    # 2: Yellow primary
+    # 3: Broad reddish colorant (higher concentration in unconstrained solve)
+    # 4: Highly potent dark shading toner (Carbon / Violet - low conc, critical color impact)
+    pastes = [
+        {"id": 1, "name": "Blue Primary", "code": "PB15", "unit_k": [0.8 - 0.02 * i for i in range(31)], "unit_s": [0.05] * 31},
+        {"id": 2, "name": "Yellow Primary", "code": "PY74", "unit_k": [0.05 + 0.03 * i for i in range(31)], "unit_s": [0.10] * 31},
+        {"id": 3, "name": "Reddish Ochre", "code": "PR101", "unit_k": [0.35] * 31, "unit_s": [0.08] * 31},
+        {"id": 4, "name": "Carbon Shading Toner", "code": "PBk7", "unit_k": [3.5] * 31, "unit_s": [0.01] * 31},
+    ]
+
+    from backend.color_engine.formulation import predict_recipe
+
+    # Target synthesized from Blue (1.0%), Yellow (0.8%), and a tiny amount of Carbon Shading Toner (0.04%)
+    synth = predict_recipe(
+        base_k=base_k,
+        base_s=base_s,
+        pastes=[
+            {"id": 1, "name": "Blue Primary", "concentration": 1.0, "unit_k": pastes[0]["unit_k"], "unit_s": pastes[0]["unit_s"]},
+            {"id": 2, "name": "Yellow Primary", "concentration": 0.8, "unit_k": pastes[1]["unit_k"], "unit_s": pastes[1]["unit_s"]},
+            {"id": 4, "name": "Carbon Shading Toner", "concentration": 0.04, "unit_k": pastes[3]["unit_k"], "unit_s": pastes[3]["unit_s"]},
+        ]
+    )
+
+    # Solve with max_pastes=3 among 4 candidate colorants
+    res = match_color_ccm(
+        target_reflectance=synth["reflectance"],
+        base_k=base_k,
+        base_s=base_s,
+        available_pastes=pastes,
+        max_pastes=3,
+        max_total_load=10.0
+    )
+
+    assert res["status"] in ["OPTIMAL_CONVERGED", "FEASIBLE_LOCAL_MIN"]
+    matched_ids = [p["id"] for p in res["matched_pastes"]]
+    # Must retain Carbon Shading Toner (id 4) despite its low concentration
+    assert 4 in matched_ids, f"Low-concentration shading toner was eliminated: {matched_ids}"
+    assert res["delta_e00"] <= 0.15, f"Expected near-exact match, got Delta E00 = {res['delta_e00']}"
+    assert len(res["matched_pastes"]) <= 3
+
+
+def test_terminal_authoritative_validation_exact_returned_vector():
+    """
+    Verify that authoritative validation is the terminal gate:
+    1. Validated vector is strictly identical to the returned recipe concentrations.
+    2. Zero sub-threshold pigments leak into the returned recipe.
+    3. Final recipe strictly satisfies all physical/chemical/dispensing constraints.
+    """
+    base_k = np.full(31, 0.03)
+    base_s = np.full(31, 0.90)
+
+    pastes = [
+        {"id": 1, "name": "Blue", "code": "P1", "unit_k": [0.6] * 31, "unit_s": [0.05] * 31},
+        {"id": 2, "name": "Yellow", "code": "P2", "unit_k": [0.2 + 0.02 * i for i in range(31)], "unit_s": [0.08] * 31},
+        {"id": 3, "name": "Red", "code": "P3", "unit_k": [0.4] * 31, "unit_s": [0.06] * 31},
+    ]
+
+    target_r = [0.35] * 31
+
+    constraints = FormulationConstraints(
+        max_total_load=8.0,
+        min_total_load=1.5,
+        min_dispense_threshold=0.03,
+        individual_bounds={"1": (0.0, 4.0), "2": (0.0, 3.0)},
+        group_bounds={"primaries": 5.0},
+        pigment_groups={"primaries": ["1", "2"]},
+        max_pastes=2
+    )
+
+    res = match_color_ccm(
+        target_reflectance=target_r,
+        base_k=base_k,
+        base_s=base_s,
+        available_pastes=pastes,
+        max_pastes=2,
+        constraints=constraints
+    )
+
+    rec_a = res["recipes"]["recipe_a"]
+    matched = rec_a["matched_pastes"]
+
+    # Cardinality strictly respected
+    assert len(matched) <= 2
+
+    # Every returned concentration must be >= min_dispense_threshold (0.03%)
+    for p in matched:
+        assert p["concentration"] >= 0.03, f"Pigment {p['name']} below dispense threshold: {p['concentration']}"
+
+    # Total load must respect min and max total load bounds
+    tot_load = sum(p["concentration"] for p in matched)
+    if matched:
+        assert 1.5 - 1e-4 <= tot_load <= 8.0 + 1e-4
+
+    # Terminal gate validation passed
+    val = rec_a["diagnostics"]["constraint_validation"]
+    assert val["is_valid"] is True
+    assert len(val["violations"]) == 0
+

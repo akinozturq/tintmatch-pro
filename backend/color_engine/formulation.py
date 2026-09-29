@@ -13,6 +13,7 @@ Industrial-grade multi-illuminant CCM solver and live recipe simulation engine:
 """
 
 import uuid
+import itertools
 import numpy as np
 from scipy.optimize import minimize, nnls
 from .constants import WAVELENGTHS, N_WAVELENGTHS
@@ -479,7 +480,9 @@ def _optimize_single_profile(
         }
 
     if constraints_config is None:
-        constraints_config = FormulationConstraints(max_total_load=max_total_load)
+        constraints_config = FormulationConstraints(max_total_load=max_total_load, max_pastes=max_pastes)
+    elif constraints_config.max_pastes is None:
+        constraints_config.max_pastes = max_pastes
 
     engine = ConstraintEngine(constraints_config)
     candidate_keys = [str(available_pastes[idx].get("id", idx)) for idx in candidate_indices]
@@ -625,42 +628,99 @@ def _optimize_single_profile(
         multistart_meta = {"enabled": False, "num_starts_evaluated": 1, "chosen_start_index": 0}
 
     opt_raw = np.maximum(res.x, 0.0)
-    slack_info = engine.evaluate_constraint_slack(opt_raw, candidate_keys)
 
-    # Preliminary solver convergence status
-    if not slack_info["is_feasible"]:
-        diag_status = "CONSTRAINTS_VIOLATED"
-    elif res.success:
-        diag_status = "OPTIMAL_CONVERGED"
-    elif res.status == 9:
-        diag_status = "MAX_ITERATIONS"
+    # -------------------------------------------------------------------------
+    # STAGE 2: Candidate Subsets Generation & Combinatorial Pre-Ranking
+    # -------------------------------------------------------------------------
+    # Effective minimum dispense threshold: configured gravimetric valve limit or 0.005% cutoff
+    disp_threshold = max(constraints_config.min_dispense_threshold, 0.005)
+
+    target_r_int = saunderson_correction(target_r, k1=k1, k2=k2)
+    target_ks = reflectance_to_ks(target_r_int)
+    base_ks = base_k / np.maximum(base_s, 1e-6)
+    delta_ks_req = np.maximum(target_ks - base_ks, 0.0)
+
+    # If candidate pool <= max_pastes, solve directly on full candidate pool
+    if len(candidate_indices) <= max_pastes:
+        subsets_to_evaluate = [list(candidate_indices)]
     else:
-        diag_status = "FEASIBLE_LOCAL_MIN"
+        # Combinatorial subset optimization:
+        # Generate all pigment subsets of size k in [max(1, min(max_pastes, 2)), max_pastes]
+        all_subsets = []
+        for k in range(max(1, min(max_pastes, 2)), max_pastes + 1):
+            for comb in itertools.combinations(candidate_indices, k):
+                all_subsets.append(list(comb))
 
-    # Prune sub-threshold and negligible traces
-    cleaned_opt, _ = engine.post_process_solution(opt_raw, candidate_keys)
-    pruned_concs = {}
-    for i, p_idx in enumerate(candidate_indices):
-        c = float(cleaned_opt[i])
-        if c >= 0.005:
-            pruned_concs[p_idx] = c
+        # Spectral pre-ranking using NNLS residual on delta(K/S)
+        subset_rankings = []
+        for S in all_subsets:
+            A_sub = paste_k_matrix[:, S] / np.maximum(base_s[:, None], 1e-6)
+            c_sub, res_norm = nnls(A_sub, delta_ks_req)
+            subset_rankings.append((S, float(res_norm)))
 
-    # If active pastes exceed max_pastes, keep top max_pastes by concentration
-    if len(pruned_concs) > max_pastes:
-        sorted_by_c = sorted(pruned_concs.items(), key=lambda kv: kv[1], reverse=True)[:max_pastes]
-        pruned_concs = dict(sorted_by_c)
+        subset_rankings.sort(key=lambda item: item[1])
+        # Keep top subsets (up to 20 best spectral fits)
+        subsets_to_evaluate = [item[0] for item in subset_rankings[:20]]
 
-        # Quick refinement polish on final top pastes using unified objective
-        sub_indices = list(pruned_concs.keys())
-        sub_keys = [str(available_pastes[idx].get("id", idx)) for idx in sub_indices]
-        sub_x0 = [pruned_concs[idx] for idx in sub_indices]
+        # Also include the greedy top-concentration subset from raw global SLSQP
+        sorted_raw = [
+            p_idx for p_idx, _ in sorted(
+                [(p, float(opt_raw[candidate_indices.index(p)])) for p in candidate_indices if opt_raw[candidate_indices.index(p)] >= disp_threshold],
+                key=lambda kv: kv[1],
+                reverse=True
+            )[:max_pastes]
+        ]
+        if sorted_raw and sorted_raw not in subsets_to_evaluate:
+            subsets_to_evaluate.insert(0, sorted_raw)
+
+    # -------------------------------------------------------------------------
+    # STAGE 3 & 4: Subsets Optimization, Slack Clamping, and Global Best Selection
+    # -------------------------------------------------------------------------
+    best_loss = float("inf")
+    best_res = res
+    best_matched_pastes = []
+    best_final_concs_arr = np.zeros(len(candidate_indices), dtype=float)
+    best_val_result = None
+
+    for active_indices in subsets_to_evaluate:
+        sub_keys = [str(available_pastes[idx].get("id", idx)) for idx in active_indices]
+
+        # Initial starting vector for this subset: evaluate NNLS start and opt_raw start
+        A_sub = paste_k_matrix[:, active_indices] / np.maximum(base_s[:, None], 1e-6)
+        c_nnls, _ = nnls(A_sub, delta_ks_req)
+        x0_nnls_sub = [float(c) for c in c_nnls]
+        if sum(x0_nnls_sub) <= 0.0:
+            x0_nnls_sub = [constraints_config.max_total_load / (2.0 * max(len(active_indices), 1))] * len(active_indices)
+        try:
+            x0_nnls_sub = engine.project_to_feasible(x0_nnls_sub, sub_keys).tolist()
+        except InfeasibleConstraintSet:
+            pass
+
+        sub_x0 = x0_nnls_sub
+        if all(opt_raw[candidate_indices.index(p)] > 1e-5 for p in active_indices):
+            x0_opt_sub = [float(opt_raw[candidate_indices.index(p)]) for p in active_indices]
+            try:
+                x0_opt_sub = engine.project_to_feasible(x0_opt_sub, sub_keys).tolist()
+            except InfeasibleConstraintSet:
+                pass
+            loss_opt = evaluate_recipe_objective(
+                x0_opt_sub, active_indices, paste_k_matrix, paste_s_matrix, base_k, base_s,
+                target_lab_d65, target_lab_a, target_lab_f11, profile, k1, k2
+            )
+            loss_nnls = evaluate_recipe_objective(
+                x0_nnls_sub, active_indices, paste_k_matrix, paste_s_matrix, base_k, base_s,
+                target_lab_d65, target_lab_a, target_lab_f11, profile, k1, k2
+            )
+            if loss_opt < loss_nnls:
+                sub_x0 = x0_opt_sub
+
         sub_bounds = engine.build_scipy_bounds(sub_keys, default_upper_bound=constraints_config.max_total_load)
         sub_constraints = engine.build_scipy_constraints(sub_keys)
 
         def sub_obj(c_vec):
             return evaluate_recipe_objective(
                 concs=c_vec,
-                active_indices=sub_indices,
+                active_indices=active_indices,
                 paste_k_matrix=paste_k_matrix,
                 paste_s_matrix=paste_s_matrix,
                 base_k=base_k,
@@ -673,48 +733,143 @@ def _optimize_single_profile(
                 k2=k2
             )
 
-        res_ref = minimize(
+        res_sub = minimize(
             sub_obj,
             sub_x0,
             method="SLSQP",
             bounds=sub_bounds,
             constraints=sub_constraints,
-            options={"maxiter": 80, "eps": 1e-3, "ftol": 1e-6}
+            options={"maxiter": 100, "eps": 1e-3, "ftol": 1e-6}
         )
-        if res_ref.success:
-            for k, p_i in enumerate(sub_indices):
-                pruned_concs[p_i] = max(0.0, float(res_ref.x[k]))
-
-    # Final total load clamp verification: handle floating-point epsilon gracefully
-    sum_c = sum(pruned_concs.values())
-    eff_max_load = constraints_config.max_total_load
-    if sum_c > eff_max_load:
-        excess = sum_c - eff_max_load
-        if excess <= 1e-3:
-            # Subtle numerical epsilon: trim from largest concentration to strictly satisfy constraint
-            max_p = max(pruned_concs, key=pruned_concs.get)
-            pruned_concs[max_p] = max(0.0, pruned_concs[max_p] - excess)
+        if res_sub.success:
+            ref_x = np.maximum(res_sub.x, 0.0)
         else:
-            scale = eff_max_load / max(sum_c, 1e-6)
-            for p_i in pruned_concs:
-                pruned_concs[p_i] *= scale
+            ref_x = np.maximum(np.asarray(sub_x0, dtype=float), 0.0)
 
-    # Authoritative final constraint validation and feasible projection fallback
-    final_concs_arr = np.array([pruned_concs.get(p_idx, 0.0) for p_idx in candidate_indices], dtype=float)
-    val_result = engine.validate_solution(final_concs_arr, candidate_keys)
-    if not val_result["is_valid"]:
-        try:
-            proj_concs = engine.project_to_feasible(final_concs_arr, candidate_keys)
-            final_concs_arr = proj_concs
-            val_result = engine.validate_solution(final_concs_arr, candidate_keys)
-            if val_result["is_valid"]:
-                pruned_concs = {
-                    candidate_indices[i]: float(proj_concs[i])
-                    for i in range(len(candidate_indices))
-                    if proj_concs[i] > 1e-4
-                }
-        except InfeasibleConstraintSet:
-            pass
+        # STAGE 4: Build candidate exact rounded final_dict for this subset
+        cand_dict: dict[int, float] = {}
+        for k, p_idx in enumerate(active_indices):
+            c = float(ref_x[k])
+            if c >= disp_threshold:
+                cand_dict[p_idx] = round(c, 3)
+
+        if not cand_dict and active_indices and constraints_config.min_total_load > 0.0:
+            for k, p_idx in enumerate(active_indices):
+                c = float(ref_x[k])
+                if round(c, 3) > 0.0:
+                    cand_dict[p_idx] = round(c, 3)
+
+        # Post-rounding conservative slack adjustments to strictly satisfy bounds
+        # 1. Total load upper clamp
+        tot_rounded = sum(cand_dict.values())
+        eff_max = constraints_config.max_total_load
+        if tot_rounded > eff_max:
+            excess = round(tot_rounded - eff_max, 3)
+            if excess > 0 and cand_dict:
+                max_p = max(cand_dict, key=cand_dict.get)
+                cand_dict[max_p] = round(max(0.0, cand_dict[max_p] - excess), 3)
+
+        # 2. Total load lower clamp (if min_total_load > 0)
+        tot_rounded = sum(cand_dict.values())
+        eff_min = constraints_config.min_total_load
+        if eff_min > 0.0 and 0.0 < tot_rounded < eff_min:
+            deficit = round(eff_min - tot_rounded, 3)
+            if deficit > 0 and cand_dict:
+                for p_idx in sorted(cand_dict, key=cand_dict.get, reverse=True):
+                    k_str = str(available_pastes[p_idx].get("id", p_idx))
+                    ub = constraints_config.individual_bounds.get(k_str, (0.0, eff_max))[1]
+                    if cand_dict[p_idx] + deficit <= ub + 1e-5:
+                        cand_dict[p_idx] = round(cand_dict[p_idx] + deficit, 3)
+                        break
+
+        # 3. Individual upper bounds clamp after rounding
+        for p_idx, c in list(cand_dict.items()):
+            k_str = str(available_pastes[p_idx].get("id", p_idx))
+            if k_str in constraints_config.individual_bounds:
+                ub = constraints_config.individual_bounds[k_str][1]
+                if c > ub:
+                    cand_dict[p_idx] = round(ub, 3)
+
+        # 4. Group bounds clamp after rounding
+        for grp_name, grp_limit in constraints_config.group_bounds.items():
+            member_ids = set(constraints_config.pigment_groups.get(grp_name, []))
+            grp_p_indices = [p_idx for p_idx in cand_dict if str(available_pastes[p_idx].get("id", p_idx)) in member_ids]
+            grp_sum = sum(cand_dict[p_idx] for p_idx in grp_p_indices)
+            if grp_sum > grp_limit:
+                excess = round(grp_sum - grp_limit, 3)
+                if excess > 0 and grp_p_indices:
+                    max_grp_p = max(grp_p_indices, key=lambda idx: cand_dict[idx])
+                    cand_dict[max_grp_p] = round(max(0.0, cand_dict[max_grp_p] - excess), 3)
+
+        # Build candidate matched pastes list
+        cand_matched_pastes = []
+        for p_idx, conc in cand_dict.items():
+            if conc > 0.0:
+                p = available_pastes[p_idx]
+                cand_matched_pastes.append({
+                    "id": p["id"],
+                    "name": p["name"],
+                    "code": p.get("code", ""),
+                    "hex": p.get("hex", "#777777"),
+                    "concentration": float(conc),
+                    "unit_k": p.get("unit_k"),
+                    "unit_s": p.get("unit_s")
+                })
+        cand_matched_pastes.sort(key=lambda x: x["concentration"], reverse=True)
+
+        # Build candidate final_concs_arr strictly from cand_matched_pastes
+        cand_paste_map = {p["id"]: p["concentration"] for p in cand_matched_pastes}
+        cand_final_concs_arr = np.array([
+            cand_paste_map.get(available_pastes[idx]["id"], 0.0)
+            for idx in candidate_indices
+        ], dtype=float)
+
+        # Validate candidate solution authoritatively against all physical/chemical/dispensing constraints
+        cand_val_result = engine.validate_solution(
+            cand_final_concs_arr, candidate_keys, max_pastes=max_pastes, check_dispense=True, check_max_pastes=True
+        )
+
+        if cand_val_result["is_valid"]:
+            # Evaluate objective loss on exact rounded concentrations
+            cand_loss = evaluate_recipe_objective(
+                concs=[cand_paste_map.get(available_pastes[idx]["id"], 0.0) for idx in active_indices],
+                active_indices=active_indices,
+                paste_k_matrix=paste_k_matrix,
+                paste_s_matrix=paste_s_matrix,
+                base_k=base_k,
+                base_s=base_s,
+                target_lab_d65=target_lab_d65,
+                target_lab_a=target_lab_a,
+                target_lab_f11=target_lab_f11,
+                profile=profile,
+                k1=k1,
+                k2=k2
+            )
+            if cand_loss < best_loss:
+                best_loss = cand_loss
+                best_res = res_sub
+                best_matched_pastes = cand_matched_pastes
+                best_final_concs_arr = cand_final_concs_arr
+                best_val_result = cand_val_result
+
+    # -------------------------------------------------------------------------
+    # STAGE 5: Authoritative Final Validation on Winning Recipe Vector
+    # -------------------------------------------------------------------------
+    if best_val_result is not None:
+        matched_pastes = best_matched_pastes
+        final_concs_arr = best_final_concs_arr
+        val_result = best_val_result
+    else:
+        # If no evaluated subset was valid, perform terminal validation on zero vector
+        val_result = engine.validate_solution(
+            np.zeros(len(candidate_indices), dtype=float),
+            candidate_keys,
+            max_pastes=max_pastes,
+            check_dispense=True,
+            check_max_pastes=True
+        )
+        matched_pastes = []
+        final_concs_arr = np.zeros(len(candidate_indices), dtype=float)
 
     slack_info = val_result["slack_info"]
 
@@ -764,32 +919,18 @@ def _optimize_single_profile(
             },
             "sensitivity_matrix": {}
         }
-    elif res.success:
+
+    # Determine solver convergence status
+    if res.success:
         diag_status = "OPTIMAL_CONVERGED"
     elif res.status == 9:
         diag_status = "MAX_ITERATIONS"
     else:
         diag_status = "FEASIBLE_LOCAL_MIN"
 
-    # Compile matched pastes list
-    matched_pastes = []
-    for p_idx, conc in pruned_concs.items():
-        if conc >= 0.005:
-            p = available_pastes[p_idx]
-            matched_pastes.append({
-                "id": p["id"],
-                "name": p["name"],
-                "code": p.get("code", ""),
-                "hex": p.get("hex", "#777777"),
-                "concentration": round(float(conc), 3),
-                "unit_k": p.get("unit_k"),
-                "unit_s": p.get("unit_s")
-            })
-
-    # Sort pastes by concentration descending
-    matched_pastes.sort(key=lambda x: x["concentration"], reverse=True)
-
-    # Full simulation
+    # -------------------------------------------------------------------------
+    # STAGE 6: Simulation & Recipe Generation
+    # -------------------------------------------------------------------------
     sim = predict_recipe(
         base_k=base_k,
         base_s=base_s,
@@ -907,9 +1048,11 @@ def match_color_ccm(
         raise ValueError("No available pastes provided for matching.")
 
     if constraints is None:
-        constraints = FormulationConstraints(max_total_load=max_total_load)
+        constraints = FormulationConstraints(max_total_load=max_total_load, max_pastes=max_pastes)
     else:
         max_total_load = constraints.max_total_load
+        if constraints.max_pastes is None:
+            constraints.max_pastes = max_pastes
 
     calculation_id = f"calc_{uuid.uuid4().hex[:12]}"
 

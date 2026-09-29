@@ -31,6 +31,7 @@ class FormulationConstraints:
     pigment_groups: Dict[str, List[str]] = field(default_factory=dict) # group_name -> [pigment_ids]
     min_dispense_threshold: float = 0.0   # Default 0.0 (no pruning unless explicitly set)
     enforce_simplex_sum: bool = False     # If True, enforces sum(c) <= 100.0
+    max_pastes: Optional[int] = None      # Maximum allowed active pastes in final recipe
 
 
 class ConstraintEngine:
@@ -145,10 +146,14 @@ class ConstraintEngine:
     def evaluate_constraint_slack(
         self,
         concentrations: np.ndarray | List[float],
-        pigment_keys: List[str]
+        pigment_keys: List[str],
+        max_pastes: Optional[int] = None,
+        check_dispense: bool = True,
+        check_max_pastes: bool = True
     ) -> Dict[str, Any]:
         """
-        Computes remaining capacity (slack) and feasibility across all configured constraints.
+        Computes remaining capacity (slack) and feasibility across all configured constraints,
+        including max_pastes limit and minimum dispenser valve thresholding.
         Slack >= 0 means within constraint. Slack < 0 means violation.
         """
         concs = np.asarray(concentrations, dtype=float)
@@ -199,11 +204,29 @@ class ConstraintEngine:
                     "violated": grp_sum > group_limit + 1e-5
                 }
 
+        # Max pastes check: active count exceeds allowed max_pastes limit
+        eff_max_pastes = (max_pastes if max_pastes is not None else self.constraints.max_pastes) if check_max_pastes else None
+        active_count = int(np.sum(concs > 1e-5)) if len(concs) > 0 else 0
+        max_pastes_violated = bool(eff_max_pastes is not None and active_count > eff_max_pastes)
+
+        # Minimum dispense threshold check
+        threshold = self.constraints.min_dispense_threshold
+        dispense_violated = False
+        sub_threshold_pigments: Dict[str, float] = {}
+        if check_dispense and threshold > 0.0:
+            for idx, c in enumerate(concs):
+                if 1e-5 < c < threshold - 1e-5:
+                    dispense_violated = True
+                    key = pigment_keys[idx] if idx < len(pigment_keys) else f"Pigment #{idx}"
+                    sub_threshold_pigments[key] = round(float(c), 4)
+
         is_feasible = bool(
             max_slack >= -1e-5
             and not min_violated
             and not simplex_violated
             and not individual_violated
+            and not dispense_violated
+            and not max_pastes_violated
             and all(not g["violated"] for g in group_slacks.values())
             and (bool(np.all(concs >= -1e-5)) if len(concs) > 0 else True)
         )
@@ -216,20 +239,39 @@ class ConstraintEngine:
             "min_total_slack": round(min_slack, 4) if min_load > 0.0 else None,
             "individual_slacks": individual_slacks,
             "group_slacks": group_slacks,
+            "active_pastes_count": active_count,
+            "max_pastes": eff_max_pastes,
+            "max_pastes_violated": max_pastes_violated,
+            "min_dispense_threshold": round(float(threshold), 4) if threshold > 0.0 else None,
+            "dispense_violated": dispense_violated,
+            "sub_threshold_pigments": sub_threshold_pigments,
             "is_feasible": is_feasible
         }
 
     def validate_solution(
         self,
         concentrations: np.ndarray | List[float],
-        pigment_keys: List[str]
+        pigment_keys: List[str],
+        max_pastes: Optional[int] = None,
+        check_dispense: bool = True,
+        check_max_pastes: bool = True
     ) -> Dict[str, Any]:
         """
         Authoritative validation of an optimization recipe vector against all physical,
-        chemical, and dispensing constraints.
+        chemical, and dispensing constraints:
+        - Non-negativity
+        - Maximum total colorant load
+        - Minimum total colorant load
+        - Chemical group bounds
+        - Individual pigment bounds
+        - Simplex sum limit
+        - Maximum allowed colorant pastes count
+        - Minimum gravimetric dispenser threshold
         """
         concs = np.asarray(concentrations, dtype=float)
-        slack_info = self.evaluate_constraint_slack(concs, pigment_keys)
+        slack_info = self.evaluate_constraint_slack(
+            concs, pigment_keys, max_pastes=max_pastes, check_dispense=check_dispense, check_max_pastes=check_max_pastes
+        )
         violations: List[str] = []
 
         # 1. Non-negativity
@@ -268,6 +310,19 @@ class ConstraintEngine:
         if self.constraints.enforce_simplex_sum and slack_info["total_load"] > 100.0 + 1e-5:
             violations.append(f"Total formulation load ({slack_info['total_load']}%) exceeds simplex limit (100.0%)")
 
+        # 7. Maximum pastes count
+        if slack_info.get("max_pastes_violated"):
+            violations.append(
+                f"Number of active colorant pastes ({slack_info['active_pastes_count']}) exceeds max_pastes limit ({slack_info['max_pastes']})"
+            )
+
+        # 8. Minimum dispense threshold
+        if slack_info.get("dispense_violated"):
+            for p_key, p_val in slack_info.get("sub_threshold_pigments", {}).items():
+                violations.append(
+                    f"Colorant '{p_key}' concentration ({p_val}%) is below minimum dispense threshold ({slack_info['min_dispense_threshold']}%)"
+                )
+
         return {
             "is_valid": len(violations) == 0,
             "violations": violations,
@@ -295,8 +350,8 @@ class ConstraintEngine:
                 )
             return np.array([], dtype=float)
 
-        # 0. Fast-path: Check if already strictly valid
-        val_check = self.validate_solution(concs, pigment_keys)
+        # 0. Fast-path: Check if already strictly valid (continuous feasibility)
+        val_check = self.validate_solution(concs, pigment_keys, max_pastes=None, check_dispense=False, check_max_pastes=False)
         if val_check["is_valid"]:
             return concs
 
@@ -400,7 +455,7 @@ class ConstraintEngine:
             elif tot_cand < self.constraints.min_total_load and tot_cand >= self.constraints.min_total_load - 1e-4 and self.constraints.min_total_load > 0.0:
                 cand *= (self.constraints.min_total_load / tot_cand)
 
-            val_res = self.validate_solution(cand, pigment_keys)
+            val_res = self.validate_solution(cand, pigment_keys, max_pastes=None, check_dispense=False, check_max_pastes=False)
             if val_res["is_valid"]:
                 dist = qp_objective(cand)
                 if dist < best_dist:
@@ -411,7 +466,7 @@ class ConstraintEngine:
             return best_projected
 
         # If neither start resulted in a valid vector, evaluate violations and raise
-        final_val = self.validate_solution(cand, pigment_keys)
+        final_val = self.validate_solution(cand, pigment_keys, max_pastes=None, check_dispense=False, check_max_pastes=False)
         raise InfeasibleConstraintSet(
             f"Cannot project vector to feasible domain: constraints are mutually contradictory or unsatisfiable. "
             f"Violations: {final_val['violations']}"
