@@ -14,6 +14,7 @@ Industrial-grade multi-illuminant CCM solver and live recipe simulation engine:
 
 import uuid
 import itertools
+from dataclasses import replace
 import numpy as np
 from scipy.optimize import minimize, nnls
 from .constants import WAVELENGTHS, N_WAVELENGTHS
@@ -45,7 +46,9 @@ def predict_recipe(
     k1: float = 0.04,
     k2: float = 0.60,
     target_reflectance: list[float] | None = None,
-    thickness: float = 100.0
+    thickness: float = 100.0,
+    forward_model: str = "opaque_infinite",
+    substrate_rg: float = 0.82
 ) -> dict:
     """
     Simulates the spectral reflectance and colorimetric coordinates of a paint recipe.
@@ -53,19 +56,16 @@ def predict_recipe(
     Args:
         base_k: Base absorption spectrum (31 points)
         base_s: Base scattering spectrum (31 points)
-        pastes: List of dicts, each with:
-            - 'id': str/int
-            - 'name': str
-            - 'concentration': float (percentage, e.g. 1.25%)
-            - 'unit_k': list of 31 floats
-            - 'unit_s': list of 31 floats
+        pastes: List of dicts with id, name, concentration, unit_k, unit_s
         k1: Saunderson Fresnel reflection coefficient
         k2: Saunderson internal reflection coefficient
         target_reflectance: Optional 31-point target spectrum for delta E00 and MI
-        thickness: Film thickness (microns)
+        thickness: Film thickness in microns
+        forward_model: Optical forward model ('opaque_infinite' for R_inf or 'finite_film' for 2-constant K-M)
+        substrate_rg: Substrate reflectance for finite film calculations (e.g. 0.82 for white, 0.04 for black)
 
     Returns:
-        Predicted spectral curve, XYZ, L*a*b*, Hex swatch, ΔE00, Metamerism Index.
+        Predicted spectral curve, XYZ, L*a*b*, Hex swatch, ΔE00, Metamerism Index, optical_model.
     """
     b_k = np.asarray(base_k, dtype=float)
     b_s = np.asarray(base_s, dtype=float)
@@ -96,10 +96,25 @@ def predict_recipe(
             "concentration": round(conc, 3)
         })
 
-    # Mixture K/S
-    mix_ks = total_k / np.maximum(total_s, 1e-6)
-    r_internal = ks_to_reflectance(mix_ks)
-    r_measured = inverse_saunderson(r_internal, k1=k1, k2=k2)
+    # Optical forward model calculation:
+    # 1. 'finite_film': Exact two-constant Kubelka-Munk over physical film thickness and substrate Rg
+    # 2. 'opaque_infinite': Classic infinite-thickness Kubelka-Munk R_inf
+    if forward_model == "finite_film":
+        r_measured = forward_two_constant_km(
+            K=total_k,
+            S=total_s,
+            thickness=thickness,
+            Rg=substrate_rg,
+            k1=k1,
+            k2=k2,
+            apply_saunderson=True
+        )
+        r_internal = saunderson_correction(r_measured, k1=k1, k2=k2)
+        mix_ks = reflectance_to_ks(r_internal)
+    else:
+        mix_ks = total_k / np.maximum(total_s, 1e-6)
+        r_internal = ks_to_reflectance(mix_ks)
+        r_measured = inverse_saunderson(r_internal, k1=k1, k2=k2)
 
     # Color coordinates under standard D65/10°
     lab_d65 = reflectance_to_lab(r_measured, illuminant="D65", observer="10")
@@ -125,6 +140,11 @@ def predict_recipe(
         "total_colorant_load": round(total_conc, 3),
         "contrast_ratio": round(contrast_ratio, 2),
         "is_opaque": contrast_ratio >= 98.0,
+        "optical_model": {
+            "forward_model": forward_model,
+            "film_thickness_um": round(float(thickness), 1),
+            "substrate_rg": round(float(substrate_rg), 4)
+        },
         "wavelengths": WAVELENGTHS.tolist(),
         "recipe_breakdown": recipe_breakdown
     }
@@ -366,9 +386,22 @@ def evaluate_recipe_objective(
         k_tot += c * paste_k_matrix[:, p_idx]
         s_tot += c * paste_s_matrix[:, p_idx]
 
-    ks_tot = k_tot / np.maximum(s_tot, 1e-6)
-    r_i = ks_to_reflectance(ks_tot)
-    r_m = inverse_saunderson(r_i, k1=k1, k2=k2)
+    if getattr(profile, "forward_model", "opaque_infinite") == "finite_film":
+        thickness_um = getattr(profile, "film_thickness_um", 100.0)
+        sub_rg = getattr(profile, "substrate_rg", 0.82)
+        r_m = forward_two_constant_km(
+            K=k_tot,
+            S=s_tot,
+            thickness=thickness_um,
+            Rg=sub_rg,
+            k1=k1,
+            k2=k2,
+            apply_saunderson=True
+        )
+    else:
+        ks_tot = k_tot / np.maximum(s_tot, 1e-6)
+        r_i = ks_to_reflectance(ks_tot)
+        r_m = inverse_saunderson(r_i, k1=k1, k2=k2)
 
     # Primary illuminant: D65
     lab_d65 = reflectance_to_lab(r_m, illuminant="D65", observer="10")
@@ -426,7 +459,8 @@ def _optimize_single_profile(
     k2: float,
     constraints_config: FormulationConstraints | None = None,
     enable_multistart: bool = False,
-    num_starts: int = 3
+    num_starts: int = 3,
+    baseline_load: float | None = None
 ) -> dict:
     """
     Executes constrained SLSQP optimization run for a given OptimizationProfile.
@@ -937,7 +971,10 @@ def _optimize_single_profile(
         pastes=matched_pastes,
         k1=k1,
         k2=k2,
-        target_reflectance=target_r.tolist()
+        target_reflectance=target_r.tolist(),
+        thickness=getattr(profile, "film_thickness_um", 100.0),
+        forward_model=getattr(profile, "forward_model", "opaque_infinite"),
+        substrate_rg=getattr(profile, "substrate_rg", 0.82)
     )
 
     de00 = sim["comparison"]["delta_e00"] if "comparison" in sim else 99.0
@@ -965,6 +1002,11 @@ def _optimize_single_profile(
         "delta_H": sim["comparison"].get("delta_H", 0.0),
     } if "comparison" in sim else {}
 
+    meta_dict = sim["comparison"].get("metamerism", {}) if "comparison" in sim else {}
+    de_a = meta_dict.get("dE00_A")
+    de_f11 = meta_dict.get("dE00_F11")
+    de_f2 = meta_dict.get("dE00_F2")
+
     fg_result = evaluate_formulation_gate(
         delta_e00_d65=float(de00),
         composite_mi=float(comp_mi),
@@ -973,7 +1015,12 @@ def _optimize_single_profile(
         min_total_load=constraints_config.min_total_load,
         solver_status=diag_status,
         constraint_slack=float(constraints_config.max_total_load - sim["total_colorant_load"]),
-        directional_residuals=dir_res
+        directional_residuals=dir_res,
+        profile=profile,
+        delta_e00_a=float(de_a) if de_a is not None else None,
+        delta_e00_f11=float(de_f11) if de_f11 is not None else None,
+        delta_e00_f2=float(de_f2) if de_f2 is not None else None,
+        baseline_load=baseline_load
     )
 
     return {
@@ -985,7 +1032,7 @@ def _optimize_single_profile(
         "delta_e00": round(float(de00), 3),
         "composite_mi": round(float(comp_mi), 3),
         "total_load": sim["total_colorant_load"],
-        "passed_target_threshold": de00 < 0.50,
+        "passed_target_threshold": bool(fg_result["status"] == "PASS"),
         "status": diag_status,
         "formulation_gate": fg_result,
         "quality_gate": fg_result,
@@ -1017,7 +1064,10 @@ def match_color_ccm(
     profile_id: str | None = None,
     constraints: FormulationConstraints | None = None,
     enable_multistart: bool = False,
-    num_starts: int = 3
+    num_starts: int = 3,
+    forward_model: str = "opaque_infinite",
+    film_thickness_um: float = 100.0,
+    substrate_rg: float = 0.82
 ) -> dict:
     """
     Automated Computer Color Matching (CCM) solver.
@@ -1039,6 +1089,9 @@ def match_color_ccm(
         constraints: Optional FormulationConstraints configuration
         enable_multistart: Whether to run multi-start SLSQP to guard against CIEDE2000 local minima
         num_starts: Number of initial starting points to evaluate when enable_multistart is True
+        forward_model: Optical forward model ('opaque_infinite' for R_inf or 'finite_film' for 2-constant K-M)
+        film_thickness_um: Film thickness in microns (e.g. 100.0 um drawdown)
+        substrate_rg: Substrate reflectance Rg (e.g. 0.82 for Leneta white card)
 
     Returns:
         Structured response with calculation_id, engine_version, primary recipe, 3 alternatives, diagnostics.
@@ -1135,9 +1188,13 @@ def match_color_ccm(
         pool_size = min(len(merged_indices), max(max_pastes + 6, 12))
         candidate_indices = merged_indices[:pool_size]
 
-    # Step 2: Solve independently for Recipe A, B, and C
+    # Step 2: Solve independently for Recipe A, B, and C with configured optical forward model
+    prof_a = replace(PROFILE_COLOR_MATCH, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
+    prof_b = replace(PROFILE_LIGHT_STABILITY, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
+    prof_c = replace(PROFILE_ECONOMY, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
+
     recipe_a = _optimize_single_profile(
-        profile=PROFILE_COLOR_MATCH,
+        profile=prof_a,
         target_r=target_r,
         target_lab_d65=target_lab_d65,
         target_lab_a=target_lab_a,
@@ -1161,7 +1218,7 @@ def match_color_ccm(
     recipe_a["engine_version"] = ENGINE_VERSION
 
     recipe_b = _optimize_single_profile(
-        profile=PROFILE_LIGHT_STABILITY,
+        profile=prof_b,
         target_r=target_r,
         target_lab_d65=target_lab_d65,
         target_lab_a=target_lab_a,
@@ -1185,7 +1242,7 @@ def match_color_ccm(
     recipe_b["engine_version"] = ENGINE_VERSION
 
     recipe_c = _optimize_single_profile(
-        profile=PROFILE_ECONOMY,
+        profile=prof_c,
         target_r=target_r,
         target_lab_d65=target_lab_d65,
         target_lab_a=target_lab_a,
@@ -1203,7 +1260,8 @@ def match_color_ccm(
         k2=k2,
         constraints_config=constraints,
         enable_multistart=enable_multistart,
-        num_starts=num_starts
+        num_starts=num_starts,
+        baseline_load=recipe_a.get("total_load")
     )
     recipe_c["calculation_id"] = calculation_id
     recipe_c["engine_version"] = ENGINE_VERSION
@@ -1222,6 +1280,11 @@ def match_color_ccm(
     return {
         "calculation_id": calculation_id,
         "engine_version": ENGINE_VERSION,
+        "optical_model": {
+            "forward_model": forward_model,
+            "film_thickness_um": film_thickness_um,
+            "substrate_rg": substrate_rg
+        },
         "matched_pastes": primary["matched_pastes"],
         "prediction": primary["prediction"],
         "delta_e00": primary["delta_e00"],

@@ -23,6 +23,7 @@ from backend.color_engine.constraints import (
     InfeasibleConstraintSet
 )
 from backend.color_engine.profiles import ENGINE_VERSION, PROFILE_COLOR_MATCH
+from backend.color_engine.kubelka_munk import forward_two_constant_km
 from backend.color_engine.formulation import match_color_ccm, _optimize_single_profile
 from backend.color_engine.hashing import compute_formulation_input_hash
 from backend.routes.formulation import compute_canonical_execution_hash
@@ -456,5 +457,208 @@ def test_candidate_screening_recall_and_accuracy_across_5_regimes():
         assert cat_info.get("count", 0) > 0, f"Category {cat} was not evaluated in benchmark targets"
         assert cat_info.get("status") == "PASS", f"Category {cat} failed audit gate: {cat_info}"
         assert cat_info.get("candidate_recall", 0.0) >= 95.0, f"Category {cat} recall too low: {cat_info['candidate_recall']}%"
+
+
+def test_profile_based_acceptance_policy_enforcement():
+    """
+    Verify profile-based formulation acceptance policy:
+    1. Color Match: D65 <= 0.50
+    2. Light Stability: D65 <= 0.50, A <= 0.80, F11 <= 0.80, MI <= 0.50
+       - F11 = 0.90 forces FAIL even if D65 = 0.40 and A = 0.20
+    3. Economy: D65 <= 0.80, total_load <= budget
+    """
+    from backend.color_engine.profiles import (
+        PROFILE_COLOR_MATCH,
+        PROFILE_LIGHT_STABILITY,
+        PROFILE_ECONOMY
+    )
+    from backend.color_engine.quality_gate import evaluate_formulation_gate
+
+    # 1. Light Stability: F11 = 0.90 must fail
+    gate_b_fail = evaluate_formulation_gate(
+        delta_e00_d65=0.40,
+        delta_e00_a=0.20,
+        delta_e00_f11=0.90,
+        composite_mi=0.35,
+        total_load=4.0,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_LIGHT_STABILITY
+    )
+    assert gate_b_fail["status"] == "FAIL"
+    f11_check = next(c for c in gate_b_fail["checks"] if c["metric"] == "delta_e00_f11")
+    assert f11_check["status"] == "FAIL"
+    assert f11_check["limit"] == 0.80
+    assert any("F11" in f for f in gate_b_fail["failures"])
+
+    # 1b. Light Stability: All compliant passes
+    gate_b_pass = evaluate_formulation_gate(
+        delta_e00_d65=0.40,
+        delta_e00_a=0.20,
+        delta_e00_f11=0.45,
+        composite_mi=0.35,
+        total_load=4.0,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_LIGHT_STABILITY
+    )
+    assert gate_b_pass["status"] == "PASS"
+
+    # 2. Color Match: D65 is primary
+    gate_a_pass = evaluate_formulation_gate(
+        delta_e00_d65=0.35,
+        delta_e00_a=0.60,
+        delta_e00_f11=0.85,
+        composite_mi=0.40,
+        total_load=4.0,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_COLOR_MATCH
+    )
+    assert gate_a_pass["status"] == "PASS"
+
+    gate_a_fail = evaluate_formulation_gate(
+        delta_e00_d65=0.65,
+        composite_mi=0.20,
+        total_load=4.0,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_COLOR_MATCH
+    )
+    assert gate_a_fail["status"] == "FAIL"
+
+    # 3. Economy Profile: D65 allows 0.80, but enforces load budget
+    gate_c_pass = evaluate_formulation_gate(
+        delta_e00_d65=0.65,
+        composite_mi=0.30,
+        total_load=8.0,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_ECONOMY
+    )
+    assert gate_c_pass["status"] == "PASS"
+
+    gate_c_load_fail = evaluate_formulation_gate(
+        delta_e00_d65=0.40,
+        composite_mi=0.30,
+        total_load=11.5,
+        max_total_load=12.0,
+        solver_status="OPTIMAL_CONVERGED",
+        profile=PROFILE_ECONOMY
+    )
+    assert gate_c_load_fail["status"] == "FAIL"
+    load_check = next(c for c in gate_c_load_fail["checks"] if c["metric"] == "total_load")
+    assert load_check["status"] == "FAIL"
+
+
+def test_finite_film_ccm_matching_and_optical_model_unification():
+    """
+    User Request #5 Verification:
+    Finite-film 2-constant K-M forward model operates consistently across
+    CCM objective evaluation, recipe simulation, and top-level solver output.
+    """
+    # Create synthetic base and colorants
+    b_k = np.full(31, 0.02)
+    b_s = np.full(31, 2.50)
+
+    pastes = [
+        {
+            "id": 101,
+            "name": "Organic Red",
+            "unit_k": (0.8 + 0.5 * np.sin(np.linspace(0, 3, 31))).tolist(),
+            "unit_s": np.full(31, 0.15).tolist()
+        },
+        {
+            "id": 102,
+            "name": "Phthalo Blue",
+            "unit_k": (0.7 + 0.4 * np.cos(np.linspace(0, 3, 31))).tolist(),
+            "unit_s": np.full(31, 0.10).tolist()
+        },
+        {
+            "id": 103,
+            "name": "Bismuth Yellow",
+            "unit_k": (0.6 + 0.3 * np.sin(np.linspace(1, 4, 31))).tolist(),
+            "unit_s": np.full(31, 0.20).tolist()
+        }
+    ]
+
+    # Generate a target using finite film forward model at 75 um
+    k_synth = b_k + 2.0 * np.array(pastes[0]["unit_k"]) + 1.5 * np.array(pastes[1]["unit_k"])
+    s_synth = b_s + 2.0 * np.array(pastes[0]["unit_s"]) + 1.5 * np.array(pastes[1]["unit_s"])
+    target_r = forward_two_constant_km(
+        K=k_synth,
+        S=s_synth,
+        thickness=75.0,
+        Rg=0.82,
+        k1=0.04,
+        k2=0.60,
+        apply_saunderson=True
+    ).tolist()
+
+    res = match_color_ccm(
+        target_reflectance=target_r,
+        base_k=b_k,
+        base_s=b_s,
+        available_pastes=pastes,
+        max_pastes=3,
+        max_total_load=10.0,
+        forward_model="finite_film",
+        film_thickness_um=75.0,
+        substrate_rg=0.82
+    )
+
+    # Verify optical model metadata in response
+    assert "optical_model" in res
+    assert res["optical_model"]["forward_model"] == "finite_film"
+    assert res["optical_model"]["film_thickness_um"] == 75.0
+    assert res["optical_model"]["substrate_rg"] == 0.82
+
+    # Verify prediction metadata matches finite_film configuration
+    pred = res["prediction"]
+    assert pred["optical_model"]["forward_model"] == "finite_film"
+    assert pred["optical_model"]["film_thickness_um"] == 75.0
+    assert pred["optical_model"]["substrate_rg"] == 0.82
+
+    # The recipe solver should achieve excellent convergence on synthetic finite-film target
+    assert res["delta_e00"] < 1.0
+
+
+def test_api_profiles_and_finite_film_matching():
+    """
+    Verify /api/formulation/profiles exposes optical model and gate policy,
+    and /api/formulation/match accepts forward_model='finite_film'.
+    """
+    # 1. Check profiles endpoint
+    resp = client.get("/api/formulation/profiles")
+    assert resp.status_code == 200
+    profiles = resp.json()
+    assert len(profiles) >= 3
+
+    for p in profiles:
+        assert "forward_model" in p
+        assert "film_thickness_um" in p
+        assert "substrate_rg" in p
+        assert "gate_policy" in p
+        assert "limit_d65" in p["gate_policy"]
+
+    # 2. Check match endpoint with finite_film
+    target_r = [0.25] * 31
+    match_payload = {
+        "target_reflectance": target_r,
+        "base_id": 1,
+        "max_pastes": 3,
+        "max_total_load": 12.0,
+        "forward_model": "finite_film",
+        "film_thickness_um": 80.0,
+        "substrate_rg": 0.82
+    }
+    match_resp = client.post("/api/formulation/match", json=match_payload)
+    assert match_resp.status_code == 200
+    data = match_resp.json()
+    assert "optical_model" in data
+    assert data["optical_model"]["forward_model"] == "finite_film"
+    assert data["optical_model"]["film_thickness_um"] == 80.0
+
+
 
 

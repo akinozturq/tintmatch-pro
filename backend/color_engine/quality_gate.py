@@ -25,6 +25,7 @@ from typing import Literal
 from .profiles import (
     ColorScienceProfile,
     ToleranceProfile,
+    OptimizationProfile,
     DEFAULT_SCIENCE_PROFILE,
     DEFAULT_TOLERANCE_PROFILE,
     TOLERANCE_STRICT_LAB
@@ -269,52 +270,155 @@ def evaluate_formulation_gate(
     solver_status: str = "OPTIMAL_CONVERGED",
     constraint_slack: float = 0.0,
     directional_residuals: dict | None = None,
-    tolerance: ToleranceProfile = DEFAULT_TOLERANCE_PROFILE
+    tolerance: ToleranceProfile = DEFAULT_TOLERANCE_PROFILE,
+    profile: OptimizationProfile | None = None,
+    delta_e00_a: float | None = None,
+    delta_e00_f11: float | None = None,
+    delta_e00_f2: float | None = None,
+    baseline_load: float | None = None
 ) -> dict:
     """
     Evaluates CCM matched formulation compliance against factory acceptance rules.
+    Supports profile-based acceptance policies:
+    - Color Match (Recipe A): D65 <= 0.50
+    - Light Stability (Recipe B): D65 <= 0.50, A <= 0.80, F11 <= 0.80, MI <= 0.50
+    - Economy (Recipe C): D65 <= 0.80, load <= economy_load_limit
     """
     checks = []
 
     # 1. Primary D65 Color Difference
-    de_limit = tolerance.single_de00_limit
-    de_pass = delta_e00_d65 <= de_limit
+    if profile is not None and getattr(profile, "gate_limit_d65", None) is not None:
+        de_limit = profile.gate_limit_d65
+    else:
+        de_limit = tolerance.single_de00_limit
+    de_pass = delta_e00_d65 <= de_limit + 1e-4
     checks.append({
         "metric": "delta_e00_d65",
         "label": "D65 CIEDE2000 Renk Farkı",
         "actual": round(float(delta_e00_d65), 3),
-        "limit": de_limit,
+        "limit": round(float(de_limit), 3),
         "operator": "<=",
         "status": "PASS" if de_pass else "FAIL",
         "severity": "INFO" if de_pass else "CRITICAL"
     })
 
-    # 2. DIN 6172 / ASTM E805 Composite Metamerism Index
-    mi_limit = tolerance.composite_mi_limit
-    mi_pass = composite_mi <= mi_limit
+    # 2. Secondary Illuminant A (Tungsten) Check
+    pass_a = True
+    critical_a = False
+    if delta_e00_a is not None:
+        if profile is not None and getattr(profile, "gate_limit_a", None) is not None:
+            limit_a = profile.gate_limit_a
+            critical_a = True
+            pass_a = delta_e00_a <= limit_a + 1e-4
+            severity_a = "INFO" if pass_a else "CRITICAL"
+            status_a = "PASS" if pass_a else "FAIL"
+        else:
+            limit_a = round(float(tolerance.single_de00_limit * 1.5), 2)
+            critical_a = False
+            pass_a = delta_e00_a <= limit_a + 1e-4
+            severity_a = "INFO" if pass_a else "WARNING"
+            status_a = "PASS" if pass_a else "WARN"
+
+        checks.append({
+            "metric": "delta_e00_a",
+            "label": "A (Akkor) CIEDE2000 Renk Farkı",
+            "actual": round(float(delta_e00_a), 3),
+            "limit": round(float(limit_a), 3),
+            "operator": "<=",
+            "status": status_a,
+            "severity": severity_a
+        })
+
+    # 3. Tertiary Illuminant F11 / TL84 (Commercial Store) Check
+    pass_f11 = True
+    critical_f11 = False
+    if delta_e00_f11 is not None:
+        if profile is not None and getattr(profile, "gate_limit_f11", None) is not None:
+            limit_f11 = profile.gate_limit_f11
+            critical_f11 = True
+            pass_f11 = delta_e00_f11 <= limit_f11 + 1e-4
+            severity_f11 = "INFO" if pass_f11 else "CRITICAL"
+            status_f11 = "PASS" if pass_f11 else "FAIL"
+        else:
+            limit_f11 = round(float(tolerance.single_de00_limit * 1.5), 2)
+            critical_f11 = False
+            pass_f11 = delta_e00_f11 <= limit_f11 + 1e-4
+            severity_f11 = "INFO" if pass_f11 else "WARNING"
+            status_f11 = "PASS" if pass_f11 else "WARN"
+
+        checks.append({
+            "metric": "delta_e00_f11",
+            "label": "F11 / TL84 CIEDE2000 Renk Farkı",
+            "actual": round(float(delta_e00_f11), 3),
+            "limit": round(float(limit_f11), 3),
+            "operator": "<=",
+            "status": status_f11,
+            "severity": severity_f11
+        })
+
+    # 4. DIN 6172 / ASTM E805 Composite Metamerism Index
+    if profile is not None:
+        if profile.id == "light_stability":
+            mi_limit = profile.gate_limit_mi if profile.gate_limit_mi is not None else tolerance.composite_mi_limit
+            mi_critical = True
+        elif profile.gate_limit_mi is not None:
+            mi_limit = profile.gate_limit_mi
+            mi_critical = True
+        else:
+            mi_limit = tolerance.composite_mi_limit
+            mi_critical = False
+    else:
+        mi_limit = tolerance.composite_mi_limit
+        mi_critical = True
+
+    mi_pass = composite_mi <= mi_limit + 1e-4
+    mi_status = "PASS" if mi_pass else ("FAIL" if mi_critical else "WARN")
+    mi_severity = "INFO" if mi_pass else ("CRITICAL" if mi_critical else "WARNING")
+
     checks.append({
         "metric": "composite_metamerism",
         "label": "Bileşik Metamerizm İndeksi (MI)",
         "actual": round(float(composite_mi), 3),
-        "limit": mi_limit,
+        "limit": round(float(mi_limit), 3),
         "operator": "<=",
-        "status": "PASS" if mi_pass else "FAIL",
-        "severity": "INFO" if mi_pass else "WARNING"
+        "status": mi_status,
+        "severity": mi_severity
     })
 
-    # 3. Maximum Pigment Paste Mass Constraint
-    load_pass = total_load <= max_total_load + 1e-4
-    checks.append({
-        "metric": "total_load",
-        "label": "Toplam Pasta Yükü (%)",
-        "actual": round(float(total_load), 3),
-        "limit": max_total_load,
-        "operator": "<=",
-        "status": "PASS" if load_pass else "FAIL",
-        "severity": "INFO" if load_pass else "CRITICAL"
-    })
+    # 5. Maximum Pigment Paste Mass / Economy Constraint
+    if profile is not None and profile.id == "economy":
+        if profile.gate_limit_load is not None:
+            eff_max_load = profile.gate_limit_load
+        elif profile.gate_load_budget_ratio is not None:
+            eff_max_load = max_total_load * profile.gate_load_budget_ratio
+        elif baseline_load is not None and baseline_load > 0:
+            eff_max_load = baseline_load * 0.90
+        else:
+            eff_max_load = max_total_load
 
-    # 3b. Minimum Pigment Paste Mass Constraint (if configured)
+        load_pass = total_load <= eff_max_load + 1e-4
+        checks.append({
+            "metric": "total_load",
+            "label": "Ekonomi Toplam Pasta Yükü (%)",
+            "actual": round(float(total_load), 3),
+            "limit": round(float(eff_max_load), 3),
+            "operator": "<=",
+            "status": "PASS" if load_pass else "FAIL",
+            "severity": "INFO" if load_pass else "CRITICAL"
+        })
+    else:
+        load_pass = total_load <= max_total_load + 1e-4
+        checks.append({
+            "metric": "total_load",
+            "label": "Toplam Pasta Yükü (%)",
+            "actual": round(float(total_load), 3),
+            "limit": round(float(max_total_load), 3),
+            "operator": "<=",
+            "status": "PASS" if load_pass else "FAIL",
+            "severity": "INFO" if load_pass else "CRITICAL"
+        })
+
+    # 6. Minimum Pigment Paste Mass Constraint (if configured)
     min_load_pass = True
     if min_total_load > 0.0:
         min_load_pass = total_load >= min_total_load - 1e-4
@@ -322,13 +426,13 @@ def evaluate_formulation_gate(
             "metric": "min_total_load",
             "label": "Minimum Pasta Yükü (%)",
             "actual": round(float(total_load), 3),
-            "limit": min_total_load,
+            "limit": round(float(min_total_load), 3),
             "operator": ">=",
             "status": "PASS" if min_load_pass else "FAIL",
             "severity": "INFO" if min_load_pass else "CRITICAL"
         })
 
-    # 4. SLSQP Solver Convergence
+    # 7. SLSQP Solver Convergence
     solver_pass = solver_status in ["OPTIMAL_CONVERGED", "FEASIBLE_LOCAL_MIN"]
     checks.append({
         "metric": "solver_status",
@@ -340,13 +444,25 @@ def evaluate_formulation_gate(
         "severity": "INFO" if solver_pass else "WARNING"
     })
 
-    overall_pass = de_pass and mi_pass and load_pass and min_load_pass and solver_pass
+    # Overall Acceptance Gate Decision
+    critical_illuminants_pass = (pass_a if critical_a else True) and (pass_f11 if critical_f11 else True)
+    critical_mi_pass = mi_pass if mi_critical else True
+    overall_pass = de_pass and critical_mi_pass and load_pass and min_load_pass and solver_pass and critical_illuminants_pass
+
+    failures = [
+        f"{c['label']} ({c['actual']}) {c['operator']} {c['limit']} şartını sağlamadı."
+        for c in checks if c["status"] == "FAIL"
+    ]
+
     return {
         "gate_type": "FORMULATION_GATE",
         "status": "PASS" if overall_pass else "FAIL",
+        "profile_id": profile.id if profile else None,
+        "profile_name": profile.name if profile else None,
         "tolerance_profile": tolerance.name,
         "overall_severity": "INFO" if overall_pass else "CRITICAL",
         "checks": checks,
+        "failures": failures,
         "directional_residuals": directional_residuals or {}
     }
 

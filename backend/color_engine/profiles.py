@@ -144,7 +144,7 @@ class ColorScienceProfile:
 
 @dataclass(frozen=True)
 class OptimizationProfile:
-    """Weighting parameters for multi-illuminant CCM loss function."""
+    """Weighting parameters and profile-specific acceptance policy for CCM Solver."""
     id: str
     name: str
     description: str
@@ -152,7 +152,18 @@ class OptimizationProfile:
     weight_a: float
     weight_f11: float
     weight_metamerism: float
-    weight_load: float
+    weight_load: float = 0.005
+    # Optical Forward Model Configuration (Infinite-thickness vs Finite-thickness 2-constant K-M)
+    forward_model: Literal["opaque_infinite", "finite_film"] = "opaque_infinite"
+    film_thickness_um: float = 100.0
+    substrate_rg: float = 0.82
+    # Profile-based acceptance gate policy criteria:
+    gate_limit_d65: float = 0.50
+    gate_limit_a: float | None = None
+    gate_limit_f11: float | None = None
+    gate_limit_mi: float | None = None
+    gate_limit_load: float | None = None
+    gate_load_budget_ratio: float | None = None
 
 
 # Default Industrial CCM Profiles
@@ -164,7 +175,12 @@ PROFILE_COLOR_MATCH = OptimizationProfile(
     weight_a=0.15,
     weight_f11=0.15,
     weight_metamerism=0.10,
-    weight_load=0.005
+    weight_load=0.005,
+    gate_limit_d65=0.50,
+    gate_limit_a=None,
+    gate_limit_f11=None,
+    gate_limit_mi=None,
+    gate_limit_load=None
 )
 
 PROFILE_LIGHT_STABILITY = OptimizationProfile(
@@ -175,7 +191,12 @@ PROFILE_LIGHT_STABILITY = OptimizationProfile(
     weight_a=0.45,
     weight_f11=0.45,
     weight_metamerism=0.75,
-    weight_load=0.005
+    weight_load=0.005,
+    gate_limit_d65=0.50,
+    gate_limit_a=0.80,       # Strict Illuminant A barrier
+    gate_limit_f11=0.80,     # Strict Illuminant F11 / TL84 barrier
+    gate_limit_mi=0.50,      # Strict Composite Metamerism barrier
+    gate_limit_load=None
 )
 
 PROFILE_ECONOMY = OptimizationProfile(
@@ -186,7 +207,13 @@ PROFILE_ECONOMY = OptimizationProfile(
     weight_a=0.20,
     weight_f11=0.20,
     weight_metamerism=0.20,
-    weight_load=0.120
+    weight_load=0.120,
+    gate_limit_d65=0.80,     # Commercial acceptable threshold
+    gate_limit_a=None,
+    gate_limit_f11=None,
+    gate_limit_mi=None,
+    gate_limit_load=None,
+    gate_load_budget_ratio=0.85  # Demands total load <= 85% of max_total_load
 )
 
 STANDARD_OPTIMIZATION_PROFILES = [

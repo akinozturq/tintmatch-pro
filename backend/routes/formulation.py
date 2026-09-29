@@ -36,6 +36,8 @@ class PredictRecipeRequest(BaseModel):
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
     target_reflectance: list[float] | None = Field(None, description="Optional 31-point target spectrum")
     thickness: float = Field(100.0, json_schema_extra={"example": 100.0})
+    forward_model: str = Field("opaque_infinite", description="Optical forward model: 'opaque_infinite' or 'finite_film'")
+    substrate_rg: float = Field(0.82, description="Substrate reflectance Rg for finite film model")
 
 
 class MatchTargetRequest(BaseModel):
@@ -55,6 +57,9 @@ class MatchTargetRequest(BaseModel):
     k1: float = Field(0.04, json_schema_extra={"example": 0.04})
     k2: float = Field(0.60, json_schema_extra={"example": 0.60})
     profile_id: str | None = Field(None, description="Preferred profile: 'color_match', 'light_stability', 'economy'")
+    forward_model: str = Field("opaque_infinite", description="Optical forward model: 'opaque_infinite' or 'finite_film'")
+    film_thickness_um: float = Field(100.0, description="Film thickness in microns for finite-film matching")
+    substrate_rg: float = Field(0.82, description="Substrate reflectance Rg for finite-film matching")
 
 
 class SaveRecipeRequest(BaseModel):
@@ -169,7 +174,9 @@ def simulate_recipe(req: PredictRecipeRequest):
         k1=req.k1,
         k2=req.k2,
         target_reflectance=req.target_reflectance,
-        thickness=req.thickness
+        thickness=req.thickness,
+        forward_model=req.forward_model,
+        substrate_rg=req.substrate_rg
     )
 
     return result
@@ -262,7 +269,10 @@ def match_color(req: MatchTargetRequest):
             profile_id=req.profile_id,
             constraints=constraints_config,
             enable_multistart=req.enable_multistart,
-            num_starts=req.num_starts
+            num_starts=req.num_starts,
+            forward_model=req.forward_model,
+            film_thickness_um=req.film_thickness_um,
+            substrate_rg=req.substrate_rg
         )
         match_result["geometry"] = target_geo
         base_hash = hashlib.sha256(f"{base_row['absorption_k']}:{base_row['scattering_s']}".encode()).hexdigest()
@@ -300,12 +310,23 @@ def get_optimization_profiles():
             "id": p.id,
             "name": p.name,
             "description": p.description,
+            "forward_model": p.forward_model,
+            "film_thickness_um": p.film_thickness_um,
+            "substrate_rg": p.substrate_rg,
             "weights": {
                 "d65": p.weight_d65,
                 "a": p.weight_a,
                 "f11": p.weight_f11,
                 "metamerism": p.weight_metamerism,
                 "load": p.weight_load
+            },
+            "gate_policy": {
+                "limit_d65": p.gate_limit_d65,
+                "limit_a": p.gate_limit_a,
+                "limit_f11": p.gate_limit_f11,
+                "limit_mi": p.gate_limit_mi,
+                "limit_load": p.gate_limit_load,
+                "load_budget_ratio": p.gate_load_budget_ratio
             }
         }
         for p in STANDARD_OPTIMIZATION_PROFILES
