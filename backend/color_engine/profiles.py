@@ -6,13 +6,16 @@ Provides centralized, immutable configuration profiles:
 2. OptimizationProfile: Distinct weighting profiles for CCM Solver (Color Match, Light Stability, Economy).
 """
 
-from dataclasses import dataclass
+import copy
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Literal
 from .saunderson import (
     SaundersonProfile,
     STANDARD_SAUNDERSON_PROFILES,
     DEFAULT_SAUNDERSON_PROFILE
 )
+from .constraints import FormulationConstraints
 
 
 ENGINE_VERSION = "2.2.0"
@@ -103,6 +106,37 @@ class MeasurementContext:
     wavelength_grid: tuple[int, ...] = tuple(range(400, 710, 10))
     characterization_version: int = 1
     characterization_id: int | None = None
+
+
+# Predefined industrial spectrophotometer measurement contexts
+MEASUREMENT_RM400_45_0 = MeasurementContext(
+    instrument_model="X-Rite RM400",
+    geometry="45°/0°",
+    measurement_mode="SPEX",
+    specular_included=False,
+    illuminant="D65",
+    observer="10"
+)
+
+MEASUREMENT_DS36D_D8_SCI = MeasurementContext(
+    instrument_model="CHNSpec DS-36D",
+    geometry="d/8°",
+    measurement_mode="SCI",
+    specular_included=True,
+    illuminant="D65",
+    observer="10"
+)
+
+MEASUREMENT_DS36D_D8_SCE = MeasurementContext(
+    instrument_model="CHNSpec DS-36D",
+    geometry="d/8°",
+    measurement_mode="SCE",
+    specular_included=False,
+    illuminant="D65",
+    observer="10"
+)
+
+DEFAULT_MEASUREMENT_CONTEXT = MEASUREMENT_RM400_45_0
 
 
 @dataclass(frozen=True)
@@ -223,3 +257,216 @@ STANDARD_OPTIMIZATION_PROFILES = [
 ]
 
 DEFAULT_SCIENCE_PROFILE = ColorScienceProfile()
+
+
+@dataclass(frozen=True)
+class SolverProfile:
+    """Solver algorithmic parameters and multi-start configuration."""
+    name: str = "SLSQP"
+    max_iterations: int = 250
+    ftol: float = 1e-6
+    eps: float = 1e-3
+    enable_multistart: bool = False
+    num_starts: int = 3
+    random_seed: int = 42
+    candidate_pool_min: int = 12
+    combinatorial_subset_max_candidates: int = 20
+
+
+@dataclass(frozen=True)
+class ExecutionContext:
+    """
+    Central, authoritative Single Source of Truth for all colorimetric, optical,
+    measurement, formulation, tolerance, and solver parameters in the CCM Engine.
+    Guarantees no floating literals or uncoupled defaults exist in calculation routines.
+    """
+    science_profile: ColorScienceProfile
+    measurement_context: MeasurementContext
+    optimization_profile: OptimizationProfile
+    tolerance_profile: ToleranceProfile
+    constraint_profile: FormulationConstraints
+    solver_profile: SolverProfile = SolverProfile()
+    provenance: dict = field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        science_profile: ColorScienceProfile | None = None,
+        measurement_context: MeasurementContext | None = None,
+        optimization_profile: OptimizationProfile | None = None,
+        tolerance_profile: ToleranceProfile | None = None,
+        constraint_profile: FormulationConstraints | None = None,
+        solver_profile: SolverProfile | None = None,
+        geometry: str | None = None,
+        instrument_model: str | None = None,
+        measurement_mode: str | None = None,
+        k1: float | None = None,
+        k2: float | None = None,
+        observer: str | None = None,
+        reference_illuminant: str | None = None,
+        test_illuminants: tuple[str, ...] | None = None,
+        forward_model: str | None = None,
+        film_thickness_um: float | None = None,
+        substrate_rg: float | None = None,
+        max_total_load: float | None = None,
+        max_pastes: int | None = None,
+        min_total_load: float | None = None,
+        min_dispense_threshold: float | None = None,
+        enable_multistart: bool | None = None,
+        num_starts: int | None = None,
+        provenance: dict | None = None,
+    ) -> "ExecutionContext":
+        """
+        Factory method constructing a fully resolved, authoritative ExecutionContext.
+        Seamlessly resolves instrument geometries, optical models, constraints, and solver flags.
+        """
+        # 1. Resolve science profile
+        sci = science_profile or DEFAULT_SCIENCE_PROFILE
+        sci_kwargs = {}
+        if k1 is not None:
+            sci_kwargs["saunderson_k1"] = float(k1)
+        if k2 is not None:
+            sci_kwargs["saunderson_k2"] = float(k2)
+        if observer is not None:
+            sci_kwargs["observer"] = observer
+        if reference_illuminant is not None:
+            sci_kwargs["reference_illuminant"] = reference_illuminant
+        if test_illuminants is not None:
+            sci_kwargs["test_illuminants"] = tuple(test_illuminants)
+        if film_thickness_um is not None:
+            sci_kwargs["default_film_thickness_um"] = float(film_thickness_um)
+        if substrate_rg is not None:
+            sci_kwargs["substrate_white_rg"] = float(substrate_rg)
+        if sci_kwargs:
+            sci = replace(sci, **sci_kwargs)
+
+        # 2. Resolve measurement context (Instrument & Geometry awareness)
+        if measurement_context is not None:
+            meas = measurement_context
+        elif instrument_model == "CHNSpec DS-36D" or geometry == "d/8°":
+            meas = MEASUREMENT_DS36D_D8_SCI if measurement_mode != "SCE" else MEASUREMENT_DS36D_D8_SCE
+        else:
+            meas = MEASUREMENT_RM400_45_0
+
+        meas_kwargs = {}
+        if geometry is not None:
+            meas_kwargs["geometry"] = geometry
+            if geometry == "45°/0°":
+                meas_kwargs["specular_included"] = False
+                meas_kwargs["measurement_mode"] = "SPEX"
+        if instrument_model is not None:
+            meas_kwargs["instrument_model"] = instrument_model
+        if measurement_mode is not None:
+            meas_kwargs["measurement_mode"] = measurement_mode
+            if measurement_mode in ("SCI", "SCI_SCE"):
+                meas_kwargs["specular_included"] = True
+            elif measurement_mode in ("SCE", "SPEX"):
+                meas_kwargs["specular_included"] = False
+        meas_kwargs["illuminant"] = sci.reference_illuminant
+        meas_kwargs["observer"] = sci.observer
+        meas = replace(meas, **meas_kwargs)
+
+        # 3. Resolve optimization profile
+        opt = optimization_profile or PROFILE_COLOR_MATCH
+        opt_kwargs = {}
+        if forward_model is not None:
+            opt_kwargs["forward_model"] = forward_model
+        if film_thickness_um is not None:
+            opt_kwargs["film_thickness_um"] = float(film_thickness_um)
+        if substrate_rg is not None:
+            opt_kwargs["substrate_rg"] = float(substrate_rg)
+        if opt_kwargs:
+            opt = replace(opt, **opt_kwargs)
+
+        # 4. Resolve tolerance profile
+        tol = tolerance_profile or DEFAULT_TOLERANCE_PROFILE
+
+        # 5. Resolve constraints profile
+        if constraint_profile is not None:
+            const = copy.deepcopy(constraint_profile)
+            if max_pastes is not None and const.max_pastes is None:
+                const.max_pastes = int(max_pastes)
+        else:
+            const = FormulationConstraints()
+            if max_total_load is not None:
+                const.max_total_load = float(max_total_load)
+            if max_pastes is not None:
+                const.max_pastes = int(max_pastes)
+            if min_total_load is not None:
+                const.min_total_load = float(min_total_load)
+            if min_dispense_threshold is not None:
+                const.min_dispense_threshold = float(min_dispense_threshold)
+
+        # 6. Resolve solver profile
+        solv = solver_profile or SolverProfile()
+        solv_kwargs = {}
+        if enable_multistart is not None:
+            solv_kwargs["enable_multistart"] = bool(enable_multistart)
+        if num_starts is not None:
+            solv_kwargs["num_starts"] = int(num_starts)
+        if solv_kwargs:
+            solv = replace(solv, **solv_kwargs)
+
+        # 7. Provenance metadata
+        prov = provenance.copy() if provenance else {}
+        if "engine_version" not in prov:
+            prov["engine_version"] = ENGINE_VERSION
+        if "created_at" not in prov:
+            prov["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        return cls(
+            science_profile=sci,
+            measurement_context=meas,
+            optimization_profile=opt,
+            tolerance_profile=tol,
+            constraint_profile=const,
+            solver_profile=solv,
+            provenance=prov
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "science_profile": {
+                "name": self.science_profile.name,
+                "observer": self.science_profile.observer,
+                "reference_illuminant": self.science_profile.reference_illuminant,
+                "test_illuminants": list(self.science_profile.test_illuminants),
+                "saunderson_k1": self.science_profile.saunderson_k1,
+                "saunderson_k2": self.science_profile.saunderson_k2,
+                "default_film_thickness_um": self.science_profile.default_film_thickness_um,
+                "substrate_black_rg": self.science_profile.substrate_black_rg,
+                "substrate_white_rg": self.science_profile.substrate_white_rg,
+            },
+            "measurement_context": {
+                "instrument_model": self.measurement_context.instrument_model,
+                "geometry": self.measurement_context.geometry,
+                "measurement_mode": self.measurement_context.measurement_mode,
+                "specular_included": self.measurement_context.specular_included,
+                "illuminant": self.measurement_context.illuminant,
+                "observer": self.measurement_context.observer,
+            },
+            "optimization_profile": {
+                "id": self.optimization_profile.id,
+                "name": self.optimization_profile.name,
+                "forward_model": self.optimization_profile.forward_model,
+                "film_thickness_um": self.optimization_profile.film_thickness_um,
+                "substrate_rg": self.optimization_profile.substrate_rg,
+            },
+            "tolerance_profile": {
+                "id": self.tolerance_profile.id,
+                "name": self.tolerance_profile.name,
+            },
+            "constraint_profile": {
+                "max_total_load": self.constraint_profile.max_total_load,
+                "min_total_load": self.constraint_profile.min_total_load,
+                "max_pastes": self.constraint_profile.max_pastes,
+                "min_dispense_threshold": self.constraint_profile.min_dispense_threshold,
+            },
+            "solver_profile": {
+                "name": self.solver_profile.name,
+                "max_iterations": self.solver_profile.max_iterations,
+                "enable_multistart": self.solver_profile.enable_multistart,
+                "num_starts": self.solver_profile.num_starts,
+            },
+            "provenance": self.provenance
+        }

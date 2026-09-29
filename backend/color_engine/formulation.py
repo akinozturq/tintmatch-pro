@@ -31,6 +31,15 @@ from .colorimetry import (
 from .profiles import (
     ENGINE_VERSION,
     OptimizationProfile,
+    ColorScienceProfile,
+    MeasurementContext,
+    SolverProfile,
+    ExecutionContext,
+    DEFAULT_SCIENCE_PROFILE,
+    DEFAULT_MEASUREMENT_CONTEXT,
+    MEASUREMENT_RM400_45_0,
+    MEASUREMENT_DS36D_D8_SCI,
+    MEASUREMENT_DS36D_D8_SCE,
     PROFILE_COLOR_MATCH,
     PROFILE_LIGHT_STABILITY,
     PROFILE_ECONOMY,
@@ -48,25 +57,49 @@ def predict_recipe(
     target_reflectance: list[float] | None = None,
     thickness: float = 100.0,
     forward_model: str = "opaque_infinite",
-    substrate_rg: float = 0.82
+    substrate_rg: float = 0.82,
+    context: ExecutionContext | None = None
 ) -> dict:
     """
     Simulates the spectral reflectance and colorimetric coordinates of a paint recipe.
+    Uses ExecutionContext as the single source of truth for optical and scientific parameters.
 
     Args:
         base_k: Base absorption spectrum (31 points)
         base_s: Base scattering spectrum (31 points)
         pastes: List of dicts with id, name, concentration, unit_k, unit_s
-        k1: Saunderson Fresnel reflection coefficient
-        k2: Saunderson internal reflection coefficient
+        k1: Saunderson Fresnel reflection coefficient (fallback if context not passed)
+        k2: Saunderson internal reflection coefficient (fallback if context not passed)
         target_reflectance: Optional 31-point target spectrum for delta E00 and MI
         thickness: Film thickness in microns
         forward_model: Optical forward model ('opaque_infinite' for R_inf or 'finite_film' for 2-constant K-M)
         substrate_rg: Substrate reflectance for finite film calculations (e.g. 0.82 for white, 0.04 for black)
+        context: Optional authoritative ExecutionContext (Single Source of Truth)
 
     Returns:
-        Predicted spectral curve, XYZ, L*a*b*, Hex swatch, ΔE00, Metamerism Index, optical_model.
+        Predicted spectral curve, XYZ, L*a*b*, Hex swatch, ΔE00, Metamerism Index, optical_model, execution_context.
     """
+    if context is None:
+        context = ExecutionContext.create(
+            k1=k1,
+            k2=k2,
+            forward_model=forward_model,
+            film_thickness_um=thickness,
+            substrate_rg=substrate_rg
+        )
+
+    # Authoritative scientific parameters from ExecutionContext
+    k1_eff = context.science_profile.saunderson_k1
+    k2_eff = context.science_profile.saunderson_k2
+    ref_ill = context.science_profile.reference_illuminant
+    observer = context.science_profile.observer
+    test_illuminants = list(context.science_profile.test_illuminants)
+    sub_black_rg = context.science_profile.substrate_black_rg
+    sub_white_rg = context.optimization_profile.substrate_rg if context.optimization_profile.substrate_rg is not None else context.science_profile.substrate_white_rg
+    thickness_eff = context.optimization_profile.film_thickness_um
+    forward_model_eff = context.optimization_profile.forward_model
+    opacity_threshold = context.science_profile.opacity_hiding_threshold
+
     b_k = np.asarray(base_k, dtype=float)
     b_s = np.asarray(base_s, dtype=float)
 
@@ -99,32 +132,32 @@ def predict_recipe(
     # Optical forward model calculation:
     # 1. 'finite_film': Exact two-constant Kubelka-Munk over physical film thickness and substrate Rg
     # 2. 'opaque_infinite': Classic infinite-thickness Kubelka-Munk R_inf
-    if forward_model == "finite_film":
+    if forward_model_eff == "finite_film":
         r_measured = forward_two_constant_km(
             K=total_k,
             S=total_s,
-            thickness=thickness,
-            Rg=substrate_rg,
-            k1=k1,
-            k2=k2,
+            thickness=thickness_eff,
+            Rg=sub_white_rg,
+            k1=k1_eff,
+            k2=k2_eff,
             apply_saunderson=True
         )
-        r_internal = saunderson_correction(r_measured, k1=k1, k2=k2)
+        r_internal = saunderson_correction(r_measured, k1=k1_eff, k2=k2_eff)
         mix_ks = reflectance_to_ks(r_internal)
     else:
         mix_ks = total_k / np.maximum(total_s, 1e-6)
         r_internal = ks_to_reflectance(mix_ks)
-        r_measured = inverse_saunderson(r_internal, k1=k1, k2=k2)
+        r_measured = inverse_saunderson(r_internal, k1=k1_eff, k2=k2_eff)
 
-    # Color coordinates under standard D65/10°
-    lab_d65 = reflectance_to_lab(r_measured, illuminant="D65", observer="10")
+    # Color coordinates under standard reference illuminant & observer from Science Profile
+    lab_d65 = reflectance_to_lab(r_measured, illuminant=ref_ill, observer=observer)
     hex_color = reflectance_to_hex(r_measured)
 
-    # Contrast ratio / Opacity check
-    r_black = forward_two_constant_km(total_k, total_s, thickness=thickness, Rg=0.04, k1=k1, k2=k2)
-    r_white = forward_two_constant_km(total_k, total_s, thickness=thickness, Rg=0.82, k1=k1, k2=k2)
-    _, Y_b, _ = reflectance_to_xyz(r_black, illuminant="D65", observer="10")
-    _, Y_w, _ = reflectance_to_xyz(r_white, illuminant="D65", observer="10")
+    # Contrast ratio / Opacity check (strictly using science profile substrate references)
+    r_black = forward_two_constant_km(total_k, total_s, thickness=thickness_eff, Rg=sub_black_rg, k1=k1_eff, k2=k2_eff)
+    r_white = forward_two_constant_km(total_k, total_s, thickness=thickness_eff, Rg=sub_white_rg, k1=k1_eff, k2=k2_eff)
+    _, Y_b, _ = reflectance_to_xyz(r_black, illuminant=ref_ill, observer=observer)
+    _, Y_w, _ = reflectance_to_xyz(r_white, illuminant=ref_ill, observer=observer)
     contrast_ratio = float(np.clip((Y_b / max(Y_w, 1e-6)) * 100.0, 0.0, 100.0))
 
     response = {
@@ -139,22 +172,29 @@ def predict_recipe(
         "hex": hex_color,
         "total_colorant_load": round(total_conc, 3),
         "contrast_ratio": round(contrast_ratio, 2),
-        "is_opaque": contrast_ratio >= 98.0,
+        "is_opaque": contrast_ratio >= opacity_threshold,
         "optical_model": {
-            "forward_model": forward_model,
-            "film_thickness_um": round(float(thickness), 1),
-            "substrate_rg": round(float(substrate_rg), 4)
+            "forward_model": forward_model_eff,
+            "film_thickness_um": round(float(thickness_eff), 1),
+            "substrate_rg": round(float(sub_white_rg), 4)
         },
+        "execution_context": context.to_dict(),
         "wavelengths": WAVELENGTHS.tolist(),
         "recipe_breakdown": recipe_breakdown
     }
 
-    # If target is provided, compare
+    # If target is provided, compare under context illuminants and observer
     if target_reflectance is not None and len(target_reflectance) == N_WAVELENGTHS:
         target_r = np.asarray(target_reflectance, dtype=float)
-        target_lab = reflectance_to_lab(target_r, illuminant="D65", observer="10")
+        target_lab = reflectance_to_lab(target_r, illuminant=ref_ill, observer=observer)
         diff = ciede2000(target_lab, lab_d65)
-        mi = compute_metamerism_index(r_measured, target_r, observer="10")
+        mi = compute_metamerism_index(
+            r_measured,
+            target_r,
+            observer=observer,
+            reference_illuminant=ref_ill,
+            test_illuminants=test_illuminants
+        )
 
         response["comparison"] = {
             "target_lab": {
@@ -183,31 +223,34 @@ def calculate_pigment_sensitivity_matrix(
     target_reflectance: list[float] | None = None,
     k1: float = 0.04,
     k2: float = 0.60,
-    delta: float = 0.05
+    delta: float = 0.05,
+    context: ExecutionContext | None = None
 ) -> list[dict]:
     """
-    Computes finite-difference numerical 'What-If' sensitivity partial derivatives for each pigment in a recipe:
-    - d(ΔE00)/dc: Sensitivity of total color difference to concentration change (% / %)
-    - dL*/dc: Lightness impact
-    - da*/dc: Red/Green shift impact
-    - db*/dc: Yellow/Blue shift impact
-    - dC*/dc: Chroma / saturation impact
-    - dH*/dc: Metric hue difference impact
+    Computes finite-difference numerical 'What-If' sensitivity partial derivatives for each pigment in a recipe.
+    Uses ExecutionContext as single source of truth for colorimetric and optical parameters.
     """
     if not matched_pastes:
         return []
+
+    if context is None:
+        context = ExecutionContext.create(k1=k1, k2=k2)
+
+    ref_ill = context.science_profile.reference_illuminant
+    observer = context.science_profile.observer
+    k1_eff = context.science_profile.saunderson_k1
+    k2_eff = context.science_profile.saunderson_k2
 
     # Baseline prediction
     base_sim = predict_recipe(
         base_k=base_k,
         base_s=base_s,
         pastes=matched_pastes,
-        k1=k1,
-        k2=k2,
-        target_reflectance=target_reflectance
+        target_reflectance=target_reflectance,
+        context=context
     )
     r_base = np.asarray(base_sim["reflectance"], dtype=float)
-    lab_base = reflectance_to_lab(r_base, illuminant="D65", observer="10")
+    lab_base = reflectance_to_lab(r_base, illuminant=ref_ill, observer=observer)
     c_base = np.sqrt(lab_base[1] ** 2 + lab_base[2] ** 2)
 
     base_de00 = 0.0
@@ -231,12 +274,11 @@ def calculate_pigment_sensitivity_matrix(
             base_k=base_k,
             base_s=base_s,
             pastes=perturbed_pastes,
-            k1=k1,
-            k2=k2,
-            target_reflectance=target_reflectance
+            target_reflectance=target_reflectance,
+            context=context
         )
         r_pert = np.asarray(sim_pert["reflectance"], dtype=float)
-        lab_pert = reflectance_to_lab(r_pert, illuminant="D65", observer="10")
+        lab_pert = reflectance_to_lab(r_pert, illuminant=ref_ill, observer=observer)
         c_pert = np.sqrt(lab_pert[1] ** 2 + lab_pert[2] ** 2)
 
         # Derivatives with respect to concentration delta
@@ -265,12 +307,11 @@ def calculate_pigment_sensitivity_matrix(
             base_k=base_k,
             base_s=base_s,
             pastes=step_plus_pastes,
-            k1=k1,
-            k2=k2,
-            target_reflectance=target_reflectance
+            target_reflectance=target_reflectance,
+            context=context
         )
         r_plus = np.asarray(sim_plus["reflectance"], dtype=float)
-        lab_plus = reflectance_to_lab(r_plus, illuminant="D65", observer="10")
+        lab_plus = reflectance_to_lab(r_plus, illuminant=ref_ill, observer=observer)
         c_plus = np.sqrt(lab_plus[1] ** 2 + lab_plus[2] ** 2)
         diff_ab_sq_plus = ((lab_plus[1] - lab_base[1]) ** 2) + ((lab_plus[2] - lab_base[2]) ** 2)
         dH_plus = float(np.sqrt(max(0.0, diff_ab_sq_plus - ((c_plus - c_base) ** 2))))
@@ -298,12 +339,11 @@ def calculate_pigment_sensitivity_matrix(
             base_k=base_k,
             base_s=base_s,
             pastes=step_minus_pastes,
-            k1=k1,
-            k2=k2,
-            target_reflectance=target_reflectance
+            target_reflectance=target_reflectance,
+            context=context
         )
         r_minus = np.asarray(sim_minus["reflectance"], dtype=float)
-        lab_minus = reflectance_to_lab(r_minus, illuminant="D65", observer="10")
+        lab_minus = reflectance_to_lab(r_minus, illuminant=ref_ill, observer=observer)
         c_minus = np.sqrt(lab_minus[1] ** 2 + lab_minus[2] ** 2)
         diff_ab_sq_minus = ((lab_minus[1] - lab_base[1]) ** 2) + ((lab_minus[2] - lab_base[2]) ** 2)
         dH_minus = float(np.sqrt(max(0.0, diff_ab_sq_minus - ((c_minus - c_base) ** 2))))
@@ -373,12 +413,24 @@ def evaluate_recipe_objective(
     target_lab_f11: tuple[float, float, float],
     profile: OptimizationProfile,
     k1: float = 0.04,
-    k2: float = 0.60
+    k2: float = 0.60,
+    context: ExecutionContext | None = None
 ) -> float:
     """
     Unified objective loss calculation for both primary SLSQP search and pruning refinement.
-    Ensures Recipe B (Light Stability) and Recipe C (Economy) preserve their profile penalty weights.
+    Uses ExecutionContext as single source of truth for colorimetric illuminants, observer, and optics.
     """
+    if context is None:
+        context = ExecutionContext.create(optimization_profile=profile, k1=k1, k2=k2)
+
+    k1_eff = context.science_profile.saunderson_k1
+    k2_eff = context.science_profile.saunderson_k2
+    ref_ill = context.science_profile.reference_illuminant
+    sec_ill = context.science_profile.test_illuminants[0] if len(context.science_profile.test_illuminants) > 0 else "A"
+    tert_ill = context.science_profile.test_illuminants[1] if len(context.science_profile.test_illuminants) > 1 else "F11"
+    observer = context.science_profile.observer
+    opt_prof = context.optimization_profile
+
     k_tot = base_k.copy()
     s_tot = base_s.copy()
     for i, p_idx in enumerate(active_indices):
@@ -386,40 +438,40 @@ def evaluate_recipe_objective(
         k_tot += c * paste_k_matrix[:, p_idx]
         s_tot += c * paste_s_matrix[:, p_idx]
 
-    if getattr(profile, "forward_model", "opaque_infinite") == "finite_film":
-        thickness_um = getattr(profile, "film_thickness_um", 100.0)
-        sub_rg = getattr(profile, "substrate_rg", 0.82)
+    if opt_prof.forward_model == "finite_film":
+        thickness_um = opt_prof.film_thickness_um
+        sub_rg = opt_prof.substrate_rg
         r_m = forward_two_constant_km(
             K=k_tot,
             S=s_tot,
             thickness=thickness_um,
             Rg=sub_rg,
-            k1=k1,
-            k2=k2,
+            k1=k1_eff,
+            k2=k2_eff,
             apply_saunderson=True
         )
     else:
         ks_tot = k_tot / np.maximum(s_tot, 1e-6)
         r_i = ks_to_reflectance(ks_tot)
-        r_m = inverse_saunderson(r_i, k1=k1, k2=k2)
+        r_m = inverse_saunderson(r_i, k1=k1_eff, k2=k2_eff)
 
-    # Primary illuminant: D65
-    lab_d65 = reflectance_to_lab(r_m, illuminant="D65", observer="10")
+    # Primary reference illuminant from Science Profile (e.g. D65)
+    lab_d65 = reflectance_to_lab(r_m, illuminant=ref_ill, observer=observer)
     diff_d65 = ciede2000(target_lab_d65, lab_d65)
     de_d65 = diff_d65["delta_e00"]
 
-    # Secondary illuminant A
-    if profile.weight_a > 0 or profile.weight_metamerism > 0:
-        lab_a = reflectance_to_lab(r_m, illuminant="A", observer="10")
+    # Secondary test illuminant from Science Profile (e.g. A)
+    if opt_prof.weight_a > 0 or opt_prof.weight_metamerism > 0:
+        lab_a = reflectance_to_lab(r_m, illuminant=sec_ill, observer=observer)
         de_a = ciede2000(target_lab_a, lab_a)["delta_e00"]
         mi_a = abs(de_a - de_d65)
     else:
         de_a = 0.0
         mi_a = 0.0
 
-    # Tertiary illuminant F11 (TL84)
-    if profile.weight_f11 > 0 or profile.weight_metamerism > 0:
-        lab_f11 = reflectance_to_lab(r_m, illuminant="F11", observer="10")
+    # Tertiary test illuminant from Science Profile (e.g. F11 / TL84)
+    if opt_prof.weight_f11 > 0 or opt_prof.weight_metamerism > 0:
+        lab_f11 = reflectance_to_lab(r_m, illuminant=tert_ill, observer=observer)
         de_f11 = ciede2000(target_lab_f11, lab_f11)["delta_e00"]
         mi_f11 = abs(de_f11 - de_d65)
     else:
@@ -431,11 +483,11 @@ def evaluate_recipe_objective(
     tot_c = float(np.sum(np.maximum(concs, 0.0)))
 
     total_loss = (
-        profile.weight_d65 * de_d65
-        + profile.weight_a * de_a
-        + profile.weight_f11 * de_f11
-        + profile.weight_metamerism * mi_composite
-        + profile.weight_load * tot_c
+        opt_prof.weight_d65 * de_d65
+        + opt_prof.weight_a * de_a
+        + opt_prof.weight_f11 * de_f11
+        + opt_prof.weight_metamerism * mi_composite
+        + opt_prof.weight_load * tot_c
     )
     return float(total_loss)
 
@@ -453,20 +505,46 @@ def _optimize_single_profile(
     paste_k_matrix: np.ndarray,
     paste_s_matrix: np.ndarray,
     initial_sol: np.ndarray,
-    max_pastes: int,
-    max_total_load: float,
-    k1: float,
-    k2: float,
+    max_pastes: int = 4,
+    max_total_load: float = 12.0,
+    k1: float = 0.04,
+    k2: float = 0.60,
     constraints_config: FormulationConstraints | None = None,
     enable_multistart: bool = False,
     num_starts: int = 3,
-    baseline_load: float | None = None
+    baseline_load: float | None = None,
+    context: ExecutionContext | None = None
 ) -> dict:
     """
     Executes constrained SLSQP optimization run for a given OptimizationProfile.
-    Supports single-start or multi-start initialization to guard against non-convex CIEDE2000 local minima.
-    Enforces true linear inequality constraint: sum(c_i) <= max_total_load and group/dispensing bounds.
+    Uses ExecutionContext as single source of truth for solver parameters, constraints, and optics.
     """
+    if context is None:
+        context = ExecutionContext.create(
+            optimization_profile=profile,
+            k1=k1,
+            k2=k2,
+            max_total_load=max_total_load,
+            max_pastes=max_pastes,
+            constraint_profile=constraints_config,
+            enable_multistart=enable_multistart,
+            num_starts=num_starts
+        )
+
+    profile = context.optimization_profile
+    constraints_config = context.constraint_profile
+    max_pastes = constraints_config.max_pastes or max_pastes
+    max_total_load = constraints_config.max_total_load
+    k1 = context.science_profile.saunderson_k1
+    k2 = context.science_profile.saunderson_k2
+    enable_multistart = context.solver_profile.enable_multistart
+    num_starts = context.solver_profile.num_starts
+    solver_options = {
+        "maxiter": context.solver_profile.max_iterations,
+        "eps": context.solver_profile.eps,
+        "ftol": context.solver_profile.ftol
+    }
+
     n_active = len(candidate_indices)
     if n_active == 0:
         return {
@@ -510,13 +588,9 @@ def _optimize_single_profile(
                 "constraint_validation": {"is_valid": False, "violations": ["No active pigments"]},
                 "multistart": {"enabled": False, "num_starts_evaluated": 0, "chosen_start_index": 0}
             },
-            "sensitivity_matrix": {}
+            "sensitivity_matrix": {},
+            "execution_context": context.to_dict()
         }
-
-    if constraints_config is None:
-        constraints_config = FormulationConstraints(max_total_load=max_total_load, max_pastes=max_pastes)
-    elif constraints_config.max_pastes is None:
-        constraints_config.max_pastes = max_pastes
 
     engine = ConstraintEngine(constraints_config)
     candidate_keys = [str(available_pastes[idx].get("id", idx)) for idx in candidate_indices]
@@ -587,8 +661,7 @@ def _optimize_single_profile(
             target_lab_a=target_lab_a,
             target_lab_f11=target_lab_f11,
             profile=profile,
-            k1=k1,
-            k2=k2
+            context=context
         )
 
     if enable_multistart and num_starts > 1:
@@ -641,7 +714,7 @@ def _optimize_single_profile(
                 method="SLSQP",
                 bounds=bounds,
                 constraints=constraints,
-                options={"maxiter": 250, "eps": 1e-3, "ftol": 1e-6}
+                options=solver_options
             )
             if res_cand.fun < best_fun or best_res is None:
                 best_fun = float(res_cand.fun)
@@ -657,7 +730,7 @@ def _optimize_single_profile(
             method="SLSQP",
             bounds=bounds,
             constraints=constraints,
-            options={"maxiter": 250, "eps": 1e-3, "ftol": 1e-6}
+            options=solver_options
         )
         multistart_meta = {"enabled": False, "num_starts_evaluated": 1, "chosen_start_index": 0}
 
@@ -739,11 +812,11 @@ def _optimize_single_profile(
                 pass
             loss_opt = evaluate_recipe_objective(
                 x0_opt_sub, active_indices, paste_k_matrix, paste_s_matrix, base_k, base_s,
-                target_lab_d65, target_lab_a, target_lab_f11, profile, k1, k2
+                target_lab_d65, target_lab_a, target_lab_f11, profile, context=context
             )
             loss_nnls = evaluate_recipe_objective(
                 x0_nnls_sub, active_indices, paste_k_matrix, paste_s_matrix, base_k, base_s,
-                target_lab_d65, target_lab_a, target_lab_f11, profile, k1, k2
+                target_lab_d65, target_lab_a, target_lab_f11, profile, context=context
             )
             if loss_opt < loss_nnls:
                 sub_x0 = x0_opt_sub
@@ -763,17 +836,21 @@ def _optimize_single_profile(
                 target_lab_a=target_lab_a,
                 target_lab_f11=target_lab_f11,
                 profile=profile,
-                k1=k1,
-                k2=k2
+                context=context
             )
 
+        sub_solver_opts = {
+            "maxiter": min(context.solver_profile.max_iterations, 100),
+            "eps": context.solver_profile.eps,
+            "ftol": context.solver_profile.ftol
+        }
         res_sub = minimize(
             sub_obj,
             sub_x0,
             method="SLSQP",
             bounds=sub_bounds,
             constraints=sub_constraints,
-            options={"maxiter": 100, "eps": 1e-3, "ftol": 1e-6}
+            options=sub_solver_opts
         )
         if res_sub.success:
             ref_x = np.maximum(res_sub.x, 0.0)
@@ -951,7 +1028,8 @@ def _optimize_single_profile(
                 "constraint_validation": val_result,
                 "multistart": multistart_meta
             },
-            "sensitivity_matrix": {}
+            "sensitivity_matrix": {},
+            "execution_context": context.to_dict()
         }
 
     # Determine solver convergence status
@@ -969,12 +1047,8 @@ def _optimize_single_profile(
         base_k=base_k,
         base_s=base_s,
         pastes=matched_pastes,
-        k1=k1,
-        k2=k2,
         target_reflectance=target_r.tolist(),
-        thickness=getattr(profile, "film_thickness_um", 100.0),
-        forward_model=getattr(profile, "forward_model", "opaque_infinite"),
-        substrate_rg=getattr(profile, "substrate_rg", 0.82)
+        context=context
     )
 
     de00 = sim["comparison"]["delta_e00"] if "comparison" in sim else 99.0
@@ -987,9 +1061,8 @@ def _optimize_single_profile(
         base_s=base_s,
         matched_pastes=matched_pastes,
         target_reflectance=target_r.tolist(),
-        k1=k1,
-        k2=k2,
-        delta=0.05
+        delta=0.05,
+        context=context
     )
 
     # Formulation Quality Gate Evaluation
@@ -1048,7 +1121,8 @@ def _optimize_single_profile(
             "constraint_validation": val_result,
             "multistart": multistart_meta
         },
-        "sensitivity_matrix": sensitivity
+        "sensitivity_matrix": sensitivity,
+        "execution_context": context.to_dict()
     }
 
 
@@ -1067,7 +1141,13 @@ def match_color_ccm(
     num_starts: int = 3,
     forward_model: str = "opaque_infinite",
     film_thickness_um: float = 100.0,
-    substrate_rg: float = 0.82
+    substrate_rg: float = 0.82,
+    context: ExecutionContext | None = None,
+    geometry: str | None = None,
+    instrument_model: str | None = None,
+    measurement_mode: str | None = None,
+    observer: str | None = None,
+    reference_illuminant: str | None = None
 ) -> dict:
     """
     Automated Computer Color Matching (CCM) solver.
@@ -1075,6 +1155,9 @@ def match_color_ccm(
     - Recipe A: Color Match (Profile A - minimum D65 color difference)
     - Recipe B: Light Stability (Profile B - multi-illuminant metamerism penalty)
     - Recipe C: Economy / Low Load (Profile C - minimum total pigment loading)
+
+    Uses ExecutionContext as authoritative Single Source of Truth across optics, geometry,
+    illuminants, observer, constraints, and solver profiles.
 
     Args:
         target_reflectance: 31-point target spectral curve (400-700 nm @ 10 nm)
@@ -1092,6 +1175,12 @@ def match_color_ccm(
         forward_model: Optical forward model ('opaque_infinite' for R_inf or 'finite_film' for 2-constant K-M)
         film_thickness_um: Film thickness in microns (e.g. 100.0 um drawdown)
         substrate_rg: Substrate reflectance Rg (e.g. 0.82 for Leneta white card)
+        context: Optional authoritative ExecutionContext (Single Source of Truth)
+        geometry: Optional spectrophotometer geometry (e.g. '45°/0°' or 'd/8°')
+        instrument_model: Optional device model (e.g. 'CHNSpec DS-36D', 'X-Rite RM400')
+        measurement_mode: Optional measurement mode ('SCI', 'SCE', 'SPEX')
+        observer: Standard observer angle ('10' or '2')
+        reference_illuminant: Reference illuminant ('D65', 'A', 'F11', etc.)
 
     Returns:
         Structured response with calculation_id, engine_version, primary recipe, 3 alternatives, diagnostics.
@@ -1100,12 +1189,48 @@ def match_color_ccm(
     if n_pastes == 0:
         raise ValueError("No available pastes provided for matching.")
 
-    if constraints is None:
-        constraints = FormulationConstraints(max_total_load=max_total_load, max_pastes=max_pastes)
-    else:
+    if constraints is not None:
         max_total_load = constraints.max_total_load
-        if constraints.max_pastes is None:
+        if constraints.max_pastes is not None:
+            max_pastes = constraints.max_pastes
+        else:
             constraints.max_pastes = max_pastes
+
+    if context is None:
+        context = ExecutionContext.create(
+            k1=k1,
+            k2=k2,
+            observer=observer,
+            reference_illuminant=reference_illuminant,
+            max_total_load=max_total_load,
+            max_pastes=max_pastes,
+            constraint_profile=constraints,
+            enable_multistart=enable_multistart,
+            num_starts=num_starts,
+            forward_model=forward_model,
+            film_thickness_um=film_thickness_um,
+            substrate_rg=substrate_rg,
+            geometry=geometry,
+            instrument_model=instrument_model,
+            measurement_mode=measurement_mode
+        )
+    else:
+        overrides = {}
+        if constraints is not None:
+            overrides["constraint_profile"] = constraints
+        if overrides:
+            context = replace(context, **overrides)
+
+    constraints_config = context.constraint_profile
+    max_pastes = constraints_config.max_pastes or max_pastes
+    max_total_load = constraints_config.max_total_load
+    k1 = context.science_profile.saunderson_k1
+    k2 = context.science_profile.saunderson_k2
+    ref_ill = context.science_profile.reference_illuminant
+    obs = context.science_profile.observer
+    test_ills = list(context.science_profile.test_illuminants)
+    sec_ill = test_ills[0] if len(test_ills) > 0 else "A"
+    ter_ill = test_ills[1] if len(test_ills) > 1 else "F11"
 
     calculation_id = f"calc_{uuid.uuid4().hex[:12]}"
 
@@ -1113,10 +1238,10 @@ def match_color_ccm(
     target_r_int = saunderson_correction(target_r, k1=k1, k2=k2)
     target_ks = reflectance_to_ks(target_r_int)
 
-    # Pre-calculate target Lab under D65, A, F11
-    target_lab_d65 = reflectance_to_lab(target_r, illuminant="D65", observer="10")
-    target_lab_a = reflectance_to_lab(target_r, illuminant="A", observer="10")
-    target_lab_f11 = reflectance_to_lab(target_r, illuminant="F11", observer="10")
+    # Pre-calculate target Lab under reference and test illuminants from science profile
+    target_lab_d65 = reflectance_to_lab(target_r, illuminant=ref_ill, observer=obs)
+    target_lab_a = reflectance_to_lab(target_r, illuminant=sec_ill, observer=obs)
+    target_lab_f11 = reflectance_to_lab(target_r, illuminant=ter_ill, observer=obs)
 
     b_k = np.asarray(base_k, dtype=float)
     b_s = np.asarray(base_s, dtype=float)
@@ -1189,9 +1314,17 @@ def match_color_ccm(
         candidate_indices = merged_indices[:pool_size]
 
     # Step 2: Solve independently for Recipe A, B, and C with configured optical forward model
-    prof_a = replace(PROFILE_COLOR_MATCH, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
-    prof_b = replace(PROFILE_LIGHT_STABILITY, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
-    prof_c = replace(PROFILE_ECONOMY, forward_model=forward_model, film_thickness_um=film_thickness_um, substrate_rg=substrate_rg)
+    opt_model = context.optimization_profile.forward_model
+    thickness_um = context.optimization_profile.film_thickness_um
+    sub_rg = context.optimization_profile.substrate_rg
+
+    prof_a = replace(PROFILE_COLOR_MATCH, forward_model=opt_model, film_thickness_um=thickness_um, substrate_rg=sub_rg)
+    prof_b = replace(PROFILE_LIGHT_STABILITY, forward_model=opt_model, film_thickness_um=thickness_um, substrate_rg=sub_rg)
+    prof_c = replace(PROFILE_ECONOMY, forward_model=opt_model, film_thickness_um=thickness_um, substrate_rg=sub_rg)
+
+    ctx_a = replace(context, optimization_profile=prof_a)
+    ctx_b = replace(context, optimization_profile=prof_b)
+    ctx_c = replace(context, optimization_profile=prof_c)
 
     recipe_a = _optimize_single_profile(
         profile=prof_a,
@@ -1210,9 +1343,10 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints,
+        constraints_config=constraints_config,
         enable_multistart=enable_multistart,
-        num_starts=num_starts
+        num_starts=num_starts,
+        context=ctx_a
     )
     recipe_a["calculation_id"] = calculation_id
     recipe_a["engine_version"] = ENGINE_VERSION
@@ -1234,9 +1368,10 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints,
+        constraints_config=constraints_config,
         enable_multistart=enable_multistart,
-        num_starts=num_starts
+        num_starts=num_starts,
+        context=ctx_b
     )
     recipe_b["calculation_id"] = calculation_id
     recipe_b["engine_version"] = ENGINE_VERSION
@@ -1258,10 +1393,11 @@ def match_color_ccm(
         max_total_load=max_total_load,
         k1=k1,
         k2=k2,
-        constraints_config=constraints,
+        constraints_config=constraints_config,
         enable_multistart=enable_multistart,
         num_starts=num_starts,
-        baseline_load=recipe_a.get("total_load")
+        baseline_load=recipe_a.get("total_load"),
+        context=ctx_c
     )
     recipe_c["calculation_id"] = calculation_id
     recipe_c["engine_version"] = ENGINE_VERSION
@@ -1280,10 +1416,13 @@ def match_color_ccm(
     return {
         "calculation_id": calculation_id,
         "engine_version": ENGINE_VERSION,
+        "execution_context": context.to_dict(),
+        "geometry": context.measurement_context.geometry,
+        "instrument_model": context.measurement_context.instrument_model,
         "optical_model": {
-            "forward_model": forward_model,
-            "film_thickness_um": film_thickness_um,
-            "substrate_rg": substrate_rg
+            "forward_model": opt_model,
+            "film_thickness_um": thickness_um,
+            "substrate_rg": sub_rg
         },
         "matched_pastes": primary["matched_pastes"],
         "prediction": primary["prediction"],

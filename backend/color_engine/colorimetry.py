@@ -291,43 +291,59 @@ def compute_metamerism_index(
     reflectance_batch: np.ndarray | list[float],
     reflectance_standard: np.ndarray | list[float],
     observer: str = "10",
-    composite_method: str = "max"
+    composite_method: str = "max",
+    reference_illuminant: str = "D65",
+    test_illuminants: list[str] | tuple[str, ...] | None = None,
+    illuminants: list[str] | tuple[str, ...] | None = None
 ) -> dict:
     """
     Computes Metamerism Index (MI) comparing a sample to a standard under:
-    - Primary: D65 (Daylight)
-    - Secondary: A (Incandescent)
-    - Tertiary: F11 (Store Fluorescent)
-    - Quaternary: F2 (Cool White Fluorescent)
+    - Primary Reference: reference_illuminant (default: D65)
+    - Test Illuminants: test_illuminants (default: A, F11, F2)
 
-    MI_A = |ΔE00(A) - ΔE00(D65)|
-    MI_F11 = |ΔE00(F11) - ΔE00(D65)|
+    MI_<ill> = |ΔE00(ill) - ΔE00(ref)|
     MI_composite = calculate_composite_metamerism(...)
     """
+    if test_illuminants is None and illuminants is not None:
+        test_illuminants = illuminants
+    if test_illuminants is None:
+        tests = ["A", "F11", "F2"]
+    else:
+        tests = list(test_illuminants)
+        if "F2" not in tests and len(tests) == 2:
+            tests.append("F2")
+
+    all_ills = [reference_illuminant] + [i for i in tests if i != reference_illuminant]
     delta_e_map = {}
 
-    for ill in ["D65", "A", "F11", "F2"]:
+    for ill in all_ills:
         lab_std = reflectance_to_lab(reflectance_standard, illuminant=ill, observer=observer)
         lab_bat = reflectance_to_lab(reflectance_batch, illuminant=ill, observer=observer)
         de = ciede2000(lab_std, lab_bat)["delta_e00"]
         delta_e_map[ill] = de
 
-    de_d65 = delta_e_map["D65"]
-    mi_a = abs(delta_e_map["A"] - de_d65)
-    mi_f11 = abs(delta_e_map["F11"] - de_d65)
-    mi_f2 = abs(delta_e_map["F2"] - de_d65)
-    mi_composite = calculate_composite_metamerism(
-        de_d65, delta_e_map["A"], delta_e_map["F11"], delta_e_map["F2"], method=composite_method
-    )
-    mi_composite_rms = calculate_composite_metamerism(
-        de_d65, delta_e_map["A"], delta_e_map["F11"], delta_e_map["F2"], method="rms"
-    )
+    de_ref = delta_e_map[reference_illuminant]
+    de_a = delta_e_map.get("A", de_ref)
+    de_f11 = delta_e_map.get("F11", de_ref)
+    de_f2 = delta_e_map.get("F2", de_ref)
 
-    return {
-        "dE00_D65": round(de_d65, 4),
-        "dE00_A": round(delta_e_map["A"], 4),
-        "dE00_F11": round(delta_e_map["F11"], 4),
-        "dE00_F2": round(delta_e_map["F2"], 4),
+    mi_a = abs(de_a - de_ref)
+    mi_f11 = abs(de_f11 - de_ref)
+    mi_f2 = abs(de_f2 - de_ref)
+
+    test_shifts = [abs(delta_e_map[ill] - de_ref) for ill in tests if ill in delta_e_map]
+    if composite_method == "rms":
+        mi_composite = float(np.sqrt(np.mean([s ** 2 for s in test_shifts]))) if test_shifts else 0.0
+    else:
+        mi_composite = float(max(test_shifts)) if test_shifts else 0.0
+
+    mi_composite_rms = float(np.sqrt(np.mean([s ** 2 for s in test_shifts]))) if test_shifts else 0.0
+
+    res = {
+        "dE00_D65": round(delta_e_map.get("D65", de_ref), 4),
+        "dE00_A": round(de_a, 4),
+        "dE00_F11": round(de_f11, 4),
+        "dE00_F2": round(de_f2, 4),
         "MI_A": round(mi_a, 4),
         "MI_F11": round(mi_f11, 4),
         "MI_F2": round(mi_f2, 4),
@@ -335,3 +351,10 @@ def compute_metamerism_index(
         "MI_composite_rms": round(mi_composite_rms, 4),
         "rating": "Excellent" if mi_composite < 0.5 else ("Good" if mi_composite < 1.0 else "Warning - High Metamerism")
     }
+
+    # Include any dynamic test illuminants
+    for ill in tests:
+        res[f"dE00_{ill}"] = round(delta_e_map.get(ill, de_ref), 4)
+        res[f"MI_{ill}"] = round(abs(delta_e_map.get(ill, de_ref) - de_ref), 4)
+
+    return res

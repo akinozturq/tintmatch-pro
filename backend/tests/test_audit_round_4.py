@@ -660,5 +660,101 @@ def test_api_profiles_and_finite_film_matching():
     assert data["optical_model"]["film_thickness_um"] == 80.0
 
 
+def test_execution_context_single_source_of_truth():
+    """
+    Audit Item #6 Verification:
+    Verify ExecutionContext acts as genuine single source of truth across all modules.
+    - Custom observer ("2") and reference illuminant ("A") are strictly propagated without reverting to defaults.
+    - Instrument models & geometries (CHNSpec DS-36D d/8° SCI vs RM400 45°/0°) are tracked in metadata.
+    - predict_recipe, sensitivity matrix, and match_color_ccm return and conform to the ExecutionContext.
+    """
+    from backend.color_engine.profiles import (
+        ExecutionContext,
+        ColorScienceProfile,
+        MEASUREMENT_DS36D_D8_SCI,
+        MEASUREMENT_RM400_45_0
+    )
+    from backend.color_engine.formulation import predict_recipe, calculate_pigment_sensitivity_matrix
+
+    # 1. Test ExecutionContext factory with non-standard settings
+    custom_sci = ColorScienceProfile(
+        name="Custom CIE 1931 Illuminant A",
+        observer="2",
+        reference_illuminant="A",
+        test_illuminants=("D65", "F11"),
+        saunderson_k1=0.038,
+        saunderson_k2=0.58
+    )
+
+    ctx_ds36d = ExecutionContext.create(
+        science_profile=custom_sci,
+        instrument_model="CHNSpec DS-36D",
+        geometry="d/8°",
+        measurement_mode="SCI"
+    )
+
+    assert ctx_ds36d.science_profile.observer == "2"
+    assert ctx_ds36d.science_profile.reference_illuminant == "A"
+    assert ctx_ds36d.science_profile.saunderson_k1 == 0.038
+    assert ctx_ds36d.measurement_context.geometry == "d/8°"
+    assert ctx_ds36d.measurement_context.instrument_model == "CHNSpec DS-36D"
+    assert ctx_ds36d.measurement_context.specular_included is True
+
+    # 2. Test predict_recipe uses context without reverting to defaults
+    base_k = np.full(31, 0.02)
+    base_s = np.full(31, 1.00)
+    pastes = [
+        {"id": 1, "name": "Paste 1", "concentration": 2.0, "unit_k": [0.5] * 31, "unit_s": [0.1] * 31}
+    ]
+    target_r = [0.35] * 31
+
+    sim = predict_recipe(
+        base_k=base_k,
+        base_s=base_s,
+        pastes=pastes,
+        target_reflectance=target_r,
+        context=ctx_ds36d
+    )
+
+    assert sim["execution_context"]["science_profile"]["observer"] == "2"
+    assert sim["execution_context"]["science_profile"]["reference_illuminant"] == "A"
+    assert sim["execution_context"]["measurement_context"]["geometry"] == "d/8°"
+
+    # 3. Test calculate_pigment_sensitivity_matrix uses context
+    sens = calculate_pigment_sensitivity_matrix(
+        base_k=base_k,
+        base_s=base_s,
+        matched_pastes=pastes,
+        target_reflectance=target_r,
+        context=ctx_ds36d
+    )
+    assert len(sens) == 1
+    assert sens[0]["name"] == "Paste 1"
+
+    # 4. Test match_color_ccm end-to-end with context
+    available = [
+        {"id": 1, "name": "Paste 1", "code": "P1", "hex": "#ff0000", "unit_k": [0.8] * 31, "unit_s": [0.1] * 31},
+        {"id": 2, "name": "Paste 2", "code": "P2", "hex": "#00ff00", "unit_k": [0.3] * 31, "unit_s": [0.2] * 31}
+    ]
+    res = match_color_ccm(
+        target_reflectance=target_r,
+        base_k=base_k,
+        base_s=base_s,
+        available_pastes=available,
+        context=ctx_ds36d
+    )
+
+    assert res["geometry"] == "d/8°"
+    assert res["instrument_model"] == "CHNSpec DS-36D"
+    assert res["execution_context"]["science_profile"]["observer"] == "2"
+    assert res["execution_context"]["science_profile"]["reference_illuminant"] == "A"
+    assert res["execution_context"]["measurement_context"]["geometry"] == "d/8°"
+    for rkey in ("recipe_a", "recipe_b", "recipe_c"):
+        rec = res["recipes"][rkey]
+        assert rec["execution_context"]["science_profile"]["observer"] == "2"
+        assert rec["execution_context"]["science_profile"]["reference_illuminant"] == "A"
+
+
+
 
 
