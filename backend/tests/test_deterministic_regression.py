@@ -6,7 +6,7 @@ Guarantees:
 1. Multi-profile optimization (Recipe A, B, C) converges reliably with ΔE00 <= 0.50.
 2. SLSQP mass inequality constraints (sum(c_i) <= max_total_load) are strictly satisfied.
 3. Deterministic repeatability up to 1e-4 tolerance.
-4. Correct DIN 6172 / ASTM E805 Composite Metamerism Index calculation.
+4. Correct Composite Illuminant Match Error Spread calculation.
 5. Analytical pigment sensitivity matrix correctness.
 """
 
@@ -138,7 +138,7 @@ def test_slsqp_mass_constraint_strictness(base_and_pastes, regression_targets):
 
 
 def test_metamerism_composite_definition(base_and_pastes, regression_targets):
-    """Validates DIN 6172 / ASTM E805 Composite MI definition: max(MI(A), MI(F11))."""
+    """Validates Composite Illuminant Match Error Spread definition: max(MI(A), MI(F11))."""
     base_k, base_s, pastes = base_and_pastes
     target = regression_targets[1]
     result = match_color_ccm(target["target_reflectance"], base_k, base_s, pastes)

@@ -6,14 +6,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-174%20passed%20%7C%2087%25%20cov-brightgreen)](backend/tests/)
-[![CCM Validation](https://img.shields.io/badge/CCM%20Validation-1.0%20(12%20Pillars)-success)](#-ccm-validation-10-end-to-end-doğrulama-ve-kıyaslama-paketi)
+[![Tests](https://img.shields.io/badge/Tests-193%20passed%20%7C%2083%25%20cov-brightgreen)](backend/tests/)
+[![CCM Validation](https://img.shields.io/badge/CCM%20Validation-1.0%20(12%20Pillars)-success)](#-ccm-validation-10-end-to-end-sayısal-doğrulama-ve-kıyaslama-paketi)
 [![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20ISO%2017972--3-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **B2B Spektrofotometrik Renklendirici Pasta ve Baz Karakterizasyonu & Bilgisayarlı Renk Eşleme (CCM - Computer Color Matching) Web Uygulaması**
 
-**TintMatch PRO**, boya, kaplama, otomotiv ve mürekkep sanayiine yönelik olarak tasarlanmış; **CHNSpec DS-36D** (d/8° entegre küre) ve **X-Rite RM400** (45°:0°) spektrofotometre donanım entegrasyonuna sahip, **Saunderson yüzey düzeltmesi** ile **Çift Sabitli Kubelka-Munk** modelini çalıştıran, $\Delta E_{00} < 0.30$ self-fit, LOOCV $\le 0.50$ dış-örneklem doğrulama kapıları ve **CCM VALIDATION 1.0 (12 Pillar)** endüstriyel sertifikasyon paketine sahip profesyonel bir endüstriyel laboratuvar platformudur.
+**TintMatch PRO**, boya, kaplama, otomotiv ve mürekkep sanayiine yönelik olarak tasarlanmış; **CHNSpec DS-36D** (d/8° entegre küre) ve **X-Rite RM400** (45°:0°) spektrofotometre donanım entegrasyonuna sahip, **Saunderson yüzey düzeltmesi** ile **Çift Sabitli Kubelka-Munk** modelini çalıştıran, $\Delta E_{00} < 0.30$ self-fit, LOOCV $\le 0.50$ dış-örneklem doğrulama kapıları ve **CCM VALIDATION 1.0 (12 Pillar)** kapsamlı endüstriyel sayısal doğrulama ve kıyaslama (standard-referenced computational validation) paketine sahip profesyonel bir endüstriyel laboratuvar platformudur.
 
 ---
 
@@ -56,10 +56,13 @@ Seyreltme serisi (%0.1 - %10.0) ölçümleri üzerinden türetilen $K(\lambda)$ 
 - **Görülmemiş Numune Tahmini (LOOCV):** $n \ge 4$ seyreltme serilerinde Leave-One-Out Cross-Validation çalıştırılarak her bir numune eğitim dışı bırakılır ve serbestlik derecesi korunarak modelin tahmin gücü test edilir:
   $$\Delta E_{00}^{\text{LOOCV}} \le 0.50 \implies \textbf{GENELLEŞTİRİLEBİLİR (Tolerans Profili Denetimi)}$$
 
-### 6. Metamerizm İndeksi (MI)
-Formülasyonun günışığı dışındaki aydınlatıcılar altında renk değiştirme riski çoklu aydınlatıcı matrisi ile anlık denetlenir:
-$$MI(A) = |\Delta E_{00}(\text{Illuminant A}) - \Delta E_{00}(\text{D65})|$$
-$$MI(F11) = |\Delta E_{00}(\text{TL84 / F11}) - \Delta E_{00}(\text{D65})|$$
+### 6. Metamerizm ve Çoklu Aydınlatıcı Kararlılığı
+Formülasyonun günışığı dışındaki aydınlatıcılar altında renk değiştirme riski iki ayrı analitik metrikle denetlenir:
+- **Aydınlatıcı Eşleşme Hata Yayılımı (Illuminant Match Error Spread):** D65 referans aydınlatıcısına göre ikincil ve üçüncül ışık kaynakları altındaki formülasyon hata sapmasını ölçer:
+  $$\text{Spread}(A) = |\Delta E_{00}(\text{A}) - \Delta E_{00}(\text{D65})|, \quad \text{Spread}(F11) = |\Delta E_{00}(\text{TL84 / F11}) - \Delta E_{00}(\text{D65})|$$
+  $$\text{Spread}_{\max} = \max(\Delta E_{00}(A), \Delta E_{00}(F11)) - \Delta E_{00}(\text{D65})$$
+- **ISO 18314-4 / DIN 6172 Özel Metamerizm İndeksi ($M_t$):** D65 altındaki artık eşleşme hatasını ortadan kaldırmak amacıyla, test aydınlatıcısı altında çarpımsal tristimulus düzeltmesi ($X_{\text{bat,corr}} = X_{\text{bat}} \cdot \frac{X_{\text{std,D65}}}{X_{\text{bat,D65}}}$) uygulayarak numune çiftleri arasındaki gerçek spektral metamerizm indeksini hesaplar:
+  $$M_t = \Delta E_{00}(\text{Standard}_t, \text{Batch}_{\text{corr}, t})$$
 
 ### 7. Kontrast Oranı & %98 Opasite Denetimi
 Leneta kartı üzerinde siyah zemin ($R_g=0.04$) ve beyaz zemin ($R_g=0.82$) fotometrik yansımaları oranlanarak örtücülük denetlenir:
@@ -72,9 +75,12 @@ $$CR = \frac{Y_{\text{siyah}}}{Y_{\text{beyaz}}} \times 100\% \ge 98.0\% \implie
 
 ---
 
-## 🛡️ CCM VALIDATION 1.0 End-to-End Doğrulama ve Kıyaslama Paketi
+## 🛡️ CCM VALIDATION 1.0 End-to-End Sayısal Doğrulama ve Kıyaslama Paketi
 
-TintMatch PRO, endüstriyel renk laboratuvarlarında matematiksel, fiziksel ve donanımsal güvenilirliği garanti altına alan **12 Doğrulama Sütunu (12 Pillars)** ile sertifikalandırılmıştır:
+TintMatch PRO, endüstriyel renk laboratuvarlarında matematiksel, fiziksel ve donanımsal güvenilirliği garanti altına alan, uluslararası standart metodolojileri (ISO 18314, ISO 17972-3, ASTM D2805, DIN 6172) referans alınarak geliştirilmiş **12 Doğrulama Sütunu (12 Pillars)** ile kapsamlı olarak doğrulanmış ve kıyaslanmıştır (standard-referenced computational validation):
+
+> [!NOTE]
+> **Standart ve Uyumluluk Notu:** Bu doğrulama süreci, algoritmaların ISO, DIN ve ASTM standartlarında tanımlanan matematiksel ve optik formülasyonlara sayısal uygunluğunu, sentetik altın veri setlerini ve gerçek cihaz ölçümlerini kapsayan algoritmik bir doğrulama paketidir (computational validation suite); bağımsız üçüncü taraf akredite kuruluşlarca verilen resmi yasal/akredite ürün sertifikasyonu yerine geçmez.
 
 | Sütun | Modül / Dosya | Kapsam & Bulgular | Test Durumu |
 | :--- | :--- | :--- | :---: |
@@ -99,7 +105,7 @@ TintMatch PRO, endüstriyel laboratuvar cihazlarının estetiğini yansıtan, di
 - **Renk Paleti:** `#09090b` nötr kanvas, `#121215` / `#18181b` kart yüzeyleri, `border-zinc-800` ince 1px kenarlıklar.
 - **Tipografi:** Yüksek okunurluğa sahip sans-serif tipografi ve spektral metrikler için monospace sayısal göstergeler.
 - **Yüksek Bilgi Yoğunluğu:** Gereksiz süslemelerden arındırılmış, veri odaklı 3 sütunlu laboratuvar tezgahı düzeni.
-- **Resmi Sertifika Görünümü:** ISO 18314 analitik kolorimetri raporu için minimalist İsviçre laboratuvar sertifikası formatı (`window.print()` ve CSV dışa aktarımı).
+- **Laboratuvar Doğrulama Raporu:** ISO 18314 analitik kolorimetri hesaplama metodolojisi doğrulama raporu için minimalist İsviçre laboratuvar raporu formatı (`window.print()`, CSV ve CxF3 dışa aktarımı).
 
 ---
 
@@ -120,11 +126,11 @@ TintMatch PRO, endüstriyel laboratuvar cihazlarının estetiğini yansıtan, di
    - Pasta oranlarını değiştiren ince kaydırıcılar (sliders) ve canlı renk kutucuğu.
    - **Auto-Match CCM 2.0:** Hedef spektruma göre SLSQP kısıt motoruyla $\sum c_i \le \text{max\_total\_load}$ şartını kesin olarak sağlayan, 3 bağımsız optimizasyon profili türeten motor:
      - **Reçete A (Color Match):** En yüksek D65 günışığı kolorimetrik uyumu ($\Delta E_{00} \le 0.50$).
-     - **Reçete B (Light Stability):** DIN 6172 / ASTM E805 bileşik metamerizm ($MI_{\text{composite}}$) ceza ağırlıklı formülasyon.
+     - **Reçete B (Light Stability):** Çoklu aydınlatıcı kararlılığı ve metamerizm yayılımı ($MI_{\text{composite}}$) ceza ağırlıklı formülasyon.
      - **Reçete C (Economy / Low Load):** Toplam pigment yükünü minimize eden formülasyon.
    - **What-If Pigment Duyarlılık Matrisi:** Her pigment için $\frac{\partial \Delta E_{00}}{\partial c}, \frac{\partial L^*}{\partial c}, \frac{\partial a^*}{\partial c}, \frac{\partial b^*}{\partial c}$ kısmi türevleri ve formülatör tavsiyeleri.
    - **SLSQP Çözücü Teşhisi:** `OPTIMAL_CONVERGED`, kütle marjı, multi-start durumu, SHA-256 hesaplama hash izlenebilirliği.
-5. **ISO 18314 Onay Sertifikası & CxF3 Dışa Aktarım:**
+5. **ISO 18314 Hesaplama Uygunluk Raporu & CxF3 Dışa Aktarım:**
    - ISO 18314-1/2 hesaplama metodolojisine uygunluk doğrulama raporu, yazıcı/PDF çıktısı, 31-kanal birim $K(\lambda), S(\lambda), (K/S)(\lambda)$ CSV ve ISO 17972-3 CxF3 XML dışa aktarımı.
 6. **Renk Bilimi & Spektrofotometri Sözlüğü:**
    - X-Rite RM400, CHNSpec DS-36D, Saunderson düzeltmesi, Kubelka-Munk, CIEDE2000, Metamerizm, Flokülasyon ve Rub-Out testleri teknik kılavuzu.
@@ -166,7 +172,7 @@ TintMatch PRO
 │   │   ├── formulation.py      # Canlı reçete simülasyonu, 3-profil CCM eşleme ve duyarlılık
 │   │   ├── instruments.py      # Cihaz bağlantı, ölçüm, kalibrasyon sert kapısı (HTTP 428)
 │   │   └── reports.py          # ISO 18314 metodolojik uygunluk raporu ve CSV/CxF3 dışa aktarımı
-│   ├── tests/                  # Pytest kapsamlı test paketi (174 test, %87 Kapsam)
+│   ├── tests/                  # Pytest kapsamlı test paketi (193 test, %83 Kapsam)
 │   │   ├── data/
 │   │   │   ├── synthetic_golden_dataset.json # 15 Altın standart hedef
 │   │   │   ├── blind_targets_dataset.json    # 15 Endüstriyel stres hedefi
@@ -187,6 +193,7 @@ TintMatch PRO
 │   │   ├── test_audit_round_2.py            # Geometry isolation, dual SCI/SCE, LOOCV guard
 │   │   ├── test_audit_round_3.py            # Authoritative constraints, dual-metric screening, CORS
 │   │   ├── test_audit_round_4.py            # QP projection, InfeasibleConstraintSet, empty recipe safety, health sync
+│   │   ├── test_metamerism_standards.py     # ISO 18314-4 / DIN 6172 Special Metamerism & Illuminant Spread
 │   │   ├── test_chnspec_driver.py
 │   │   ├── test_spectrum_normalizer.py
 │   │   ├── test_instrument_comparison.py
@@ -216,46 +223,48 @@ TintMatch PRO
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 174 Test, %87 Kapsam)
+## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 193 Test, %83 Kapsam)
 
 ```bash
 python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices backend/tests/
 ```
 
 ```text
-Name                                                         Stmts   Miss  Cover
---------------------------------------------------------------------------------
-backend\color_engine\__init__.py                                 6      0   100%
-backend\color_engine\addback.py                                130      3    98%
-backend\color_engine\benchmarks\__init__.py                      0      0   100%
-backend\color_engine\benchmarks\benchmark_multistart.py         17      0   100%
-backend\color_engine\benchmarks\benchmark_nnls_ablation.py      67      2    97%
-backend\color_engine\benchmarks\benchmark_slsqp_library.py      72      0   100%
-backend\color_engine\colorimetry.py                            135      1    99%
-backend\color_engine\constants.py                               16      0   100%
-backend\color_engine\constraints.py                             71      4    94%
-backend\color_engine\cxf_parser.py                             128     20    84%
-backend\color_engine\formulation.py                            295     22    93%
-backend\color_engine\hashing.py                                 23      0   100%
-backend\color_engine\instrument_comparison.py                   64      5    92%
-backend\color_engine\kubelka_munk.py                           294     18    94%
-backend\color_engine\profiles.py                                75      0   100%
-backend\color_engine\quality_gate.py                            89     13    85%
-backend\color_engine\rm400_parser.py                           218     54    75%
-backend\color_engine\saunderson.py                              31      1    97%
-backend\color_engine\spectrum_normalizer.py                     72      4    94%
-backend\devices\chnspec_driver.py                              339     85    75%
-backend\devices\rm400_driver.py                                211     90    57%
-backend\routes\__init__.py                                       0      0   100%
-backend\routes\bases.py                                         76     41    46%
-backend\routes\characterization.py                             142      9    94%
-backend\routes\formulation.py                                  271     10    96%
-backend\routes\instruments.py                                  150     24    84%
-backend\routes\pastes.py                                        42     12    71%
-backend\routes\reports.py                                       52      2    96%
---------------------------------------------------------------------------------
-TOTAL                                                         3086    420    86%
-============================ 158 passed in 44.84s =============================
+Name                                                            Stmts   Miss  Cover
+-----------------------------------------------------------------------------------
+backend\color_engine\__init__.py                                    6      0   100%
+backend\color_engine\addback.py                                   130      3    98%
+backend\color_engine\benchmarks\__init__.py                         0      0   100%
+backend\color_engine\benchmarks\benchmark_candidate_recall.py     124     42    66%
+backend\color_engine\benchmarks\benchmark_multistart.py            17      0   100%
+backend\color_engine\benchmarks\benchmark_nnls_ablation.py         67      2    97%
+backend\color_engine\benchmarks\benchmark_slsqp_library.py        116      8    93%
+backend\color_engine\colorimetry.py                               189      3    98%
+backend\color_engine\constants.py                                  16      0   100%
+backend\color_engine\constraints.py                               202     18    91%
+backend\color_engine\cxf_parser.py                                128     20    84%
+backend\color_engine\formulation.py                               510     49    90%
+backend\color_engine\hashing.py                                    39      5    87%
+backend\color_engine\instrument_comparison.py                      64      5    92%
+backend\color_engine\kubelka_munk.py                              297     16    95%
+backend\color_engine\profiles.py                                  193     11    94%
+backend\color_engine\quality_gate.py                              158     16    90%
+backend\color_engine\rm400_parser.py                              218     54    75%
+backend\color_engine\saunderson.py                                 31      1    97%
+backend\color_engine\spectrum_normalizer.py                        72      4    94%
+backend\devices\chnspec_driver.py                                 452    182    60%
+backend\devices\rm400_driver.py                                   211     90    57%
+backend\routes\__init__.py                                          0      0   100%
+backend\routes\bases.py                                            76     41    46%
+backend\routes\characterization.py                                142      9    94%
+backend\routes\configuration.py                                   278     98    65%
+backend\routes\formulation.py                                     315     11    97%
+backend\routes\instruments.py                                     150     24    84%
+backend\routes\pastes.py                                           42     12    71%
+backend\routes\reports.py                                          52      2    96%
+-----------------------------------------------------------------------------------
+TOTAL                                                            4295    726    83%
+======================= 193 passed in 419.82s (0:06:59) =======================
 ```
 
 ---

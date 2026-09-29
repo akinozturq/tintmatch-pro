@@ -14,7 +14,7 @@ Provides independent policy-driven validation gates:
 
 2. Formulation Gate (CCM recipe validation):
    - Primary D65 ΔE00 against corporate ToleranceProfile
-   - DIN 6172 / ASTM E805 Composite Metamerism Index (MI_composite <= limit)
+   - Multi-Illuminant Stability & Match Error Spread (MI_composite <= limit)
    - Mass constraint compliance (sum(c_i) <= max_total_load)
    - SLSQP solver convergence diagnostics
    - Directional tint shifts
@@ -356,7 +356,7 @@ def evaluate_formulation_gate(
             "severity": severity_f11
         })
 
-    # 4. DIN 6172 / ASTM E805 Composite Metamerism Index
+    # 4. Multi-Illuminant Stability & Match Error Spread (MI_composite)
     if profile is not None:
         if profile.id == "light_stability":
             mi_limit = profile.gate_limit_mi if profile.gate_limit_mi is not None else tolerance.composite_mi_limit
@@ -377,7 +377,7 @@ def evaluate_formulation_gate(
 
     checks.append({
         "metric": "composite_metamerism",
-        "label": "Bileşik Metamerizm İndeksi (MI)",
+        "label": "Bileşik Metamerizm / Aydınlatıcı Yayılım İndeksi (MI)",
         "actual": round(float(composite_mi), 3),
         "limit": round(float(mi_limit), 3),
         "operator": "<=",

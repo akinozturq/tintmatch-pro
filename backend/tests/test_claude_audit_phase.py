@@ -2,7 +2,7 @@
 Automated Test Suite: Claude.ai Scientific & Architectural Audit Hardening
 =========================================================================
 Verifies:
-1. Canonical Composite Metamerism Index (DIN 6172 / ASTM E805)
+1. Composite Illuminant Match Error Spread & ISO 18314-4 Metamerism Index
 2. Strict Physicality Validator (Dark noise floor & sensor saturation)
 3. LOOCV 95th Percentile (p95) Evaluation in Kubelka-Munk & Quality Gate
 4. ConstraintEngine 2.0 (Mass bounds, group bounds, min-dispensing pruning, slack)
@@ -72,16 +72,16 @@ def client():
 
 
 # =========================================================================
-# 1. Composite Metamerism Index (DIN 6172 / ASTM E805)
+# 1. Composite Illuminant Match Error Spread & Metamerism Evaluation
 # =========================================================================
 
 def test_composite_metamerism_index():
-    # Test max method (DIN 6172 standard)
+    # Test max method (worst-case shift)
     mi_max = calculate_composite_metamerism(de_d65=0.20, de_a=0.80, de_f11=0.55, method="max")
     # |0.80 - 0.20| = 0.60; |0.55 - 0.20| = 0.35 -> max is 0.60
     assert abs(mi_max - 0.60) < 1e-4
 
-    # Test rms method (ASTM E805 standard)
+    # Test rms method (root-mean-square shift)
     mi_rms = calculate_composite_metamerism(de_d65=0.20, de_a=0.80, de_f11=0.55, method="rms")
     expected_rms = np.sqrt(0.5 * (0.60**2 + 0.35**2))
     assert abs(mi_rms - expected_rms) < 1e-3

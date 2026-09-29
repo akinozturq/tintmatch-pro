@@ -259,11 +259,14 @@ def calculate_composite_metamerism(
     method: str = "max"
 ) -> float:
     """
-    Computes canonical Composite Metamerism Index across illuminants.
+    Computes Illuminant Match Error Spread across secondary and tertiary illuminants.
 
-    Methods:
-    - 'max' (default, DIN 6172 / ASTM E805): Worst-case individual illuminant shift |ΔE00(ill) - ΔE00(D65)|.
-    - 'rms': Root-mean-square multi-illuminant color difference.
+    Scientific Note:
+    This evaluates the multi-illuminant match divergence relative to the primary reference illuminant:
+    - 'max' (default): Worst-case individual illuminant shift |ΔE00(ill) - ΔE00(ref)|.
+    - 'rms': Root-mean-square multi-illuminant color difference shift.
+    For formal Special Metamerism Index with tristimulus correction per ISO 18314-4 / DIN 6172,
+    refer to `compute_iso_metamerism_index()`.
 
     Args:
         de_d65: Delta E00 under primary D65 illuminant.
@@ -273,7 +276,7 @@ def calculate_composite_metamerism(
         method: Calculation method ('max' or 'rms').
 
     Returns:
-        float: Composite Metamerism Index.
+        float: Composite Illuminant Match Error Spread.
     """
     mi_a = abs(de_a - de_d65)
     mi_f11 = abs(de_f11 - de_d65)
@@ -283,8 +286,121 @@ def calculate_composite_metamerism(
         vals = [mi_a, mi_f11] + ([mi_f2] if de_f2 is not None else [])
         return float(np.sqrt(np.mean([v ** 2 for v in vals])))
 
-    # Default 'max': DIN 6172 / ASTM E805 worst-case divergence
+    # Default 'max': worst-case divergence across illuminants
     return float(max(mi_a, mi_f11, mi_f2))
+
+
+def compute_iso_metamerism_index(
+    reflectance_batch: np.ndarray | list[float],
+    reflectance_standard: np.ndarray | list[float],
+    observer: str = "10",
+    reference_illuminant: str = "D65",
+    test_illuminants: list[str] | tuple[str, ...] | None = None
+) -> dict:
+    """
+    Computes the formal Special Metamerism Index for Change in Illuminant per ISO 18314-4 / DIN 6172.
+
+    Standards Background:
+    - ISO 18314-4:2018 ("Analytical colorimetry — Part 4: Metamerism index for pairs of samples for change of illuminant")
+    - DIN 6172 ("Special metamerism index for pairs of samples on change in illuminant")
+
+    Methodology:
+    Because real specimen pairs rarely match perfectly under the reference illuminant (residual ΔE_ref > 0),
+    evaluating raw color difference under a test illuminant conflates formulation/batching error with true metamerism.
+    ISO 18314-4 standardizes a multiplicative correction to the batch tristimulus values under the test illuminant:
+        f_X = X_std,ref / max(X_bat,ref, 1e-6)
+        f_Y = Y_std,ref / max(Y_bat,ref, 1e-6)
+        f_Z = Z_std,ref / max(Z_bat,ref, 1e-6)
+
+        X_bat,test,corr = X_bat,test * f_X
+        Y_bat,test,corr = Y_bat,test * f_Y
+        Z_bat,test,corr = Z_bat,test * f_Z
+
+    The formal Metamerism Index M_test is then evaluated as the color difference (CIEDE2000 and CIELAB ΔE*ab)
+    between the standard under the test illuminant and the corrected batch:
+        M_test = CIEDE2000(Lab_std,test, Lab_bat,test,corr)
+
+    Args:
+        reflectance_batch: 31-point batch/sample spectral reflectance (400-700 nm @ 10 nm)
+        reflectance_standard: 31-point standard/target spectral reflectance (400-700 nm @ 10 nm)
+        observer: CIE Standard Observer ('10' for 10° Supplementary, '2' for 2° Standard)
+        reference_illuminant: Reference daylight illuminant (default: 'D65')
+        test_illuminants: Secondary test illuminants (default: ('A', 'F11', 'F2'))
+
+    Returns:
+        dict containing:
+        - M_<ill>: CIEDE2000 ISO metamerism index under each test illuminant
+        - M_ab_<ill>: Classic CIELAB ΔE*ab index under each test illuminant
+        - M_composite: max(M_test)
+        - M_composite_rms: RMS(M_test)
+        - correction_factors: {f_X, f_Y, f_Z}
+        - standard_reference: "ISO 18314-4:2018 / DIN 6172"
+    """
+    tests = list(test_illuminants) if test_illuminants is not None else ["A", "F11", "F2"]
+
+    # 1. Tristimulus values under reference illuminant
+    X_std_0, Y_std_0, Z_std_0 = reflectance_to_xyz(reflectance_standard, illuminant=reference_illuminant, observer=observer)
+    X_bat_0, Y_bat_0, Z_bat_0 = reflectance_to_xyz(reflectance_batch, illuminant=reference_illuminant, observer=observer)
+
+    # 2. Multiplicative correction factors per ISO 18314-4 Section 5.2 / DIN 6172
+    f_X = float(X_std_0 / max(X_bat_0, 1e-6))
+    f_Y = float(Y_std_0 / max(Y_bat_0, 1e-6))
+    f_Z = float(Z_std_0 / max(Z_bat_0, 1e-6))
+
+    indices_de00 = {}
+    indices_de_ab = {}
+    details = {}
+
+    for ill in tests:
+        # Standard under test illuminant
+        X_std_t, Y_std_t, Z_std_t = reflectance_to_xyz(reflectance_standard, illuminant=ill, observer=observer)
+        lab_std_t = xyz_to_lab(X_std_t, Y_std_t, Z_std_t, illuminant=ill, observer=observer)
+
+        # Batch under test illuminant, corrected by reference ratio
+        X_bat_t, Y_bat_t, Z_bat_t = reflectance_to_xyz(reflectance_batch, illuminant=ill, observer=observer)
+        X_bat_t_corr = X_bat_t * f_X
+        Y_bat_t_corr = Y_bat_t * f_Y
+        Z_bat_t_corr = Z_bat_t * f_Z
+        lab_bat_t_corr = xyz_to_lab(X_bat_t_corr, Y_bat_t_corr, Z_bat_t_corr, illuminant=ill, observer=observer)
+
+        # Metric 1: CIEDE2000 (modern industrial standard)
+        de00 = float(ciede2000(lab_std_t, lab_bat_t_corr)["delta_e00"])
+
+        # Metric 2: Classic CIELAB Euclidean ΔE*ab (strict DIN 6172 formula)
+        dL = lab_std_t[0] - lab_bat_t_corr[0]
+        da = lab_std_t[1] - lab_bat_t_corr[1]
+        db = lab_std_t[2] - lab_bat_t_corr[2]
+        de_ab = float(np.sqrt(dL ** 2 + da ** 2 + db ** 2))
+
+        indices_de00[f"M_{ill}"] = round(de00, 4)
+        indices_de_ab[f"M_ab_{ill}"] = round(de_ab, 4)
+        details[ill] = {
+            "M_ciede2000": round(de00, 4),
+            "M_cielab_ab": round(de_ab, 4),
+            "lab_std": [round(float(v), 3) for v in lab_std_t],
+            "lab_bat_corrected": [round(float(v), 3) for v in lab_bat_t_corr]
+        }
+
+    vals_00 = list(indices_de00.values())
+    m_composite = float(max(vals_00)) if vals_00 else 0.0
+    m_rms = float(np.sqrt(np.mean([v ** 2 for v in vals_00]))) if vals_00 else 0.0
+
+    return {
+        "standard": "ISO 18314-4:2018 / DIN 6172",
+        "reference_illuminant": reference_illuminant,
+        "observer": observer,
+        "correction_method": "multiplicative_tristimulus",
+        "correction_factors": {
+            "f_X": round(f_X, 5),
+            "f_Y": round(f_Y, 5),
+            "f_Z": round(f_Z, 5)
+        },
+        "M_composite": round(m_composite, 4),
+        "M_composite_rms": round(m_rms, 4),
+        **indices_de00,
+        **indices_de_ab,
+        "details": details
+    }
 
 
 def compute_metamerism_index(
@@ -297,12 +413,17 @@ def compute_metamerism_index(
     illuminants: list[str] | tuple[str, ...] | None = None
 ) -> dict:
     """
-    Computes Metamerism Index (MI) comparing a sample to a standard under:
-    - Primary Reference: reference_illuminant (default: D65)
-    - Test Illuminants: test_illuminants (default: A, F11, F2)
+    Evaluates multi-illuminant color difference behavior between a batch and standard.
 
-    MI_<ill> = |ΔE00(ill) - ΔE00(ref)|
-    MI_composite = calculate_composite_metamerism(...)
+    Provides rigorous scientific separation between:
+    1. Illuminant Match Error Spread:
+       Evaluates the divergence across illuminants relative to reference illuminant:
+       spread_max = max(ΔE_test) - ΔE_ref
+       spread_<ill> = |ΔE_<ill> - ΔE_ref|
+    2. Formal Special Metamerism Index (ISO 18314-4:2018 / DIN 6172):
+       Evaluates true spectral metamerism index with multiplicative tristimulus correction.
+    3. Backward-Compatible Fields:
+       dE00_D65, dE00_A, dE00_F11, dE00_F2, MI_A, MI_F11, MI_F2, MI_composite, MI_composite_rms, rating.
     """
     if test_illuminants is None and illuminants is not None:
         test_illuminants = illuminants
@@ -327,6 +448,29 @@ def compute_metamerism_index(
     de_f11 = delta_e_map.get("F11", de_ref)
     de_f2 = delta_e_map.get("F2", de_ref)
 
+    # 1. Illuminant Match Error Spread
+    test_de_vals = [delta_e_map[ill] for ill in tests if ill in delta_e_map]
+    spread_max = (max(test_de_vals) - de_ref) if test_de_vals else 0.0
+
+    match_error_spread = {
+        "spread_max": round(float(spread_max), 4),
+        "spread_A": round(abs(de_a - de_ref), 4),
+        "spread_F11": round(abs(de_f11 - de_ref), 4),
+        "spread_F2": round(abs(de_f2 - de_ref), 4)
+    }
+    for ill in tests:
+        match_error_spread[f"spread_{ill}"] = round(abs(delta_e_map[ill] - de_ref), 4)
+
+    # 2. Formal ISO 18314-4 / DIN 6172 Metamerism Index
+    iso_result = compute_iso_metamerism_index(
+        reflectance_batch=reflectance_batch,
+        reflectance_standard=reflectance_standard,
+        observer=observer,
+        reference_illuminant=reference_illuminant,
+        test_illuminants=tests
+    )
+
+    # 3. Backward-compatible fields
     mi_a = abs(de_a - de_ref)
     mi_f11 = abs(de_f11 - de_ref)
     mi_f2 = abs(de_f2 - de_ref)
@@ -349,10 +493,25 @@ def compute_metamerism_index(
         "MI_F2": round(mi_f2, 4),
         "MI_composite": round(mi_composite, 4),
         "MI_composite_rms": round(mi_composite_rms, 4),
-        "rating": "Excellent" if mi_composite < 0.5 else ("Good" if mi_composite < 1.0 else "Warning - High Metamerism")
+        "rating": "Excellent" if mi_composite < 0.5 else ("Good" if mi_composite < 1.0 else "Warning - High Metamerism"),
+
+        # Rigorous Scientific Separation
+        "illuminant_deltas": {
+            "dE00_reference": round(de_ref, 4),
+            **{f"dE00_{ill}": round(delta_e_map[ill], 4) for ill in all_ills}
+        },
+        "illuminant_match_error_spread": match_error_spread,
+        "iso_18314_4": iso_result,
+        "standards_compliance": {
+            "formal_metamerism_standard": "ISO 18314-4:2018 / DIN 6172 (Multiplicative Tristimulus Correction)",
+            "spread_metric_definition": "Illuminant Match Error Spread: max(ΔE_test) - ΔE_ref",
+            "reference_illuminant": reference_illuminant,
+            "test_illuminants": tests,
+            "observer": observer
+        }
     }
 
-    # Include any dynamic test illuminants
+    # Dynamic test illuminant keys
     for ill in tests:
         res[f"dE00_{ill}"] = round(delta_e_map.get(ill, de_ref), 4)
         res[f"MI_{ill}"] = round(abs(delta_e_map.get(ill, de_ref) - de_ref), 4)

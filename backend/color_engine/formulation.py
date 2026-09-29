@@ -6,7 +6,7 @@ Industrial-grade multi-illuminant CCM solver and live recipe simulation engine:
 - Constrained non-linear optimization via SLSQP enforcing true mass inequality sum(c_i) <= max_total_load
 - 3 Distinct Optimization Profiles:
     1. Recipe A — Color Match (High D65 fidelity)
-    2. Recipe B — Light Stability (DIN 6172 / ASTM E805 multi-illuminant metamerism penalty)
+    2. Recipe B — Light Stability (Multi-illuminant stability & metamerism spread penalty)
     3. Recipe C — Economy / Low Load (Total pigment loading penalty)
 - Solver diagnostics (OPTIMAL_CONVERGED, FEASIBLE_LOCAL_MIN, MAX_ITERATIONS, CONSTRAINTS_VIOLATED)
 - Finite-Difference Numerical Sensitivity Matrix (What-If partial derivatives: d(dE00)/dc, dL/dc, da/dc, db/dc, dC/dc, dH/dc)
@@ -478,7 +478,7 @@ def evaluate_recipe_objective(
         de_f11 = 0.0
         mi_f11 = 0.0
 
-    # DIN 6172 / ASTM E805 worst-case composite metamerism index
+    # Illuminant Match Error Spread across secondary/tertiary illuminants
     mi_composite = max(mi_a, mi_f11)
     tot_c = float(np.sum(np.maximum(concs, 0.0)))
 
