@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-202%20passed%20%7C%20100%25%20success-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-207%20passed%20%7C%20100%25%20success-brightgreen)](backend/tests/)
 [![CCM Industrial Engine](https://img.shields.io/badge/CCM%20Engine-2.0%20(Deterministic%20SLSQP)-success)](#-endüstriyel-ve-laboratuvar-odaklı-temel-yetenekler)
 [![Hardware](https://img.shields.io/badge/Spectrophotometer-CHNSpec%20DS--36D%20(d%2F8°)-blue)](#-donanım-entegrasyonu-chnspec-ds-36d)
 [![Color Science](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20Saunderson%20K--M-blue)](https://www.iso.org/standard/66597.html)
@@ -57,12 +57,21 @@ Gereksiz kafa karışıklığını önlemek için tek ve odaklı bir reçete tab
 - 💡 **Düşük Metamerizm:** D65, A (akkor flaman) ve F2/F11 (floresan) ışıkları altında renk stabilitesi.
 - 💰 **En Uygun Fiyat:** Minimum pasta sayısı ve hammadde maliyeti tasarrufu.
 
-### 4. Fiziksel Drawdown Doğrulaması & Otomatik Add-Back Motoru
-- Formül hazırlandıktan sonra çekilen numune filmi (drawdown) **CHNSpec DS-36D** ile tek tıkla okunur.
-- Hedef ile çekim arasındaki fark hesaplanır:
-  - $\Delta E_{00} \le 0.50 \implies$ **Kabul Edildi** (Doğrulanmış Golden Batch olarak arşive kaydedilir).
-  - $0.50 < \Delta E_{00} \le 1.50 \implies$ **İlave Gerekiyor (Add-Back):** Partiyi kurtarmak için tanka eklenecek ilave pasta gramajları otomatik hesaplanır.
-  - $\Delta E_{00} > 1.50 \implies$ **Reddedildi:** Formül iptal edilir, operatöre uyarı verilir.
+### 4. Fiziksel Drawdown Doğrulaması & Gerçek Hedefe Otomatik Add-Back Motoru
+- Formül hazırlandıktan sonra aplikatörle çekilen fiziksel numune filmi (drawdown) **CHNSpec DS-36D** spektrofotometre ile okunur.
+- **Üçlü Kolorimetrik Değerlendirme (Üretim & CCM Ayrımı):**
+  - 🎯 **Üretim Sonucu (Hedef ↔ Gerçek Drawdown):** Nihai kabul/red kararını belirleyen ana otoriter metrik ($\Delta E_{00}$).
+  - 💡 **CCM Beklentisi (Hedef ↔ Model Tahmini):** Algoritmanın formülasyon anında öngördüğü teorik kalıntı hata.
+  - 🔬 **Model Sapması (Model Tahmini ↔ Gerçek Drawdown):** Kubelka-Munk modelinin fiziksel filmden sapması. Eşik ($\Delta E_{00} > 0.80$) aşıldığında operatöre diagnostik uyarı üretir.
+- **Merkezi Tolerans Standartları (`ToleranceProfile`):**
+  - $\Delta E_{00} \le 0.50 \implies$ **Kabul Edildi** (Gerçek spektrofotometre ölçümü ise doğrulanmış **Golden Batch** olarak mühürlenir).
+  - $0.50 < \Delta E_{00} \le 1.50 \implies$ **İlave Gerekiyor (Add-Back):** Partiyi kurtarmak için tanka eklenecek net ilave pasta gramajları hesaplanır.
+  - $\Delta E_{00} > 1.50 \implies$ **Reddedildi:** Formül iptal edilir, yeniden formülasyon önerilir.
+- **Doğrudan Gerçek Hedefe Düzeltme & Context-Gate Güvencesi:**
+  - Add-back motoru model tahminine değil, doğrudan **GERÇEK HEDEFE** doğru optimizasyon yapar. Bu sayede model sapmaları katlanarak partiyi bozmaz.
+  - Düzeltme motoru sıkı **ContextGate** filtresinden geçer (yalnızca aktif geometri, mod ve onaylı pastalar aday havuzuna alınır; uyumsuz ve reddedilmiş pastalar bloke edilir).
+  - Tanktaki fiziksel zemin verisi (`actual_dispensed` - operatörün terazide tarttığı net gramlar) ground truth olarak kullanılır.
+- **Simülasyon İzolasyonu:** Çevrimdışı eğitim ve test için simülasyon modu mevcuttur ancak simüle edilen ölçümler (`is_simulation: true`) asla Golden Batch olarak onaylanamaz.
 
 ### 5. Innovatint Uyumlu Ambalaj ve Teneke Ölçekleme
 - **1 L Kutu, 2.5 L Galon, 15 L Kova** gibi standart ambalaj boyutları.
@@ -70,7 +79,7 @@ Gereksiz kafa karışıklığını önlemek için tek ve odaklı bir reçete tab
 - Dozajlama ve ambalaj etiket çıktısı (`window.print()`).
 
 ### 6. Deterministik Çözücü & Kanonik Dual Hash İzlenebilirliği
-- Aynı girdiye (hedef spektrum, baz, pasta havuzu, tolerans) her zaman **bit düzeyinde aynı reçete çıktısı**.
+- Aynı hesaplama bağlamında (hedef spektrum, baz, pasta havuzu, tolerans, optik geometri) **deterministik ve yeniden üretilebilir reçete çıktısı**.
 - Random seed veya rastlantısal optimizasyon adımları tamamen engellenmiştir.
 - Her hesaplama, girdi ve çıktı için bağımsız kanonik **SHA-256 hash** ile mühürlenir.
 
@@ -196,19 +205,20 @@ TintMatch PRO
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (202 Test, %100 Başarılı)
+## 🧪 Kapsamlı Otomasyon Testleri (207 Test, %100 Başarılı)
 
 ```bash
 python -m pytest backend/tests/ -q
 ```
 
 ```text
-........................................................................ [ 35%]
-........................................................................ [ 71%]
-..........................................................               [100%]
-202 passed in 204.91s (0:03:24)
+........................................................................ [ 34%]
+........................................................................ [ 69%]
+...............................................................          [100%]
+207 passed in 204.06s (0:03:24)
 ```
 
+- **P0 Endüstriyel Doğrulama & Add-Back Güvenilirliği:** `test_p0_drawdown_addback_reliability.py` (5/5 PASSED)
 - **Bootstrap İş Akışı Testleri:** `test_bootstrap_workflow.py` (4/4 PASSED)
 - **Üretilebilir Reçete & 0.01 g Terazi:** `test_manufacturable_recipes.py` (6/6 PASSED)
 - **Endüstriyel Güvenilirlik & Context Gate:** `test_industrial_reliability.py` (6/6 PASSED)
@@ -218,7 +228,7 @@ python -m pytest backend/tests/ -q
 - **Fiziksel Değişmezler & Enerji Korunumu:** `test_physical_invariants.py` (6/6 PASSED)
 - **CHNSpec DS-36D Sürücü & Kalibrasyon Kapısı:** `test_chnspec_driver.py` & `test_instrument_calibration_hard_gate.py` (9/9 PASSED)
 - **CxF3 XML Ayrıştırıcı & Serileştirici:** `test_cxf3_parser.py` (5/5 PASSED)
-- **Tüm Test Paketi:** **202 / 202 PASSED (100% Başarılı)**
+- **Tüm Test Paketi:** **207 / 207 PASSED (100% Başarılı)**
 
 ---
 

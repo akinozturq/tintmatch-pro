@@ -86,9 +86,16 @@ def calculate_production_addback(
     current_masses: Dict[Any, float] = {}
 
     for cp in current_pastes:
-        pid = cp.get("id")
-        c = float(cp.get("concentration", 0.0))
-        m_curr = tank_mass_kg * (c / 100.0)
+        pid = cp.get("id") or cp.get("paste_id")
+        if "amount_g" in cp and cp["amount_g"] is not None:
+            m_curr = float(cp["amount_g"]) / 1000.0
+        elif "actual_amount_g" in cp and cp["actual_amount_g"] is not None:
+            m_curr = float(cp["actual_amount_g"]) / 1000.0
+        elif "mass_kg" in cp and cp["mass_kg"] is not None:
+            m_curr = float(cp["mass_kg"])
+        else:
+            c = float(cp.get("concentration", 0.0))
+            m_curr = tank_mass_kg * (c / 100.0)
         current_masses[pid] = m_curr
         if pid not in candidate_ids:
             candidate_ids.append(pid)

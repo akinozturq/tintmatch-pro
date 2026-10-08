@@ -253,6 +253,8 @@ export async function saveRecipe(payload: {
   geometry?: string;
   batch_size_g?: number;
   scale_resolution_g?: number;
+  target_reflectance?: number[];
+  tolerance_profile_id?: string;
   input_hash?: string;
   output_hash?: string;
   recipe_confidence?: any;
@@ -284,15 +286,25 @@ export async function recordDrawdownMeasurement(
     sample_name?: string;
     actual_dispensed?: Array<{ id: number | string; amount_g: number }>;
     batch_size_g?: number;
+    target_reflectance?: number[];
+    is_simulation?: boolean;
+    tolerance_profile_id?: string;
     operator_notes?: string;
   }
 ): Promise<{
   success: boolean;
   recipe_id: number;
   attempt_number: number;
+  de00_target_vs_measured: number;
+  de00_target_vs_predicted: number;
   de00_predicted_vs_measured: number;
   outcome: 'ACCEPTED' | 'ADDBACK_REQUIRED' | 'REJECTED';
   outcome_message: string;
+  is_golden_batch: boolean;
+  is_simulation: boolean;
+  model_divergence_warning?: boolean;
+  model_divergence_note?: string;
+  tolerance_profile?: any;
   measured_lab: { L: number; a: number; b: number };
   addback_suggestion?: any;
 }> {

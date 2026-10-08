@@ -113,6 +113,7 @@ def init_db():
         base_id INTEGER NOT NULL,
         pastes_json TEXT NOT NULL,
         predicted_reflectance TEXT NOT NULL,
+        target_reflectance TEXT,
         lab_json TEXT NOT NULL,
         hex_color TEXT NOT NULL,
         delta_e00 REAL,
@@ -125,6 +126,7 @@ def init_db():
         characterization_version INTEGER DEFAULT 1,
         characterization_ids_json TEXT,
         quality_gate_json TEXT,
+        tolerance_profile_id TEXT DEFAULT 'industrial',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -173,6 +175,7 @@ def init_db():
         attempt_number INTEGER NOT NULL DEFAULT 1,
         pastes_json TEXT NOT NULL,
         predicted_reflectance TEXT,
+        target_reflectance TEXT,
         delta_e00 REAL,
         composite_mi REAL,
         total_load REAL,
@@ -180,6 +183,9 @@ def init_db():
         calculation_id TEXT,
         geometry TEXT DEFAULT '45°/0°',
         characterization_ids_json TEXT,
+        tolerance_profile_id TEXT DEFAULT 'industrial',
+        is_simulation BOOLEAN DEFAULT 0,
+        is_golden_batch BOOLEAN DEFAULT 0,
         operator_notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(recipe_id) REFERENCES recipes(id)
@@ -215,6 +221,10 @@ def init_db():
         cur.execute("ALTER TABLE recipes ADD COLUMN scale_resolution_g REAL DEFAULT 0.01")
     if "recipe_confidence_json" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN recipe_confidence_json TEXT")
+    if "target_reflectance" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN target_reflectance TEXT")
+    if "tolerance_profile_id" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN tolerance_profile_id TEXT DEFAULT 'industrial'")
 
     # Migrate recipe_history table columns
     cur.execute("PRAGMA table_info(recipe_history)")
@@ -233,14 +243,26 @@ def init_db():
         cur.execute("ALTER TABLE recipe_history ADD COLUMN actual_dispensed_json TEXT")
     if "measured_reflectance" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN measured_reflectance TEXT")
+    if "target_reflectance" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN target_reflectance TEXT")
     if "measured_lab_json" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN measured_lab_json TEXT")
     if "de00_predicted_vs_measured" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN de00_predicted_vs_measured REAL")
+    if "de00_target_vs_measured" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN de00_target_vs_measured REAL")
+    if "de00_target_vs_predicted" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN de00_target_vs_predicted REAL")
     if "outcome" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN outcome TEXT DEFAULT 'PENDING'")
     if "addback_suggestion_json" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN addback_suggestion_json TEXT")
+    if "is_simulation" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN is_simulation BOOLEAN DEFAULT 0")
+    if "is_golden_batch" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN is_golden_batch BOOLEAN DEFAULT 0")
+    if "tolerance_profile_id" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN tolerance_profile_id TEXT DEFAULT 'industrial'")
 
     # Migrate instruments table columns
     cur.execute("PRAGMA table_info(instruments)")

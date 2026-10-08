@@ -132,7 +132,9 @@ class RecordDrawdownMeasurementRequest(BaseModel):
     sample_name: str | None = Field(None, description="Drawdown sample label")
     actual_dispensed: list[dict] | None = Field(None, description="Actual weighed paste amounts in grams: [{'id': 1, 'amount_g': 12.42}, ...]")
     batch_size_g: float = Field(1000.0, description="Actual batch size in grams")
-    operator_notes: str | None = None
+    target_reflectance: list[float] | None = Field(None, description="31-point target spectral curve (ground truth for acceptance)")
+    is_simulation: bool = Field(False, description="Whether this measurement is synthetic simulation (cannot create Golden Batch)")
+    tolerance_profile_id: str | None = Field(None, description="Optional tolerance profile override: 'industrial', 'strict_lab', 'commercial'")
     k1: float = 0.04
     k2: float = 0.60
     operator_notes: str | None = None
@@ -140,7 +142,7 @@ class RecordDrawdownMeasurementRequest(BaseModel):
 
 class AddBackCorrectionRequest(BaseModel):
     tank_mass_kg: float = Field(..., description="Current batch mass in tank (kg)", gt=0)
-    current_pastes: list[RecipePasteInput] = Field(..., description="Current pigment concentrations in tank")
+    current_pastes: list[RecipePasteInput] = Field(..., description="Current pigment concentrations or amounts in tank")
     target_reflectance: list[float] = Field(..., description="31-point target spectral curve")
     base_id: int = Field(1, description="Base paint ID")
     current_reflectance: list[float] | None = Field(None, description="Optional measured reflectance of off-shade batch")
@@ -149,6 +151,9 @@ class AddBackCorrectionRequest(BaseModel):
     k1: float = Field(0.04)
     k2: float = Field(0.60)
     tolerance_profile_id: str | None = Field("industrial", description="Acceptance tolerance profile: 'strict_lab', 'industrial', 'commercial'")
+    geometry: str | None = Field(None, description="Optical geometry: 'd/8°', '45°/0°'")
+    measurement_mode: str | None = Field(None, description="Measurement mode: 'SCI', 'SCE'")
+    optical_system: str | None = Field(None, description="Optical system: 'bootstrap_v1'")
 
 
 @router.post("/predict")
@@ -658,38 +663,41 @@ def save_recipe(req: SaveRecipeRequest):
     inp_hash = req.input_hash
     out_hash = req.output_hash or calc_hash
     conf_json = json.dumps(req.recipe_confidence) if req.recipe_confidence else None
+    target_refl_json = json.dumps(req.target_reflectance) if req.target_reflectance else None
+    tol_prof_id = req.tolerance_profile_id or "industrial"
 
     cur.execute("""
     INSERT INTO recipes (
-        name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00,
+        name, base_id, pastes_json, predicted_reflectance, target_reflectance, lab_json, hex_color, delta_e00,
         contrast_ratio, calculation_hash, calculation_id, engine_version, profile_id,
         quality_gate_json, geometry, characterization_version, characterization_ids_json,
-        input_hash, output_hash, batch_size_g, scale_resolution_g, recipe_confidence_json
+        input_hash, output_hash, batch_size_g, scale_resolution_g, recipe_confidence_json, tolerance_profile_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.name, req.base_id, json.dumps(req.pastes),
-        json.dumps(req.predicted_reflectance), json.dumps(req.lab),
+        json.dumps(req.predicted_reflectance), target_refl_json, json.dumps(req.lab),
         req.hex_color, req.delta_e00, req.contrast_ratio,
         calc_hash, req.calculation_id, req.engine_version or "2.2.0",
         req.profile_id or "color_match", qg_json,
         recipe_geo, char_ver, char_ids_json,
-        inp_hash, out_hash, batch_size, scale_res, conf_json
+        inp_hash, out_hash, batch_size, scale_res, conf_json, tol_prof_id
     ))
     new_id = cur.lastrowid
 
     # Automatically record Attempt #1 in recipe_history
     cur.execute("""
     INSERT INTO recipe_history (
-        recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00,
+        recipe_id, attempt_number, pastes_json, predicted_reflectance, target_reflectance, delta_e00,
         composite_mi, total_load, calculation_hash, calculation_id, geometry,
-        characterization_ids_json, batch_size_g, scale_resolution_g, operator_notes
+        characterization_ids_json, batch_size_g, scale_resolution_g, tolerance_profile_id, operator_notes
     )
-    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id,
         json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance),
+        target_refl_json,
         req.delta_e00,
         req.composite_mi,
         tot_load,
@@ -699,6 +707,7 @@ def save_recipe(req: SaveRecipeRequest):
         char_ids_json,
         batch_size,
         scale_res,
+        tol_prof_id,
         req.operator_notes or "Initial formulation match (Attempt #1)"
     ))
 
@@ -739,14 +748,20 @@ def get_recipe_attempts(recipe_id: int):
             "attempt_number": row_dict["attempt_number"],
             "pastes": json.loads(row_dict["pastes_json"]) if row_dict.get("pastes_json") else [],
             "predicted_reflectance": json.loads(row_dict["predicted_reflectance"]) if row_dict.get("predicted_reflectance") else None,
+            "target_reflectance": json.loads(row_dict["target_reflectance"]) if row_dict.get("target_reflectance") else None,
             "measured_reflectance": json.loads(row_dict["measured_reflectance"]) if row_dict.get("measured_reflectance") else None,
             "measured_lab": json.loads(row_dict["measured_lab_json"]) if row_dict.get("measured_lab_json") else None,
             "actual_dispensed": json.loads(row_dict["actual_dispensed_json"]) if row_dict.get("actual_dispensed_json") else None,
             "batch_size_g": row_dict.get("batch_size_g"),
             "scale_resolution_g": row_dict.get("scale_resolution_g"),
             "delta_e00": row_dict["delta_e00"],
+            "de00_target_vs_measured": row_dict.get("de00_target_vs_measured"),
+            "de00_target_vs_predicted": row_dict.get("de00_target_vs_predicted"),
             "de00_predicted_vs_measured": row_dict.get("de00_predicted_vs_measured"),
             "outcome": row_dict.get("outcome", "PENDING"),
+            "is_simulation": bool(row_dict.get("is_simulation", 0)),
+            "is_golden_batch": bool(row_dict.get("is_golden_batch", 0)),
+            "tolerance_profile_id": row_dict.get("tolerance_profile_id", "industrial"),
             "addback_suggestion": json.loads(row_dict["addback_suggestion_json"]) if row_dict.get("addback_suggestion_json") else None,
             "composite_mi": row_dict.get("composite_mi"),
             "total_load": row_dict.get("total_load"),
@@ -787,17 +802,23 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
         max_total_load=req.max_total_load,
     )
 
+    recipe_dict = dict(recipe)
     tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
+    target_refl_json = json.dumps(req.target_reflectance) if req.target_reflectance else recipe_dict.get("target_reflectance")
 
     cur = conn.cursor()
     cur.execute("""
-    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, calculation_id, operator_notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipe_history (
+        recipe_id, attempt_number, pastes_json, predicted_reflectance, target_reflectance,
+        delta_e00, composite_mi, total_load, calculation_hash, calculation_id, operator_notes
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         recipe_id,
         next_att,
         json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance) if req.predicted_reflectance else None,
+        target_refl_json,
         req.delta_e00,
         req.composite_mi,
         tot_load,
@@ -871,8 +892,13 @@ def get_factory_batches(limit: int = 50):
             "batch_size_g": row_dict.get("batch_size_g") or 1000.0,
             "scale_resolution_g": row_dict.get("scale_resolution_g") or 0.01,
             "delta_e00": row_dict["delta_e00"],
+            "de00_target_vs_measured": row_dict.get("de00_target_vs_measured"),
+            "de00_target_vs_predicted": row_dict.get("de00_target_vs_predicted"),
             "de00_predicted_vs_measured": row_dict.get("de00_predicted_vs_measured"),
             "outcome": row_dict.get("outcome", "PENDING"),
+            "is_simulation": bool(row_dict.get("is_simulation", 0)),
+            "is_golden_batch": bool(row_dict.get("is_golden_batch", 0)),
+            "tolerance_profile_id": row_dict.get("tolerance_profile_id", "industrial"),
             "measured_lab": json.loads(row_dict["measured_lab_json"]) if row_dict.get("measured_lab_json") else None,
             "operator_notes": row_dict.get("operator_notes"),
             "created_at": row_dict["created_at"]
@@ -880,11 +906,33 @@ def get_factory_batches(limit: int = 50):
     return results
 
 
+@router.get("/tolerances")
+def get_standard_tolerances():
+    """Returns standard industrial and laboratory tolerance profiles."""
+    from ..color_engine.profiles import STANDARD_TOLERANCE_PROFILES
+    return [
+        {
+            "id": tp.id,
+            "name": tp.name,
+            "description": tp.description,
+            "target_de00_acceptance": tp.target_de00_acceptance,
+            "addback_max_de00": tp.addback_max_de00,
+            "reject_above_de00": tp.reject_above_de00,
+            "model_divergence_warning_de00": tp.model_divergence_warning_de00,
+            "mean_de00_limit": tp.mean_de00_limit,
+            "single_de00_limit": tp.single_de00_limit,
+            "loocv_de00_limit": tp.loocv_de00_limit
+        }
+        for tp in STANDARD_TOLERANCE_PROFILES
+    ]
+
+
 @router.post("/add-back")
 def run_add_back_correction(req: AddBackCorrectionRequest):
     """
     Computes optimal additions (pigment kg and base kg) to bring an off-shade batch to target.
     Enforces plant physical constraints: Delta m_i >= 0, Delta m_base >= 0.
+    Applies ContextGate to ensure only eligible colorants are added.
     """
     conn = get_db_connection()
     base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (req.base_id,)).fetchone()
@@ -895,12 +943,30 @@ def run_add_back_correction(req: AddBackCorrectionRequest):
     base_k = json.loads(base_row["absorption_k"])
     base_s = json.loads(base_row["scattering_s"])
 
-    # Fetch available pastes with their unit_k and unit_s
+    # P0-3: Strict ContextGate for add-back colorant pool
+    from ..color_engine.context_gate import FormulationContext, select_eligible_pastes
+    from ..color_engine.profiles import get_tolerance_profile
+    from ..color_engine.addback import calculate_production_addback
+
     paste_rows = conn.execute("SELECT * FROM pastes").fetchall()
     conn.close()
 
+    base_dict = dict(base_row)
+    target_geo = req.geometry or base_dict.get("geometry") or "d/8°"
+    target_mode = req.measurement_mode or base_dict.get("measurement_mode") or "SCI"
+    target_opt = req.optical_system or base_dict.get("optical_system") or "bootstrap_v1"
+
+    context = FormulationContext(
+        geometry=target_geo,
+        measurement_mode=target_mode,
+        optical_system=target_opt,
+        base_id=base_dict["id"],
+        allow_simulation=False
+    )
+    eligible_pastes, _ = select_eligible_pastes(context, paste_rows, base_dict)
+
     available_pastes = []
-    for pr in paste_rows:
+    for pr in eligible_pastes:
         available_pastes.append({
             "id": pr["id"],
             "name": pr["name"],
@@ -910,21 +976,7 @@ def run_add_back_correction(req: AddBackCorrectionRequest):
             "unit_s": json.loads(pr["unit_s"]),
         })
 
-    from ..color_engine.profiles import (
-        TOLERANCE_STRICT_LAB,
-        TOLERANCE_INDUSTRIAL,
-        TOLERANCE_COMMERCIAL,
-        DEFAULT_TOLERANCE_PROFILE
-    )
-    from ..color_engine.addback import calculate_production_addback
-
-    tol_map = {
-        "strict_lab": TOLERANCE_STRICT_LAB,
-        "industrial": TOLERANCE_INDUSTRIAL,
-        "commercial": TOLERANCE_COMMERCIAL
-    }
-    tolerance = tol_map.get(req.tolerance_profile_id or "industrial", DEFAULT_TOLERANCE_PROFILE)
-
+    tolerance = get_tolerance_profile(req.tolerance_profile_id)
     curr_pastes_list = [p.model_dump() for p in req.current_pastes]
 
     try:
@@ -952,8 +1004,10 @@ def record_drawdown_measurement(recipe_id: int, attempt_number: int, req: Record
     """
     Physical Drawdown Verification (Golden Batch Lifecycle).
     Records actual spectrophotometer measurement of physical paint drawdown,
-    compares predicted vs measured color difference (CIEDE2000), evaluates acceptance,
-    and automatically calculates addback correction if off-shade.
+    compares Target ↔ Measured for true production acceptance,
+    computes model discrepancy (Predicted vs Measured),
+    evaluates acceptance against centralized ToleranceProfile,
+    and automatically calculates add-back correction to the TRUE TARGET.
     """
     conn = get_db_connection()
     recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
@@ -974,6 +1028,9 @@ def record_drawdown_measurement(recipe_id: int, attempt_number: int, req: Record
         raise HTTPException(status_code=400, detail="Measured reflectance must contain exactly 31 points (400-700 nm @ 10 nm).")
 
     from ..color_engine.colorimetry import reflectance_to_lab, ciede2000
+    from ..color_engine.profiles import get_tolerance_profile
+
+    # 1. Measured Lab
     measured_lab_tuple = reflectance_to_lab(req.measured_reflectance, illuminant="D65", observer="10")
     measured_lab = {
         "L": round(float(measured_lab_tuple[0]), 2),
@@ -981,77 +1038,185 @@ def record_drawdown_measurement(recipe_id: int, attempt_number: int, req: Record
         "b": round(float(measured_lab_tuple[2]), 2)
     }
 
+    # 2. Predicted Lab & Model Divergence
     pred_reflectance_raw = attempt["predicted_reflectance"] or recipe["predicted_reflectance"]
     if pred_reflectance_raw:
         pred_r = json.loads(pred_reflectance_raw)
         pred_lab_tuple = reflectance_to_lab(pred_r, illuminant="D65", observer="10")
-        de_res = ciede2000(pred_lab_tuple, measured_lab_tuple)
-        de00 = float(de_res["delta_e00"])
+        de_res_pred = ciede2000(pred_lab_tuple, measured_lab_tuple)
+        de00_pred_vs_meas = round(float(de_res_pred["delta_e00"]), 3)
     else:
-        de00 = 0.0
+        pred_r = None
+        pred_lab_tuple = None
+        de00_pred_vs_meas = 0.0
 
-    # Evaluate physical outcome
-    if de00 <= 0.40:
+    recipe_dict = dict(recipe)
+    attempt_dict = dict(attempt)
+
+    # 3. P0-1 & P0-2: Retrieve TRUE TARGET REFLECTANCE
+    actual_target_r = None
+    if req.target_reflectance and len(req.target_reflectance) == 31:
+        actual_target_r = req.target_reflectance
+    elif attempt_dict.get("target_reflectance"):
+        actual_target_r = json.loads(attempt_dict["target_reflectance"])
+    elif recipe_dict.get("target_reflectance"):
+        actual_target_r = json.loads(recipe_dict["target_reflectance"])
+
+    if actual_target_r:
+        target_lab_tuple = reflectance_to_lab(actual_target_r, illuminant="D65", observer="10")
+        de_res_target = ciede2000(target_lab_tuple, measured_lab_tuple)
+        de00_target_vs_meas = round(float(de_res_target["delta_e00"]), 3)
+        de00_target_vs_pred = round(float(ciede2000(target_lab_tuple, pred_lab_tuple)["delta_e00"]), 3) if pred_lab_tuple else 0.0
+    else:
+        # Fallback if no target was saved
+        de00_target_vs_meas = de00_pred_vs_meas
+        de00_target_vs_pred = 0.0
+        actual_target_r = pred_r or req.measured_reflectance
+
+    # 4. P0-6: Load Centralized Tolerance Profile
+    tol_id = req.tolerance_profile_id or recipe_dict.get("tolerance_profile_id") or "industrial"
+    tolerance = get_tolerance_profile(tol_id)
+
+    # Primary physical outcome decision is based on de00_target_vs_meas (Target ↔ Measured)!
+    primary_de00 = de00_target_vs_meas
+
+    # Model divergence diagnosis
+    model_divergence_warning = False
+    model_divergence_note = None
+    if de00_pred_vs_meas > tolerance.model_divergence_warning_de00:
+        model_divergence_warning = True
+        model_divergence_note = (
+            f"Model sapması yüksek (Tahmin vs Gerçek ΔE00 = {de00_pred_vs_meas:.2f} > {tolerance.model_divergence_warning_de00:.2f}). "
+            "Karakterizasyon kalitesi veya terazi tartım hassasiyeti kontrol edilmelidir."
+        )
+
+    # P0-5: Check simulation vs real physical measurement
+    if primary_de00 <= tolerance.target_de00_acceptance:
         outcome = "ACCEPTED"
-        outcome_message = f"Drawdown kabul edildi (ΔE00 = {de00:.2f} ≤ 0.40). Reçete üretim standardına ulaştı."
+        if req.is_simulation:
+            outcome_message = f"Simülasyon kabul edildi (Hedef ΔE00 = {primary_de00:.2f} ≤ {tolerance.target_de00_acceptance:.2f}). (Demo / Test Modu)."
+        else:
+            outcome_message = f"Drawdown kabul edildi (Hedef ΔE00 = {primary_de00:.2f} ≤ {tolerance.target_de00_acceptance:.2f}). Reçete üretim standardına ulaştı (Golden Batch Onaylandı)."
         addback_result = None
-    elif de00 <= 1.50:
+    elif primary_de00 <= tolerance.addback_max_de00:
         outcome = "ADDBACK_REQUIRED"
-        outcome_message = f"Drawdown düzeltme gerektiriyor (ΔE00 = {de00:.2f}). İlave pasta düzeltmesi hesaplandı."
+        outcome_message = f"Drawdown düzeltme gerektiriyor (Hedef vs Gerçek ΔE00 = {primary_de00:.2f} > {tolerance.target_de00_acceptance:.2f}). Tanka ilave pasta düzeltmesi hesaplandı."
         try:
             base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (recipe["base_id"],)).fetchone()
-            base_k = json.loads(base_row["absorption_k"])
-            base_s = json.loads(base_row["scattering_s"])
-            paste_rows = conn.execute("SELECT * FROM pastes").fetchall()
+            base_dict = dict(base_row) if base_row else {}
+            base_k = json.loads(base_dict["absorption_k"])
+            base_s = json.loads(base_dict["scattering_s"])
+
+            # P0-3: Strict ContextGate for add-back pool
+            from ..color_engine.context_gate import FormulationContext, select_eligible_pastes
+            raw_pastes = conn.execute("SELECT * FROM pastes").fetchall()
+            geo = recipe_dict.get("geometry") or base_dict.get("geometry") or "d/8°"
+            mode = base_dict.get("measurement_mode") or "SCI"
+            opt_sys = base_dict.get("optical_system") or "bootstrap_v1"
+            ctx = FormulationContext(
+                geometry=geo,
+                measurement_mode=mode,
+                optical_system=opt_sys,
+                base_id=base_dict.get("id"),
+                allow_simulation=req.is_simulation
+            )
+            eligible_pastes, _ = select_eligible_pastes(ctx, raw_pastes, base_dict)
+
             available_pastes = [
                 {
-                    "id": pr["id"], "name": pr["name"], "code": pr["code"],
+                    "id": pr["id"],
+                    "name": pr["name"],
+                    "code": pr["code"],
                     "color_hex": pr["color_hex"],
-                    "unit_k": json.loads(pr["unit_k"]), "unit_s": json.loads(pr["unit_s"])
+                    "unit_k": json.loads(pr["unit_k"]),
+                    "unit_s": json.loads(pr["unit_s"])
                 }
-                for pr in paste_rows
+                for pr in eligible_pastes
             ]
-            current_pastes = json.loads(attempt["pastes_json"])
-            target_r = json.loads(pred_reflectance_raw) if pred_reflectance_raw else req.measured_reflectance
+
+            # P0-4: Ground truth physical starting paste mass in the tank
+            recipe_pastes = json.loads(attempt["pastes_json"]) if attempt["pastes_json"] else []
+            if req.actual_dispensed and len(req.actual_dispensed) > 0:
+                dispensed_map = {
+                    str(d.get("id") or d.get("paste_id")): float(d.get("amount_g") or d.get("amount") or 0.0)
+                    for d in req.actual_dispensed
+                }
+                current_pastes = []
+                for rp in recipe_pastes:
+                    pid = str(rp.get("id") or rp.get("paste_id"))
+                    act_amt = dispensed_map.get(
+                        pid,
+                        float(rp.get("amount_g") or (float(rp.get("concentration", 0.0)) / 100.0) * req.batch_size_g)
+                    )
+                    current_pastes.append({
+                        "id": int(pid) if pid.isdigit() else pid,
+                        "name": rp.get("name"),
+                        "amount_g": act_amt,
+                        "concentration": (act_amt / req.batch_size_g) * 100.0
+                    })
+            else:
+                current_pastes = recipe_pastes
+
+            # P0-2: Target is the TRUE TARGET REFLECTANCE, NOT prediction!
+            target_r_for_addback = actual_target_r if actual_target_r is not None else (pred_r or req.measured_reflectance)
+
             from ..color_engine.addback import calculate_production_addback
             addback_result = calculate_production_addback(
                 tank_mass_kg=req.batch_size_g / 1000.0,
                 current_pastes=current_pastes,
-                target_reflectance=target_r,
+                target_reflectance=target_r_for_addback,
                 available_pastes=available_pastes,
                 base_k=base_k,
                 base_s=base_s,
                 current_reflectance=req.measured_reflectance,
                 k1=req.k1,
-                k2=req.k2
+                k2=req.k2,
+                tolerance=tolerance
             )
         except Exception as e:
             addback_result = {"error": f"Düzeltme hesaplanamadı: {str(e)}"}
     else:
         outcome = "REJECTED"
-        outcome_message = f"Drawdown reddedildi (ΔE00 = {de00:.2f} > 1.50). Reçete yeniden hesaplanmalı."
+        outcome_message = f"Drawdown reddedildi (Hedef vs Gerçek ΔE00 = {primary_de00:.2f} > {tolerance.reject_above_de00:.2f}). Reçete yeniden formüle edilmelidir."
         addback_result = None
+
+    # P0-5: Golden Batch can ONLY be achieved by real (non-simulation) accepted measurement
+    is_golden = bool(outcome == "ACCEPTED" and not req.is_simulation)
 
     cur = conn.cursor()
     cur.execute("""
     UPDATE recipe_history SET
         measured_reflectance = ?,
+        target_reflectance = ?,
         measured_lab_json = ?,
         actual_dispensed_json = ?,
         batch_size_g = ?,
+        de00_target_vs_measured = ?,
+        de00_target_vs_predicted = ?,
         de00_predicted_vs_measured = ?,
+        delta_e00 = ?,
         outcome = ?,
         addback_suggestion_json = ?,
+        is_simulation = ?,
+        is_golden_batch = ?,
+        tolerance_profile_id = ?,
         operator_notes = COALESCE(?, operator_notes)
     WHERE recipe_id = ? AND attempt_number = ?
     """, (
         json.dumps(req.measured_reflectance),
+        json.dumps(actual_target_r) if actual_target_r else None,
         json.dumps(measured_lab),
         json.dumps(req.actual_dispensed) if req.actual_dispensed else None,
         req.batch_size_g,
-        round(float(de00), 3),
+        de00_target_vs_meas,
+        de00_target_vs_pred,
+        de00_pred_vs_meas,
+        de00_target_vs_meas,
         outcome,
         json.dumps(addback_result) if addback_result else None,
+        1 if req.is_simulation else 0,
+        1 if is_golden else 0,
+        tolerance.id,
         req.operator_notes,
         recipe_id,
         attempt_number
@@ -1063,9 +1228,22 @@ def record_drawdown_measurement(recipe_id: int, attempt_number: int, req: Record
         "success": True,
         "recipe_id": recipe_id,
         "attempt_number": attempt_number,
-        "de00_predicted_vs_measured": round(float(de00), 3),
+        "de00_target_vs_measured": de00_target_vs_meas,
+        "de00_target_vs_predicted": de00_target_vs_pred,
+        "de00_predicted_vs_measured": de00_pred_vs_meas,
         "outcome": outcome,
         "outcome_message": outcome_message,
+        "is_golden_batch": is_golden,
+        "is_simulation": req.is_simulation,
+        "model_divergence_warning": model_divergence_warning,
+        "model_divergence_note": model_divergence_note,
+        "tolerance_profile": {
+            "id": tolerance.id,
+            "target_de00_acceptance": tolerance.target_de00_acceptance,
+            "addback_max_de00": tolerance.addback_max_de00,
+            "reject_above_de00": tolerance.reject_above_de00,
+            "model_divergence_warning_de00": tolerance.model_divergence_warning_de00
+        },
         "measured_lab": measured_lab,
         "addback_suggestion": addback_result
     }

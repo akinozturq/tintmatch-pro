@@ -36,12 +36,17 @@ class ToleranceProfile:
     max_spectral_rmse: float = 0.0150
     opacity_limit: float = 98.0
     composite_mi_limit: float = 0.30
+    # Centralized Physical Drawdown Acceptance Limits (Target ↔ Measured)
+    target_de00_acceptance: float = 0.50
+    addback_max_de00: float = 1.50
+    reject_above_de00: float = 1.50
+    model_divergence_warning_de00: float = 0.80
 
 
 TOLERANCE_STRICT_LAB = ToleranceProfile(
     id="strict_lab",
     name="Strict Laboratory Standard",
-    description="High-precision color lab threshold (Mean ΔE00 ≤ 0.30, Max ΔE00 ≤ 0.50, LOOCV Mean ≤ 0.50, LOOCV Max ≤ 1.00, LOOCV p95 ≤ 0.80)",
+    description="High-precision color lab threshold (Acceptance ΔE00 ≤ 0.40, Add-Back ≤ 1.20, Reject > 1.20, Mean ΔE00 ≤ 0.30)",
     mean_de00_limit=0.30,
     single_de00_limit=0.50,
     loocv_de00_limit=0.50,
@@ -50,13 +55,17 @@ TOLERANCE_STRICT_LAB = ToleranceProfile(
     min_r_squared=0.9950,
     max_spectral_rmse=0.0150,
     opacity_limit=98.0,
-    composite_mi_limit=0.30
+    composite_mi_limit=0.30,
+    target_de00_acceptance=0.40,
+    addback_max_de00=1.20,
+    reject_above_de00=1.20,
+    model_divergence_warning_de00=0.60
 )
 
 TOLERANCE_INDUSTRIAL = ToleranceProfile(
     id="industrial",
     name="Industrial Production Standard",
-    description="Standard factory batch acceptance limit (Mean ΔE00 ≤ 0.50, Max ΔE00 ≤ 0.80, LOOCV Mean ≤ 0.80, LOOCV Max ≤ 1.50, LOOCV p95 ≤ 1.20)",
+    description="Standard factory batch acceptance limit (Acceptance ΔE00 ≤ 0.50, Add-Back ≤ 1.50, Reject > 1.50, Mean ΔE00 ≤ 0.50)",
     mean_de00_limit=0.50,
     single_de00_limit=0.80,
     loocv_de00_limit=0.80,
@@ -65,13 +74,17 @@ TOLERANCE_INDUSTRIAL = ToleranceProfile(
     min_r_squared=0.9900,
     max_spectral_rmse=0.0250,
     opacity_limit=97.0,
-    composite_mi_limit=0.60
+    composite_mi_limit=0.60,
+    target_de00_acceptance=0.50,
+    addback_max_de00=1.50,
+    reject_above_de00=1.50,
+    model_divergence_warning_de00=0.80
 )
 
 TOLERANCE_COMMERCIAL = ToleranceProfile(
     id="commercial",
     name="Commercial Tinting Standard",
-    description="Store POS tinting machine tolerance (Mean ΔE00 ≤ 0.80, Max ΔE00 ≤ 1.20, LOOCV Mean ≤ 1.20, LOOCV Max ≤ 2.00, LOOCV p95 ≤ 1.60)",
+    description="Store POS tinting machine tolerance (Acceptance ΔE00 ≤ 0.80, Add-Back ≤ 2.00, Reject > 2.00, Mean ΔE00 ≤ 0.80)",
     mean_de00_limit=0.80,
     single_de00_limit=1.20,
     loocv_de00_limit=1.20,
@@ -80,7 +93,11 @@ TOLERANCE_COMMERCIAL = ToleranceProfile(
     min_r_squared=0.9850,
     max_spectral_rmse=0.0350,
     opacity_limit=96.0,
-    composite_mi_limit=0.90
+    composite_mi_limit=0.90,
+    target_de00_acceptance=0.80,
+    addback_max_de00=2.00,
+    reject_above_de00=2.00,
+    model_divergence_warning_de00=1.20
 )
 
 STANDARD_TOLERANCE_PROFILES = [
@@ -88,7 +105,18 @@ STANDARD_TOLERANCE_PROFILES = [
     TOLERANCE_INDUSTRIAL,
     TOLERANCE_COMMERCIAL
 ]
-DEFAULT_TOLERANCE_PROFILE = TOLERANCE_STRICT_LAB
+DEFAULT_TOLERANCE_PROFILE = TOLERANCE_INDUSTRIAL
+
+
+def get_tolerance_profile(profile_id: str | None = None) -> ToleranceProfile:
+    """Returns the matching ToleranceProfile by ID, defaulting to TOLERANCE_INDUSTRIAL (Polchem Standard)."""
+    if not profile_id:
+        return TOLERANCE_INDUSTRIAL
+    pid = str(profile_id).strip().lower()
+    for prof in STANDARD_TOLERANCE_PROFILES:
+        if prof.id.lower() == pid:
+            return prof
+    return TOLERANCE_INDUSTRIAL
 
 
 @dataclass(frozen=True)
