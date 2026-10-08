@@ -23,11 +23,18 @@ except ImportError:
     from color_engine.spectral_parser import get_industrial_sample_datasets
     from color_engine.colorimetry import reflectance_to_hex, reflectance_to_lab
 
-DB_PATH = Path(__file__).resolve().parent / "tintmatch.db"
+def get_db_path() -> Path:
+    env_path = os.environ.get("TINTMATCH_DB_PATH")
+    if env_path:
+        return Path(env_path)
+    return Path(__file__).resolve().parent / "tintmatch.db"
+
+
+DB_PATH = get_db_path()
 
 
 def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 

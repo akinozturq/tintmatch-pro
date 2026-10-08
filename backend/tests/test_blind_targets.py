@@ -24,7 +24,7 @@ BLIND_PATH = Path(__file__).resolve().parent / "data" / "blind_targets_dataset.j
 def base_and_pastes():
     conn = get_db_connection()
     base_row = conn.execute("SELECT * FROM bases WHERE id = 1").fetchone()
-    paste_rows = conn.execute("SELECT * FROM pastes WHERE id <= 6").fetchall()
+    paste_rows = conn.execute("SELECT * FROM pastes WHERE code IN ('PW6', 'PG7', 'PR101', 'PB15:3', 'PBk7', 'PY184', 'PR122') ORDER BY id").fetchall()
     conn.close()
 
     base_k = np.array(json.loads(base_row["absorption_k"]))

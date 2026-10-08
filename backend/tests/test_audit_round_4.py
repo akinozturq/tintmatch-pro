@@ -397,7 +397,7 @@ def test_candidate_screening_recall_and_accuracy_across_5_regimes():
     conn = get_db_connection()
     base1 = conn.execute("SELECT * FROM bases WHERE id = 1").fetchone()
     base4 = conn.execute("SELECT * FROM bases WHERE id = 4").fetchone()
-    paste_rows = conn.execute("SELECT * FROM pastes WHERE id <= 6").fetchall()
+    paste_rows = conn.execute("SELECT * FROM pastes WHERE code IN ('PG7', 'PR101', 'PB15:3', 'PBk7', 'PY184', 'PR122') ORDER BY id").fetchall()
     conn.close()
 
     pastes = [

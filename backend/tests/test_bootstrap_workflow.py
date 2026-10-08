@@ -163,16 +163,18 @@ def test_characterize_base_from_bootstrap_api():
 def test_setup_bootstrap_system_api():
     """Verify POST /api/characterization/bootstrap-system locks core triplet."""
     conn = get_db_connection()
-    bases = conn.execute("SELECT id FROM bases ORDER BY id ASC").fetchall()
-    pastes = conn.execute("SELECT id FROM pastes ORDER BY id ASC").fetchall()
+    clear_base = conn.execute("SELECT id FROM bases WHERE code = 'BASE-D'").fetchone()
+    black = conn.execute("SELECT id FROM pastes WHERE code = 'PBk7'").fetchone()
+    white = conn.execute("SELECT id FROM pastes WHERE code = 'PW6'").fetchone()
     conn.close()
 
-    assert len(bases) >= 1
-    assert len(pastes) >= 2
+    assert clear_base is not None, "Bootstrap Clear Base (BASE-D) not found"
+    assert black is not None, "Bootstrap Black (PBk7) not found"
+    assert white is not None, "Bootstrap White (PW6) not found"
 
-    clear_base_id = bases[0]["id"]
-    black_id = pastes[0]["id"]
-    white_id = pastes[1]["id"]
+    clear_base_id = clear_base["id"]
+    black_id = black["id"]
+    white_id = white["id"]
 
     resp = client.post("/api/characterization/bootstrap-system", json={
         "clear_base_id": clear_base_id,
