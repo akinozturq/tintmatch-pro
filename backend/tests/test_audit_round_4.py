@@ -665,14 +665,14 @@ def test_execution_context_single_source_of_truth():
     Audit Item #6 Verification:
     Verify ExecutionContext acts as genuine single source of truth across all modules.
     - Custom observer ("2") and reference illuminant ("A") are strictly propagated without reverting to defaults.
-    - Instrument models & geometries (CHNSpec DS-36D d/8° SCI vs RM400 45°/0°) are tracked in metadata.
+    - Instrument models & geometries (CHNSpec DS-36D d/8° SCI vs SCE) are tracked in metadata.
     - predict_recipe, sensitivity matrix, and match_color_ccm return and conform to the ExecutionContext.
     """
     from backend.color_engine.profiles import (
         ExecutionContext,
         ColorScienceProfile,
         MEASUREMENT_DS36D_D8_SCI,
-        MEASUREMENT_RM400_45_0
+        MEASUREMENT_DS36D_D8_SCE
     )
     from backend.color_engine.formulation import predict_recipe, calculate_pigment_sensitivity_matrix
 

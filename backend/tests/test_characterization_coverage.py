@@ -5,7 +5,7 @@ Exhaustive test suite covering:
 - Saunderson surface correction forward/inverse Fresnel transformations
 - Two-Constant and Single-Constant Kubelka-Munk derivation
 - Letdown dilution series characterization & back-prediction residuals
-- X-Rite RM400 raw file parser (CSV, TXT, XML/CxF, corrupted files)
+- CHNSpec DS-36D and spectral file parser (CSV, TXT, XML/CxF, corrupted files)
 - Characterization FastAPI router endpoints (calculate, save, samples, import)
 """
 
@@ -25,12 +25,12 @@ from backend.color_engine.kubelka_munk import (
     calculate_opacity_contrast_ratio,
     characterize_letdown_series,
 )
-from backend.color_engine.rm400_parser import (
-    parse_rm400_content,
+from backend.color_engine.spectral_parser import (
+    parse_spectral_content,
     get_industrial_sample_datasets,
-    generate_sample_rm400_csv,
+    generate_sample_spectral_csv,
     _extract_concentration,
-    _is_float,
+    _is_number,
 )
 from backend.database.db import get_db_connection
 
@@ -172,10 +172,10 @@ def test_all_sample_pigments_two_constant_residuals():
 
 
 # ============================================================================
-# 3. RM400 File Parser Deep Coverage
+# 3. Spectral File Parser Deep Coverage
 # ============================================================================
 
-def test_rm400_parser_csv_vertical_delimiters():
+def test_spectral_parser_csv_vertical_delimiters():
     """Test vertical column parsing with comma, tab, and semicolon."""
     wls = [400 + i * 10 for i in range(31)]
 
@@ -183,7 +183,7 @@ def test_rm400_parser_csv_vertical_delimiters():
     csv_semi = "Wavelength;PG7 1.0%;PR101 2.5%\n" + "\n".join(
         f"{w};{(0.1 + i*0.01):.4f};{(0.2 + i*0.015):.4f}" for i, w in enumerate(wls)
     )
-    res_semi = parse_rm400_content(csv_semi)
+    res_semi = parse_spectral_content(csv_semi)
     assert len(res_semi["samples"]) == 2
     assert res_semi["samples"][0]["concentration"] == 1.0
     assert res_semi["samples"][1]["concentration"] == 2.5
@@ -192,7 +192,7 @@ def test_rm400_parser_csv_vertical_delimiters():
     csv_comma = "Wavelength,PG7 0.5%,PB15:3 5.0%\n" + "\n".join(
         f"{w},{(0.1 + i*0.01):.4f},{(0.15 + i*0.012):.4f}" for i, w in enumerate(wls)
     )
-    res_comma = parse_rm400_content(csv_comma)
+    res_comma = parse_spectral_content(csv_comma)
     assert len(res_comma["samples"]) == 2
     assert res_comma["samples"][0]["concentration"] == 0.5
 
@@ -200,41 +200,41 @@ def test_rm400_parser_csv_vertical_delimiters():
     csv_tab = "Wavelength\tSample A 10.0%\n" + "\n".join(
         f"{w}\t{(0.05 + i*0.01):.4f}" for i, w in enumerate(wls)
     )
-    res_tab = parse_rm400_content(csv_tab)
+    res_tab = parse_spectral_content(csv_tab)
     assert len(res_tab["samples"]) == 1
     assert res_tab["samples"][0]["concentration"] == 10.0
 
 
-def test_rm400_parser_percentage_scaling():
+def test_spectral_parser_percentage_scaling():
     """Verify that reflectance given in 0-100% is normalized to 0.0-1.0."""
     csv_pct = "Wavelength;Sample_Pct 1%\n" + "\n".join(
         f"{400+i*10};{(10.0 + i*1.5):.2f}" for i in range(31)
     )
-    res = parse_rm400_content(csv_pct)
+    res = parse_spectral_content(csv_pct)
     refl = res["samples"][0]["reflectance"]
     assert np.max(refl) <= 1.0
     assert abs(refl[0] - 0.10) < 1e-4
 
 
-def test_rm400_parser_horizontal_row_layout():
+def test_spectral_parser_horizontal_row_layout():
     """Verify parsing when each sample is a row containing 31 spectral values."""
     wls = "\t".join(str(400 + i * 10) for i in range(31))
     sample1 = "Letdown_0.1%\t" + "\t".join(f"{(0.1 + i*0.01):.4f}" for i in range(31))
     sample2 = "Letdown_2.5%\t" + "\t".join(f"{(0.2 + i*0.005):.4f}" for i in range(31))
 
     text = f"Sample\t{wls}\n{sample1}\n{sample2}\n"
-    res = parse_rm400_content(text)
+    res = parse_spectral_content(text)
     assert len(res["samples"]) == 2
     assert len(res["samples"][0]["reflectance"]) == 31
 
 
-def test_rm400_parser_xml_cxf_format():
+def test_spectral_parser_xml_cxf_format():
     """Verify parsing XML / CxF spectrophotometer files."""
     spectral_values = " ".join(f"{(0.08 + i*0.01):.4f}" for i in range(31))
     xml_content = f"""<?xml version="1.0" encoding="utf-8"?>
     <CxF xmlns="http://colorexchangeformat.com/CxF3-core">
       <FileInformation>
-        <Creator>X-Rite RM400</Creator>
+        <Creator>CHNSpec DS-36D</Creator>
       </FileInformation>
       <ColorSpecification>
         <Measurement Name="PG7 Green 2.5%">
@@ -245,29 +245,29 @@ def test_rm400_parser_xml_cxf_format():
       </ColorSpecification>
     </CxF>
     """
-    res = parse_rm400_content(xml_content)
+    res = parse_spectral_content(xml_content)
     assert res["format"] == "XML/CxF3"
     assert len(res["samples"]) >= 1
     assert len(res["samples"][0]["reflectance"]) == 31
     assert res["samples"][0]["concentration"] == 2.5
 
 
-def test_rm400_parser_corrupted_inputs():
+def test_spectral_parser_corrupted_inputs():
     """Ensure parser gracefully handles corrupted or insufficient data."""
     # Empty string
-    res_empty = parse_rm400_content("")
+    res_empty = parse_spectral_content("")
     assert len(res_empty["samples"]) == 0
     assert len(res_empty["warnings"]) > 0
 
     # Too few wavelengths
     too_few = "Wavelength;Sample\n400;0.5\n410;0.6\n420;0.7\n"
-    res_few = parse_rm400_content(too_few)
+    res_few = parse_spectral_content(too_few)
     assert len(res_few["samples"]) == 0
 
     # Helper functions
-    assert _is_float("3.1415") is True
-    assert _is_float("3,1415") is True
-    assert _is_float("not_a_number") is False
+    assert _is_number("3.1415") is True
+    assert _is_number("3,1415") is True
+    assert _is_number("not_a_number") is False
 
     assert _extract_concentration("Sample 2.5%") == 2.5
     assert _extract_concentration("Conc: 10%") == 10.0
@@ -275,14 +275,14 @@ def test_rm400_parser_corrupted_inputs():
     assert _extract_concentration("NoConcHere") is None
 
 
-def test_sample_rm400_csv_generator():
+def test_sample_spectral_csv_generator():
     """Verify CSV generator for all sample pigments."""
     for key in ["PG7", "PR101", "PB15"]:
-        csv_str = generate_sample_rm400_csv(key)
+        csv_str = generate_sample_spectral_csv(key)
         assert "Wavelength" in csv_str
         assert "400" in csv_str
         assert "700" in csv_str
-        parsed = parse_rm400_content(csv_str)
+        parsed = parse_spectral_content(csv_str)
         # 1 base + 6 letdowns = 7 columns
         assert len(parsed["samples"]) == 7
 
@@ -314,7 +314,7 @@ def test_api_characterization_samples_endpoints():
     resp_csv = client.get("/api/characterization/samples/PG7/csv")
     assert resp_csv.status_code == 200
     assert "csv" in resp_csv.json()
-    assert "RM400_PG7_Letdowns.csv" in resp_csv.json()["filename"]
+    assert "DS36D_PG7_Letdowns.csv" in resp_csv.json()["filename"]
 
 
 def test_api_characterization_calculate_variants():
@@ -393,7 +393,7 @@ def test_api_characterization_save_workflow():
         "base_id": 1,
         "k1": 0.04,
         "k2": 0.60,
-        "instrument": "X-Rite RM400 Test Rig",
+        "instrument": "CHNSpec DS-36D Test Rig",
         "letdowns": letdowns,
         "calculation_results": calc_data
     }
@@ -423,24 +423,24 @@ def test_api_characterization_save_workflow():
     assert bad_save.status_code == 400
 
 
-def test_api_import_rm400_multipart_and_raw_text():
-    """Verify /api/characterization/import-rm400 via raw_text and multipart file upload."""
-    csv_text = generate_sample_rm400_csv("PG7")
+def test_api_import_spectral_file_multipart_and_raw_text():
+    """Verify /api/characterization/import-spectral-file via raw_text and multipart file upload."""
+    csv_text = generate_sample_spectral_csv("PG7")
 
     # 1. Via raw_text Form parameter
-    resp_text = client.post("/api/characterization/import-rm400", data={"raw_text": csv_text})
+    resp_text = client.post("/api/characterization/import-spectral-file", data={"raw_text": csv_text})
     assert resp_text.status_code == 200
     assert len(resp_text.json()["samples"]) == 7
 
     # 2. Via multipart File upload
     csv_bytes = csv_text.encode("utf-8")
-    files = {"file": ("test_rm400.csv", io.BytesIO(csv_bytes), "text/csv")}
-    resp_file = client.post("/api/characterization/import-rm400", files=files)
+    files = {"file": ("test_ds36d.csv", io.BytesIO(csv_bytes), "text/csv")}
+    resp_file = client.post("/api/characterization/import-spectral-file", files=files)
     assert resp_file.status_code == 200
     assert len(resp_file.json()["samples"]) == 7
 
     # 3. Missing both file and raw_text -> 400
-    resp_bad = client.post("/api/characterization/import-rm400")
+    resp_bad = client.post("/api/characterization/import-spectral-file")
     assert resp_bad.status_code == 400
 
 

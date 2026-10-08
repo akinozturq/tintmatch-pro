@@ -35,7 +35,12 @@ def compute_formulation_input_hash(
     enforce_simplex_sum: bool = False,
     enable_multistart: bool = False,
     num_starts: int = 3,
-    engine_version: str = "2.2.0"
+    engine_version: str = "2.2.0",
+    batch_size_g: float = 1000.0,
+    scale_resolution_g: float = 0.01,
+    geometry: str | None = None,
+    measurement_mode: str | None = None,
+    optical_system: str | None = None
 ) -> str:
     """
     Computes a canonical, order-independent SHA-256 hash of formulation input parameters.
@@ -73,8 +78,17 @@ def compute_formulation_input_hash(
         "min_total_load": round(float(min_total_load), 4) if min_total_load > 0.0 else 0.0,
         "k1": round(float(k1), 4),
         "k2": round(float(k2), 4),
-        "profile_id": str(profile_id or "default")
+        "profile_id": str(profile_id or "default"),
+        "batch_size_g": round(float(batch_size_g), 2),
+        "scale_resolution_g": round(float(scale_resolution_g), 4)
     }
+
+    if geometry:
+        canonical_dict["geometry"] = str(geometry)
+    if measurement_mode:
+        canonical_dict["measurement_mode"] = str(measurement_mode)
+    if optical_system:
+        canonical_dict["optical_system"] = str(optical_system)
 
     if profile_weights:
         canonical_dict["profile_weights"] = {
@@ -119,24 +133,39 @@ def compute_formulation_input_hash(
 def compute_recipe_output_hash(
     matched_pastes: list[dict],
     delta_e00: float,
-    total_load: float
+    total_load: float,
+    batch_size_g: float | None = None,
+    scale_resolution_g: float | None = None,
+    base_amount_g: float | None = None
 ) -> str:
     """
-    Computes a deterministic hash of the final formulation recipe.
+    Computes a deterministic hash of the final formulation recipe including physical rounded amounts.
     """
     sorted_pastes = sorted(
         [
-            (str(p.get("id")), str(p.get("code", "")), round(float(p.get("concentration", 0.0)), 4))
+            (
+                str(p.get("id")),
+                str(p.get("code", "")),
+                round(float(p.get("concentration", 0.0)), 4),
+                round(float(p.get("amount_g", 0.0)), 2)
+            )
             for p in matched_pastes
         ],
         key=lambda x: x[0]
     )
 
-    recipe_dict = {
+    recipe_dict: dict = {
         "matched_pastes": sorted_pastes,
         "delta_e00": round(float(delta_e00), 3),
         "total_load": round(float(total_load), 4)
     }
+
+    if batch_size_g is not None:
+        recipe_dict["batch_size_g"] = round(float(batch_size_g), 2)
+    if scale_resolution_g is not None:
+        recipe_dict["scale_resolution_g"] = round(float(scale_resolution_g), 4)
+    if base_amount_g is not None:
+        recipe_dict["base_amount_g"] = round(float(base_amount_g), 2)
 
     raw_json = json.dumps(recipe_dict, sort_keys=True)
     return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()

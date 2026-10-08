@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Sparkles
 } from 'lucide-react';
-import { createBase, measureChnspec, measureRm400, getChnspecStatus } from '../services/api';
+import { createBase, measureChnspec, getChnspecStatus } from '../services/api';
 
 interface AddBaseModalProps {
   isOpen: boolean;
@@ -91,24 +91,16 @@ export const AddBaseModal: React.FC<AddBaseModalProps> = ({ isOpen, onClose, onS
     setIsMeasuring(true);
     setMeasureError(null);
     try {
-      // Check CHNSpec status first
       const status = await getChnspecStatus().catch(() => null);
-      if (status && status.connected) {
-        const res = await measureChnspec('SCI', name || 'Yeni Baz Olcumu');
-        if (res && res.reflectance && res.reflectance.length === 31) {
-          setReflectance(res.reflectance);
-          return;
-        }
+      if (!status || !status.connected) {
+        throw new Error('CHNSpec DS-36D spektrofotometresi bağlı değil. Lütfen cihaz bağlantısını kontrol edin.');
       }
-
-      // Fallback: try RM400
-      const rmRes = await measureRm400(name || 'Yeni Baz Olcumu');
-      if (rmRes && rmRes.reflectance && rmRes.reflectance.length === 31) {
-        setReflectance(rmRes.reflectance);
+      const res = await measureChnspec('SCI', name || 'Yeni Baz Olcumu');
+      if (res && res.reflectance && res.reflectance.length === 31) {
+        setReflectance(res.reflectance);
         return;
       }
-
-      throw new Error('Cihazdan spektral okuma alınamadı. Spektrofotometrenin açık, bağlı ve kalibre olduğundan emin olun.');
+      throw new Error('Cihazdan geçerli 31-kanal spektral okuma alınamadı.');
     } catch (err: any) {
       setMeasureError(err.message || 'Ölçüm sırasında hata oluştu.');
     } finally {

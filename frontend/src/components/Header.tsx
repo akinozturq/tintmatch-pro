@@ -17,9 +17,11 @@ import { getChnspecStatus } from '../services/api';
 import type { ChnspecStatusInfo, DeviceConnectionState } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
+export type MainTabType = 'formulation' | 'wizard' | 'library' | 'spectro';
+
 interface HeaderProps {
-  activeTab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report';
-  setActiveTab: (tab: 'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report') => void;
+  activeTab: MainTabType;
+  setActiveTab: (tab: MainTabType) => void;
   onOpenInstruments?: () => void;
 }
 
@@ -46,13 +48,10 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
   }, []);
 
   const tabs = [
-    { id: 'dashboard', label: 'Laboratuvar', icon: Layers },
-    { id: 'spectro', label: 'Spektrofotometre', icon: Cpu },
-    { id: 'wizard', label: 'K-M Karakterizasyon', icon: Wand2 },
     { id: 'formulation', label: 'CCM Reçete', icon: Sliders },
-    { id: 'config', label: 'Yapılandırma', icon: Settings2 },
-    { id: 'report', label: 'ISO 18314 Rapor', icon: FileCheck },
-    { id: 'glossary', label: 'Sözlük', icon: BookOpen },
+    { id: 'wizard', label: 'K-M Karakterizasyon', icon: Wand2 },
+    { id: 'library', label: 'Kütüphane & Kartela', icon: Layers },
+    { id: 'spectro', label: 'Spektrofotometre', icon: Cpu },
   ] as const;
 
   const renderChnspecBadge = () => {
@@ -114,14 +113,6 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenI
 
           <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-[var(--border)] font-mono">
             {renderChnspecBadge()}
-            <button
-              onClick={() => setActiveTab('spectro')}
-              title="Spektrofotometre Yönetimi (RM400 / DS-36D)"
-              className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-0)] hover:bg-[var(--surface-3)] border border-[var(--border)] text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              <span>RM400 (45°:0°)</span>
-            </button>
           </div>
         </div>
 

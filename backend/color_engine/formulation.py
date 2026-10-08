@@ -37,7 +37,6 @@ from .profiles import (
     ExecutionContext,
     DEFAULT_SCIENCE_PROFILE,
     DEFAULT_MEASUREMENT_CONTEXT,
-    MEASUREMENT_RM400_45_0,
     MEASUREMENT_DS36D_D8_SCI,
     MEASUREMENT_DS36D_D8_SCE,
     PROFILE_COLOR_MATCH,
@@ -399,6 +398,95 @@ def calculate_pigment_sensitivity_matrix(
         })
 
     return matrix
+
+
+def compute_manufacturable_recipe(
+    matched_pastes: list[dict],
+    batch_size_g: float = 1000.0,
+    scale_resolution_g: float = 0.01,
+    base_k: np.ndarray | list[float] | None = None,
+    base_s: np.ndarray | list[float] | None = None,
+    target_reflectance: list[float] | None = None,
+    context: ExecutionContext | None = None
+) -> dict:
+    """
+    Translates theoretical floating-point pigment concentrations into real-world weighable amounts (grams)
+    conforming to the operator's scale precision (e.g. 0.01g).
+    Re-predicts optical reflectance and CIEDE2000 from the rounded physical recipe.
+    """
+    batch_size = max(float(batch_size_g), 1.0)
+    scale_res = max(float(scale_resolution_g), 0.0001)
+
+    if scale_res >= 0.01:
+        decimals = 2
+    elif scale_res >= 0.001:
+        decimals = 3
+    else:
+        decimals = 4
+
+    rounded_pastes = []
+    extrapolation_notes = []
+    extrapolation_warning = False
+
+    for paste in matched_pastes:
+        raw_conc = float(paste.get("concentration", 0.0))
+        if raw_conc <= 0.0:
+            continue
+
+        raw_g = (raw_conc / 100.0) * batch_size
+        dispensed_g = round(round(raw_g / scale_res) * scale_res, decimals)
+
+        if dispensed_g < scale_res - 1e-6:
+            continue
+
+        actual_conc = round((dispensed_g / batch_size) * 100.0, 4)
+
+        max_char_conc = float(paste.get("max_characterized_conc", 10.0))
+        if actual_conc > max_char_conc + 0.01:
+            extrapolation_warning = True
+            p_name = paste.get("name", paste.get("code", "Pasta"))
+            extrapolation_notes.append(
+                f"Pasta '{p_name}' konsantrasyonu (%{actual_conc:.2f}), karakterizasyon limitini (%{max_char_conc:.1f}) aşıyor. Ekstrapolasyon riski."
+            )
+
+        p_copy = dict(paste)
+        p_copy["amount_g"] = dispensed_g
+        p_copy["raw_amount_g"] = round(raw_g, 4)
+        p_copy["raw_concentration"] = raw_conc
+        p_copy["concentration"] = actual_conc
+        rounded_pastes.append(p_copy)
+
+    total_paste_g = round(sum(p["amount_g"] for p in rounded_pastes), decimals)
+    base_amount_g = round(max(0.0, batch_size - total_paste_g), decimals)
+    actual_total_load = round((total_paste_g / batch_size) * 100.0, 4)
+
+    prediction = None
+    rounded_de00 = 99.0
+
+    if base_k is not None and base_s is not None and rounded_pastes:
+        prediction = predict_recipe(
+            base_k=base_k,
+            base_s=base_s,
+            pastes=rounded_pastes,
+            target_reflectance=target_reflectance,
+            context=context
+        )
+        if "comparison" in prediction:
+            rounded_de00 = prediction["comparison"].get("delta_e00", 99.0)
+
+    return {
+        "matched_pastes": rounded_pastes,
+        "base_amount_g": base_amount_g,
+        "total_paste_g": total_paste_g,
+        "total_colorant_load": actual_total_load,
+        "batch_size_g": batch_size,
+        "scale_resolution_g": scale_res,
+        "prediction": prediction,
+        "delta_e00": rounded_de00,
+        "extrapolation_warning": extrapolation_warning,
+        "extrapolation_notes": extrapolation_notes
+    }
+
 
 
 def evaluate_recipe_objective(
@@ -784,6 +872,7 @@ def _optimize_single_profile(
     # STAGE 3 & 4: Subsets Optimization, Slack Clamping, and Global Best Selection
     # -------------------------------------------------------------------------
     best_loss = float("inf")
+    best_rank_key = (999, 999.0, 999.0, 999.0, 999.0)
     best_res = res
     best_matched_pastes = []
     best_final_concs_arr = np.zeros(len(candidate_indices), dtype=float)
@@ -956,7 +1045,32 @@ def _optimize_single_profile(
                 k1=k1,
                 k2=k2
             )
-            if cand_loss < best_loss:
+            # Direct CIEDE2000 evaluation on candidate subset
+            cand_sim = predict_recipe(
+                base_k=base_k,
+                base_s=base_s,
+                pastes=cand_matched_pastes,
+                target_reflectance=target_r.tolist(),
+                context=context
+            )
+            cand_de = float(cand_sim["comparison"]["delta_e00"]) if "comparison" in cand_sim else 99.0
+            gate_tol = getattr(profile, "gate_limit_d65", 0.30)
+            n_active_cand = len(cand_matched_pastes)
+            cand_load = float(sum(p["concentration"] for p in cand_matched_pastes))
+
+            # Profile-aware Industrial Comparator:
+            # For 'color_match' (Profile A): strictly prioritize colorimetric match loss (minimum ΔE00).
+            # For 'economy' / other profiles: if within acceptable factory tolerance (delta_e00 <= gate_tol),
+            # prioritize commercial simplicity (fewest pastes first, lower load).
+            if profile.id == "color_match":
+                cand_rank_key = (cand_loss, cand_de, n_active_cand, cand_load)
+            elif cand_de <= gate_tol:
+                cand_rank_key = (0, n_active_cand, round(cand_load, 1), cand_de, cand_loss)
+            else:
+                cand_rank_key = (1, cand_loss, cand_de, n_active_cand, cand_load)
+
+            if cand_rank_key < best_rank_key:
+                best_rank_key = cand_rank_key
                 best_loss = cand_loss
                 best_res = res_sub
                 best_matched_pastes = cand_matched_pastes
@@ -1041,17 +1155,32 @@ def _optimize_single_profile(
         diag_status = "FEASIBLE_LOCAL_MIN"
 
     # -------------------------------------------------------------------------
-    # STAGE 6: Simulation & Recipe Generation
+    # STAGE 6: Manufacturable Physical Recipe & Rounding Re-Prediction
     # -------------------------------------------------------------------------
-    sim = predict_recipe(
+    batch_size_g = float(getattr(constraints_config, "batch_size_g", 1000.0))
+    scale_res_g = float(getattr(constraints_config, "scale_resolution_g", 0.01))
+
+    mfg_result = compute_manufacturable_recipe(
+        matched_pastes=matched_pastes,
+        batch_size_g=batch_size_g,
+        scale_resolution_g=scale_res_g,
         base_k=base_k,
         base_s=base_s,
-        pastes=matched_pastes,
         target_reflectance=target_r.tolist(),
         context=context
     )
 
-    de00 = sim["comparison"]["delta_e00"] if "comparison" in sim else 99.0
+    matched_pastes = mfg_result["matched_pastes"]
+    sim = mfg_result["prediction"]
+    if sim is None:
+        sim = predict_recipe(
+            base_k=base_k,
+            base_s=base_s,
+            pastes=matched_pastes,
+            target_reflectance=target_r.tolist(),
+            context=context
+        )
+    de00 = mfg_result["delta_e00"] if mfg_result["delta_e00"] < 90.0 else (sim["comparison"]["delta_e00"] if "comparison" in sim else 99.0)
     mi_dict = sim["comparison"].get("metamerism", {}) if "comparison" in sim else {}
     comp_mi = max(mi_dict.get("MI_A", 0.0), mi_dict.get("MI_F11", 0.0))
 
@@ -1104,7 +1233,13 @@ def _optimize_single_profile(
         "prediction": sim,
         "delta_e00": round(float(de00), 3),
         "composite_mi": round(float(comp_mi), 3),
-        "total_load": sim["total_colorant_load"],
+        "total_load": mfg_result["total_colorant_load"],
+        "base_amount_g": mfg_result["base_amount_g"],
+        "total_colorant_g": mfg_result["total_paste_g"],
+        "batch_size_g": mfg_result["batch_size_g"],
+        "scale_resolution_g": mfg_result["scale_resolution_g"],
+        "extrapolation_warning": mfg_result["extrapolation_warning"],
+        "extrapolation_notes": mfg_result["extrapolation_notes"],
         "passed_target_threshold": bool(fg_result["status"] == "PASS"),
         "status": diag_status,
         "formulation_gate": fg_result,
@@ -1147,7 +1282,9 @@ def match_color_ccm(
     instrument_model: str | None = None,
     measurement_mode: str | None = None,
     observer: str | None = None,
-    reference_illuminant: str | None = None
+    reference_illuminant: str | None = None,
+    batch_size_g: float = 1000.0,
+    scale_resolution_g: float = 0.01
 ) -> dict:
     """
     Automated Computer Color Matching (CCM) solver.
@@ -1176,9 +1313,9 @@ def match_color_ccm(
         film_thickness_um: Film thickness in microns (e.g. 100.0 um drawdown)
         substrate_rg: Substrate reflectance Rg (e.g. 0.82 for Leneta white card)
         context: Optional authoritative ExecutionContext (Single Source of Truth)
-        geometry: Optional spectrophotometer geometry (e.g. '45°/0°' or 'd/8°')
-        instrument_model: Optional device model (e.g. 'CHNSpec DS-36D', 'X-Rite RM400')
-        measurement_mode: Optional measurement mode ('SCI', 'SCE', 'SPEX')
+        geometry: Optional spectrophotometer geometry (e.g. 'd/8°')
+        instrument_model: Optional device model (e.g. 'CHNSpec DS-36D')
+        measurement_mode: Optional measurement mode ('SCI', 'SCE')
         observer: Standard observer angle ('10' or '2')
         reference_illuminant: Reference illuminant ('D65', 'A', 'F11', etc.)
 
@@ -1195,6 +1332,17 @@ def match_color_ccm(
             max_pastes = constraints.max_pastes
         else:
             constraints.max_pastes = max_pastes
+        if not hasattr(constraints, "batch_size_g") or constraints.batch_size_g == 1000.0:
+            constraints.batch_size_g = batch_size_g
+        if not hasattr(constraints, "scale_resolution_g") or constraints.scale_resolution_g == 0.01:
+            constraints.scale_resolution_g = scale_resolution_g
+    else:
+        constraints = FormulationConstraints(
+            max_total_load=max_total_load,
+            max_pastes=max_pastes,
+            batch_size_g=batch_size_g,
+            scale_resolution_g=scale_resolution_g
+        )
 
     if context is None:
         context = ExecutionContext.create(
@@ -1429,6 +1577,12 @@ def match_color_ccm(
         "delta_e00": primary["delta_e00"],
         "composite_mi": primary["composite_mi"],
         "total_colorant_load": primary["total_load"],
+        "base_amount_g": primary.get("base_amount_g", round(max(0.0, batch_size_g - sum(p.get("amount_g", 0.0) for p in primary.get("matched_pastes", []))), 2)),
+        "total_colorant_g": primary.get("total_colorant_g", round(sum(p.get("amount_g", 0.0) for p in primary.get("matched_pastes", [])), 2)),
+        "batch_size_g": primary.get("batch_size_g", batch_size_g),
+        "scale_resolution_g": primary.get("scale_resolution_g", scale_resolution_g),
+        "extrapolation_warning": primary.get("extrapolation_warning", False),
+        "extrapolation_notes": primary.get("extrapolation_notes", []),
         "passed_target_threshold": primary["passed_target_threshold"],
         "status": primary["status"],
         "formulation_gate": primary.get("quality_gate"),

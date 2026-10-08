@@ -21,7 +21,7 @@ from backend.database.db import init_db
 if __name__ == "__main__":
     print("=" * 70)
     print("  TintMatch PRO - Spektrofotometrik Renklendirici ve Baz Karakterizasyonu")
-    print("  X-Rite RM400 Ham Veri & CCM (Computer Color Matching) Motoru")
+    print("  CHNSpec DS-36D (d/8° SCI/SCE) & CCM (Computer Color Matching) Motoru")
     print("=" * 70)
     print("[*] Veritabanı ve kalibrasyon tabloları kontrol ediliyor...")
     init_db()

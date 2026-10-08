@@ -97,10 +97,10 @@ class MeasurementContext:
     Central immutable optical measurement and characterization context.
     Prevents cross-geometry or cross-mode invalid optical combinations in CCM.
     """
-    instrument_model: str = "X-Rite RM400"
-    geometry: str = "45°/0°"             # '45°/0°', 'd/8°'
-    measurement_mode: str = "SPEX"       # 'SPEX', 'SCI', 'SCE', 'SCI_SCE'
-    specular_included: bool = False
+    instrument_model: str = "CHNSpec DS-36D"
+    geometry: str = "d/8°"               # 'd/8°', '45°/0°'
+    measurement_mode: str = "SCI"        # 'SCI', 'SCE', 'SCI_SCE', 'SPEX'
+    specular_included: bool = True
     illuminant: str = "D65"
     observer: str = "10"
     wavelength_grid: tuple[int, ...] = tuple(range(400, 710, 10))
@@ -109,15 +109,6 @@ class MeasurementContext:
 
 
 # Predefined industrial spectrophotometer measurement contexts
-MEASUREMENT_RM400_45_0 = MeasurementContext(
-    instrument_model="X-Rite RM400",
-    geometry="45°/0°",
-    measurement_mode="SPEX",
-    specular_included=False,
-    illuminant="D65",
-    observer="10"
-)
-
 MEASUREMENT_DS36D_D8_SCI = MeasurementContext(
     instrument_model="CHNSpec DS-36D",
     geometry="d/8°",
@@ -136,7 +127,16 @@ MEASUREMENT_DS36D_D8_SCE = MeasurementContext(
     observer="10"
 )
 
-DEFAULT_MEASUREMENT_CONTEXT = MEASUREMENT_RM400_45_0
+MEASUREMENT_GENERIC_45_0 = MeasurementContext(
+    instrument_model="Generic 45°/0° Reference",
+    geometry="45°/0°",
+    measurement_mode="SPEX",
+    specular_included=False,
+    illuminant="D65",
+    observer="10"
+)
+
+DEFAULT_MEASUREMENT_CONTEXT = MEASUREMENT_DS36D_D8_SCI
 
 
 @dataclass(frozen=True)
@@ -343,10 +343,10 @@ class ExecutionContext:
         # 2. Resolve measurement context (Instrument & Geometry awareness)
         if measurement_context is not None:
             meas = measurement_context
-        elif instrument_model == "CHNSpec DS-36D" or geometry == "d/8°":
+        elif instrument_model == "CHNSpec DS-36D" or geometry == "d/8°" or instrument_model is None:
             meas = MEASUREMENT_DS36D_D8_SCI if measurement_mode != "SCE" else MEASUREMENT_DS36D_D8_SCE
         else:
-            meas = MEASUREMENT_RM400_45_0
+            meas = MEASUREMENT_GENERIC_45_0
 
         meas_kwargs = {}
         if geometry is not None:

@@ -44,6 +44,8 @@ class MatchTargetRequest(BaseModel):
     target_reflectance: list[float] = Field(..., description="31-point target spectral reflectance (400-700 nm)")
     base_id: int = Field(1, json_schema_extra={"example": 1})
     geometry: str | None = Field(None, description="Target optical geometry (e.g. '45°/0°', 'd/8°'). Mismatched bases/pastes are strictly rejected.")
+    measurement_mode: str | None = Field(None, description="Target optical measurement mode ('SCI', 'SCE', 'SPEX')")
+    optical_system: str | None = Field("bootstrap_v1", description="Optical bootstrap system identifier")
     paste_ids: list[int] | None = Field(None, description="Candidate paste IDs; if None, all library pastes are used")
     max_pastes: int = Field(4, json_schema_extra={"example": 4})
     max_total_load: float = Field(12.0, json_schema_extra={"example": 12.0})
@@ -60,6 +62,9 @@ class MatchTargetRequest(BaseModel):
     forward_model: str = Field("opaque_infinite", description="Optical forward model: 'opaque_infinite' or 'finite_film'")
     film_thickness_um: float = Field(100.0, description="Film thickness in microns for finite-film matching")
     substrate_rg: float = Field(0.82, description="Substrate reflectance Rg for finite-film matching")
+    batch_size_g: float = Field(1000.0, description="Target total batch size in grams (100g to 5000kg)")
+    scale_resolution_g: float = Field(0.01, description="Scale resolution in grams (default 0.01g)")
+    target_tolerance_de: float | None = Field(None, description="Custom CIEDE2000 commercial tolerance")
 
 
 class SaveRecipeRequest(BaseModel):
@@ -94,6 +99,11 @@ class SaveRecipeRequest(BaseModel):
     min_dispense_threshold: float | None = None
     enable_multistart: bool | None = None
     num_starts: int | None = None
+    batch_size_g: float | None = Field(1000.0, description="Formulation batch size in grams")
+    scale_resolution_g: float | None = Field(0.01, description="Scale resolution in grams")
+    input_hash: str | None = None
+    output_hash: str | None = None
+    recipe_confidence: dict | None = None
     operator_notes: str | None = None
 
 
@@ -111,6 +121,20 @@ class AddAttemptRequest(BaseModel):
     tolerance_profile_id: str | None = None
     max_pastes: int | None = None
     max_total_load: float | None = None
+    batch_size_g: float | None = 1000.0
+    scale_resolution_g: float | None = 0.01
+    actual_dispensed: list[dict] | None = None
+    operator_notes: str | None = None
+
+
+class RecordDrawdownMeasurementRequest(BaseModel):
+    measured_reflectance: list[float] = Field(..., description="31-point spectral reflectance measured on physical drawdown")
+    sample_name: str | None = Field(None, description="Drawdown sample label")
+    actual_dispensed: list[dict] | None = Field(None, description="Actual weighed paste amounts in grams: [{'id': 1, 'amount_g': 12.42}, ...]")
+    batch_size_g: float = Field(1000.0, description="Actual batch size in grams")
+    operator_notes: str | None = None
+    k1: float = 0.04
+    k2: float = 0.60
     operator_notes: str | None = None
 
 
@@ -201,7 +225,7 @@ def match_color(req: MatchTargetRequest):
     base_k = json.loads(base_row["absorption_k"])
     base_s = json.loads(base_row["scattering_s"])
 
-    # Enforce optical context / geometry
+    # Enforce optical context / geometry and measurement mode
     base_geo = (base_row["geometry"] if "geometry" in base_row.keys() and base_row["geometry"] else "45°/0°").strip()
     target_geo = req.geometry.strip() if req.geometry else base_geo
 
@@ -212,38 +236,73 @@ def match_color(req: MatchTargetRequest):
             detail=f"Context Mismatch: Target optical geometry '{req.geometry}' does not match base paint geometry '{base_geo}'. Cross-geometry formulation is prohibited."
         )
 
-    # Fetch candidate pastes matching exact geometry (NO geometry IS NULL bypass!)
+    base_mode = (base_row["measurement_mode"] if "measurement_mode" in base_row.keys() and base_row["measurement_mode"] else "SCI").strip().upper()
+    target_mode = (req.measurement_mode or base_mode).strip().upper()
+
+    if req.measurement_mode and req.measurement_mode.strip().upper() != base_mode:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Context Mismatch: Target optical mode '{req.measurement_mode}' does not match base paint mode '{base_mode}'. Cross-mode formulation is prohibited."
+        )
+
+    # Fetch candidate pastes with letdowns_json from characterizations
+    query = """
+        SELECT p.*, c.letdowns_json
+        FROM pastes p
+        LEFT JOIN characterizations c ON p.active_characterization_id = c.id
+    """
     if req.paste_ids:
         placeholders = ",".join("?" for _ in req.paste_ids)
         paste_rows = conn.execute(
-            f"SELECT * FROM pastes WHERE id IN ({placeholders}) AND geometry = ?",
-            (*req.paste_ids, target_geo)
+            f"{query} WHERE p.id IN ({placeholders})",
+            (*req.paste_ids,)
         ).fetchall()
     else:
-        paste_rows = conn.execute(
-            "SELECT * FROM pastes WHERE geometry = ?",
-            (target_geo,)
-        ).fetchall()
+        paste_rows = conn.execute(query).fetchall()
 
     conn.close()
 
-    if not paste_rows:
+    # Apply Context Gate: geometry, measurement mode, optical system, quality status
+    from ..color_engine.context_gate import FormulationContext, select_eligible_pastes
+
+    ctx = FormulationContext(
+        geometry=target_geo,
+        measurement_mode=target_mode,
+        base_id=req.base_id,
+        optical_system=req.optical_system or "bootstrap_v1"
+    )
+    eligible_rows, excluded_rows = select_eligible_pastes(ctx, [dict(r) for r in paste_rows], dict(base_row))
+
+    if not eligible_rows:
+        reasons_summary = ", ".join(f"[{p.get('code', p.get('name'))}: {p.get('exclusion_reason')}]" for p in excluded_rows[:5])
         raise HTTPException(
             status_code=400,
-            detail=f"No characterized colorant pastes found matching optical geometry '{target_geo}'. Cross-geometry formulation is prohibited."
+            detail=f"No characterized colorant pastes found matching optical geometry '{target_geo}'. Cross-geometry formulation is prohibited. Excluded: {reasons_summary}"
         )
 
     available_pastes = []
-    for r in paste_rows:
-        r_dict = dict(r)
+    for r_dict in eligible_rows:
+        max_c = 10.0
+        if r_dict.get("letdowns_json"):
+            try:
+                lts = json.loads(r_dict["letdowns_json"])
+                concs = [float(x.get("concentration", 0)) for x in lts if "concentration" in x]
+                if concs:
+                    max_c = max(concs)
+            except Exception:
+                pass
+
         available_pastes.append({
             "id": r_dict["id"],
             "name": r_dict["name"],
             "code": r_dict["code"],
             "hex": r_dict["color_hex"],
             "geometry": r_dict.get("geometry", target_geo),
+            "measurement_mode": r_dict.get("measurement_mode", target_mode),
             "characterization_version": r_dict.get("characterization_version", 1),
             "active_characterization_id": r_dict.get("active_characterization_id"),
+            "max_characterized_conc": max_c,
             "unit_k": json.loads(r_dict["unit_k"]),
             "unit_s": json.loads(r_dict["unit_s"])
         })
@@ -255,7 +314,9 @@ def match_color(req: MatchTargetRequest):
             individual_bounds=req.individual_bounds or {},
             group_bounds=req.group_bounds or {},
             pigment_groups=req.pigment_groups or {},
-            min_dispense_threshold=req.min_dispense_threshold
+            min_dispense_threshold=req.min_dispense_threshold,
+            batch_size_g=req.batch_size_g,
+            scale_resolution_g=req.scale_resolution_g
         )
         match_result = match_color_ccm(
             target_reflectance=req.target_reflectance,
@@ -272,30 +333,80 @@ def match_color(req: MatchTargetRequest):
             num_starts=req.num_starts,
             forward_model=req.forward_model,
             film_thickness_um=req.film_thickness_um,
-            substrate_rg=req.substrate_rg
+            substrate_rg=req.substrate_rg,
+            batch_size_g=req.batch_size_g,
+            scale_resolution_g=req.scale_resolution_g
         )
         match_result["geometry"] = target_geo
-        base_hash = hashlib.sha256(f"{base_row['absorption_k']}:{base_row['scattering_s']}".encode()).hexdigest()
-        match_result["calculation_hash"] = compute_canonical_execution_hash(
-            base_id=req.base_id,
-            base_hash=base_hash,
-            pastes=match_result.get("matched_pastes", []),
-            k1=req.k1,
-            k2=req.k2,
-            profile_id=req.profile_id or "color_match",
-            total_load=match_result.get("total_colorant_load"),
+        match_result["measurement_mode"] = target_mode
+        match_result["excluded_pastes"] = [
+            {"id": p["id"], "name": p["name"], "code": p.get("code"), "reason": p.get("exclusion_reason")}
+            for p in excluded_rows
+        ]
+
+        from ..color_engine.hashing import compute_formulation_input_hash, compute_recipe_output_hash
+        from ..color_engine.recipe_confidence import evaluate_recipe_confidence
+
+        inp_hash = compute_formulation_input_hash(
             target_reflectance=req.target_reflectance,
+            base_k=base_k,
+            base_s=base_s,
+            available_pastes=available_pastes,
             max_pastes=req.max_pastes,
             max_total_load=req.max_total_load,
+            k1=req.k1,
+            k2=req.k2,
+            profile_id=req.profile_id,
             min_total_load=req.min_total_load,
-            geometry=target_geo,
             individual_bounds=req.individual_bounds,
             group_bounds=req.group_bounds,
             pigment_groups=req.pigment_groups,
             min_dispense_threshold=req.min_dispense_threshold,
             enable_multistart=req.enable_multistart,
-            num_starts=req.num_starts
+            num_starts=req.num_starts,
+            batch_size_g=req.batch_size_g,
+            scale_resolution_g=req.scale_resolution_g,
+            geometry=target_geo,
+            measurement_mode=target_mode,
+            optical_system=req.optical_system or "bootstrap_v1"
         )
+        out_hash = compute_recipe_output_hash(
+            matched_pastes=match_result.get("matched_pastes", []),
+            delta_e00=match_result.get("delta_e00", 99.0),
+            total_load=match_result.get("total_colorant_load", 0.0),
+            batch_size_g=req.batch_size_g,
+            scale_resolution_g=req.scale_resolution_g,
+            base_amount_g=match_result.get("base_amount_g")
+        )
+        conf = evaluate_recipe_confidence(
+            recipe=match_result,
+            base_info=dict(base_row),
+            tolerance_de00=req.target_tolerance_de or 0.30
+        )
+
+        match_result["input_hash"] = inp_hash
+        match_result["output_hash"] = out_hash
+        match_result["calculation_hash"] = out_hash
+        match_result["recipe_confidence"] = conf
+        match_result["batch_size_g"] = req.batch_size_g
+        match_result["scale_resolution_g"] = req.scale_resolution_g
+
+        for r_key, r_sub in match_result.get("recipes", {}).items():
+            if isinstance(r_sub, dict):
+                r_sub["recipe_confidence"] = evaluate_recipe_confidence(
+                    recipe=r_sub,
+                    base_info=dict(base_row),
+                    tolerance_de00=req.target_tolerance_de or 0.30
+                )
+                r_sub["input_hash"] = inp_hash
+                r_sub["output_hash"] = compute_recipe_output_hash(
+                    matched_pastes=r_sub.get("matched_pastes", []),
+                    delta_e00=r_sub.get("delta_e00", 99.0),
+                    total_load=r_sub.get("total_load", 0.0),
+                    batch_size_g=req.batch_size_g,
+                    scale_resolution_g=req.scale_resolution_g,
+                    base_amount_g=r_sub.get("base_amount_g")
+                )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Color matching solver error: {str(e)}")
 
@@ -502,7 +613,18 @@ def save_recipe(req: SaveRecipeRequest):
     calc_hash = req.calculation_hash
     recipe_geo = req.geometry or "45°/0°"
     char_ver = int(req.characterization_version or 1)
-    char_ids = req.active_characterization_ids or [p.get("active_characterization_id") or p.get("id") for p in req.pastes]
+
+    # Authoritative characterization IDs lookup from DB
+    char_ids = []
+    for p in req.pastes:
+        pid = p.get("paste_id") or p.get("id")
+        p_row = conn.execute("SELECT active_characterization_id FROM pastes WHERE id = ?", (pid,)).fetchone()
+        if p_row and p_row["active_characterization_id"]:
+            char_ids.append(p_row["active_characterization_id"])
+        elif p.get("active_characterization_id"):
+            char_ids.append(p.get("active_characterization_id"))
+        else:
+            char_ids.append(None)
     char_ids_json = json.dumps(char_ids)
 
     if not calc_hash:
@@ -531,24 +653,39 @@ def save_recipe(req: SaveRecipeRequest):
 
     qg_json = json.dumps(req.quality_gate) if req.quality_gate else None
     tot_load = req.total_load or sum(p.get("concentration", 0.0) for p in req.pastes)
+    batch_size = req.batch_size_g or 1000.0
+    scale_res = req.scale_resolution_g or 0.01
+    inp_hash = req.input_hash
+    out_hash = req.output_hash or calc_hash
+    conf_json = json.dumps(req.recipe_confidence) if req.recipe_confidence else None
 
     cur.execute("""
-    INSERT INTO recipes (name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00, contrast_ratio, calculation_hash, calculation_id, engine_version, profile_id, quality_gate_json, geometry, characterization_version, characterization_ids_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipes (
+        name, base_id, pastes_json, predicted_reflectance, lab_json, hex_color, delta_e00,
+        contrast_ratio, calculation_hash, calculation_id, engine_version, profile_id,
+        quality_gate_json, geometry, characterization_version, characterization_ids_json,
+        input_hash, output_hash, batch_size_g, scale_resolution_g, recipe_confidence_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         req.name, req.base_id, json.dumps(req.pastes),
         json.dumps(req.predicted_reflectance), json.dumps(req.lab),
         req.hex_color, req.delta_e00, req.contrast_ratio,
         calc_hash, req.calculation_id, req.engine_version or "2.2.0",
         req.profile_id or "color_match", qg_json,
-        recipe_geo, char_ver, char_ids_json
+        recipe_geo, char_ver, char_ids_json,
+        inp_hash, out_hash, batch_size, scale_res, conf_json
     ))
     new_id = cur.lastrowid
 
     # Automatically record Attempt #1 in recipe_history
     cur.execute("""
-    INSERT INTO recipe_history (recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00, composite_mi, total_load, calculation_hash, calculation_id, geometry, characterization_ids_json, operator_notes)
-    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO recipe_history (
+        recipe_id, attempt_number, pastes_json, predicted_reflectance, delta_e00,
+        composite_mi, total_load, calculation_hash, calculation_id, geometry,
+        characterization_ids_json, batch_size_g, scale_resolution_g, operator_notes
+    )
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id,
         json.dumps(req.pastes),
@@ -560,6 +697,8 @@ def save_recipe(req: SaveRecipeRequest):
         req.calculation_id,
         recipe_geo,
         char_ids_json,
+        batch_size,
+        scale_res,
         req.operator_notes or "Initial formulation match (Attempt #1)"
     ))
 
@@ -598,9 +737,17 @@ def get_recipe_attempts(recipe_id: int):
             "id": row_dict["id"],
             "recipe_id": row_dict["recipe_id"],
             "attempt_number": row_dict["attempt_number"],
-            "pastes": json.loads(row_dict["pastes_json"]) if row_dict["pastes_json"] else [],
+            "pastes": json.loads(row_dict["pastes_json"]) if row_dict.get("pastes_json") else [],
             "predicted_reflectance": json.loads(row_dict["predicted_reflectance"]) if row_dict.get("predicted_reflectance") else None,
+            "measured_reflectance": json.loads(row_dict["measured_reflectance"]) if row_dict.get("measured_reflectance") else None,
+            "measured_lab": json.loads(row_dict["measured_lab_json"]) if row_dict.get("measured_lab_json") else None,
+            "actual_dispensed": json.loads(row_dict["actual_dispensed_json"]) if row_dict.get("actual_dispensed_json") else None,
+            "batch_size_g": row_dict.get("batch_size_g"),
+            "scale_resolution_g": row_dict.get("scale_resolution_g"),
             "delta_e00": row_dict["delta_e00"],
+            "de00_predicted_vs_measured": row_dict.get("de00_predicted_vs_measured"),
+            "outcome": row_dict.get("outcome", "PENDING"),
+            "addback_suggestion": json.loads(row_dict["addback_suggestion_json"]) if row_dict.get("addback_suggestion_json") else None,
             "composite_mi": row_dict.get("composite_mi"),
             "total_load": row_dict.get("total_load"),
             "calculation_hash": row_dict.get("calculation_hash"),
@@ -695,6 +842,44 @@ def add_recipe_attempt(recipe_id: int, req: AddAttemptRequest):
     }
 
 
+@router.get("/batches")
+def get_factory_batches(limit: int = 50):
+    """
+    Returns factory batch production history across all recipes for auditing and QA traceability.
+    """
+    conn = get_db_connection()
+    rows = conn.execute("""
+    SELECT rh.*, r.name as recipe_name, b.name as base_name, b.code as base_code
+    FROM recipe_history rh
+    JOIN recipes r ON rh.recipe_id = r.id
+    LEFT JOIN bases b ON r.base_id = b.id
+    ORDER BY rh.id DESC
+    LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        row_dict = dict(r)
+        results.append({
+            "id": row_dict["id"],
+            "recipe_id": row_dict["recipe_id"],
+            "recipe_name": row_dict["recipe_name"],
+            "base_name": row_dict.get("base_name", "Standart Baz"),
+            "base_code": row_dict.get("base_code", ""),
+            "attempt_number": row_dict["attempt_number"],
+            "batch_size_g": row_dict.get("batch_size_g") or 1000.0,
+            "scale_resolution_g": row_dict.get("scale_resolution_g") or 0.01,
+            "delta_e00": row_dict["delta_e00"],
+            "de00_predicted_vs_measured": row_dict.get("de00_predicted_vs_measured"),
+            "outcome": row_dict.get("outcome", "PENDING"),
+            "measured_lab": json.loads(row_dict["measured_lab_json"]) if row_dict.get("measured_lab_json") else None,
+            "operator_notes": row_dict.get("operator_notes"),
+            "created_at": row_dict["created_at"]
+        })
+    return results
+
+
 @router.post("/add-back")
 def run_add_back_correction(req: AddBackCorrectionRequest):
     """
@@ -760,6 +945,130 @@ def run_add_back_correction(req: AddBackCorrectionRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/recipes/{recipe_id}/attempts/{attempt_number}/result")
+def record_drawdown_measurement(recipe_id: int, attempt_number: int, req: RecordDrawdownMeasurementRequest):
+    """
+    Physical Drawdown Verification (Golden Batch Lifecycle).
+    Records actual spectrophotometer measurement of physical paint drawdown,
+    compares predicted vs measured color difference (CIEDE2000), evaluates acceptance,
+    and automatically calculates addback correction if off-shade.
+    """
+    conn = get_db_connection()
+    recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not recipe:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Recipe {recipe_id} not found.")
+
+    attempt = conn.execute(
+        "SELECT * FROM recipe_history WHERE recipe_id = ? AND attempt_number = ?",
+        (recipe_id, attempt_number)
+    ).fetchone()
+    if not attempt:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Attempt #{attempt_number} not found for recipe {recipe_id}.")
+
+    if len(req.measured_reflectance) != 31:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Measured reflectance must contain exactly 31 points (400-700 nm @ 10 nm).")
+
+    from ..color_engine.colorimetry import reflectance_to_lab, ciede2000
+    measured_lab_tuple = reflectance_to_lab(req.measured_reflectance, illuminant="D65", observer="10")
+    measured_lab = {
+        "L": round(float(measured_lab_tuple[0]), 2),
+        "a": round(float(measured_lab_tuple[1]), 2),
+        "b": round(float(measured_lab_tuple[2]), 2)
+    }
+
+    pred_reflectance_raw = attempt["predicted_reflectance"] or recipe["predicted_reflectance"]
+    if pred_reflectance_raw:
+        pred_r = json.loads(pred_reflectance_raw)
+        pred_lab_tuple = reflectance_to_lab(pred_r, illuminant="D65", observer="10")
+        de_res = ciede2000(pred_lab_tuple, measured_lab_tuple)
+        de00 = float(de_res["delta_e00"])
+    else:
+        de00 = 0.0
+
+    # Evaluate physical outcome
+    if de00 <= 0.40:
+        outcome = "ACCEPTED"
+        outcome_message = f"Drawdown kabul edildi (ΔE00 = {de00:.2f} ≤ 0.40). Reçete üretim standardına ulaştı."
+        addback_result = None
+    elif de00 <= 1.50:
+        outcome = "ADDBACK_REQUIRED"
+        outcome_message = f"Drawdown düzeltme gerektiriyor (ΔE00 = {de00:.2f}). İlave pasta düzeltmesi hesaplandı."
+        try:
+            base_row = conn.execute("SELECT * FROM bases WHERE id = ?", (recipe["base_id"],)).fetchone()
+            base_k = json.loads(base_row["absorption_k"])
+            base_s = json.loads(base_row["scattering_s"])
+            paste_rows = conn.execute("SELECT * FROM pastes").fetchall()
+            available_pastes = [
+                {
+                    "id": pr["id"], "name": pr["name"], "code": pr["code"],
+                    "color_hex": pr["color_hex"],
+                    "unit_k": json.loads(pr["unit_k"]), "unit_s": json.loads(pr["unit_s"])
+                }
+                for pr in paste_rows
+            ]
+            current_pastes = json.loads(attempt["pastes_json"])
+            target_r = json.loads(pred_reflectance_raw) if pred_reflectance_raw else req.measured_reflectance
+            from ..color_engine.addback import calculate_production_addback
+            addback_result = calculate_production_addback(
+                tank_mass_kg=req.batch_size_g / 1000.0,
+                current_pastes=current_pastes,
+                target_reflectance=target_r,
+                available_pastes=available_pastes,
+                base_k=base_k,
+                base_s=base_s,
+                current_reflectance=req.measured_reflectance,
+                k1=req.k1,
+                k2=req.k2
+            )
+        except Exception as e:
+            addback_result = {"error": f"Düzeltme hesaplanamadı: {str(e)}"}
+    else:
+        outcome = "REJECTED"
+        outcome_message = f"Drawdown reddedildi (ΔE00 = {de00:.2f} > 1.50). Reçete yeniden hesaplanmalı."
+        addback_result = None
+
+    cur = conn.cursor()
+    cur.execute("""
+    UPDATE recipe_history SET
+        measured_reflectance = ?,
+        measured_lab_json = ?,
+        actual_dispensed_json = ?,
+        batch_size_g = ?,
+        de00_predicted_vs_measured = ?,
+        outcome = ?,
+        addback_suggestion_json = ?,
+        operator_notes = COALESCE(?, operator_notes)
+    WHERE recipe_id = ? AND attempt_number = ?
+    """, (
+        json.dumps(req.measured_reflectance),
+        json.dumps(measured_lab),
+        json.dumps(req.actual_dispensed) if req.actual_dispensed else None,
+        req.batch_size_g,
+        round(float(de00), 3),
+        outcome,
+        json.dumps(addback_result) if addback_result else None,
+        req.operator_notes,
+        recipe_id,
+        attempt_number
+    ))
+    conn.commit()
+    conn.close()
+
+    return {
+        "success": True,
+        "recipe_id": recipe_id,
+        "attempt_number": attempt_number,
+        "de00_predicted_vs_measured": round(float(de00), 3),
+        "outcome": outcome,
+        "outcome_message": outcome_message,
+        "measured_lab": measured_lab,
+        "addback_suggestion": addback_result
+    }
 
 
 @router.delete("/recipes/{recipe_id}")

@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { BasePaint, ColorantPaste } from './types';
 import { fetchBases, fetchPastes } from './services/api';
-import { Header } from './components/Header';
-import { Dashboard } from './components/Dashboard';
+import { Header, type MainTabType } from './components/Header';
 import { CharacterizationWizard } from './components/CharacterizationWizard';
 import { FormulationSimulator } from './components/FormulationSimulator';
-import { Glossary } from './components/Glossary';
-import { IsoReportView } from './components/IsoReportView';
 import { InstrumentModal } from './components/InstrumentModal';
 import { SpectroSettingsView } from './components/SpectroSettingsView';
-import { ConfigurationView } from './components/ConfigurationView';
+import { LibraryView } from './components/LibraryView';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { ThemeProvider } from './context/ThemeContext';
 
 const AppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'spectro' | 'wizard' | 'formulation' | 'config' | 'glossary' | 'report'>('dashboard');
+  const [activeTab, setActiveTab] = useState<MainTabType>('formulation');
   const [bases, setBases] = useState<BasePaint[]>([]);
   const [pastes, setPastes] = useState<ColorantPaste[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -24,7 +21,6 @@ const AppContent: React.FC = () => {
   // Cross-component states
   const [simPaste, setSimPaste] = useState<ColorantPaste | null>(null);
   const [externalTarget, setExternalTarget] = useState<{ reflectance: number[]; name: string; hex?: string } | null>(null);
-  const [reportId, setReportId] = useState<number>(1);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -47,11 +43,6 @@ const AppContent: React.FC = () => {
   const handleSelectPasteForSim = (paste: ColorantPaste) => {
     setSimPaste(paste);
     setActiveTab('formulation');
-  };
-
-  const handleOpenReport = (id: number) => {
-    setReportId(id);
-    setActiveTab('report');
   };
 
   return (
@@ -90,13 +81,37 @@ const AppContent: React.FC = () => {
           </div>
         ) : (
           <>
-            {activeTab === 'dashboard' && (
-              <Dashboard
+            {activeTab === 'formulation' && (
+              <FormulationSimulator
+                bases={bases}
+                pastes={pastes}
+                initialPaste={simPaste}
+                initialTarget={externalTarget}
+              />
+            )}
+
+            {activeTab === 'wizard' && (
+              <CharacterizationWizard
+                bases={bases}
+                pastes={pastes}
+                onComplete={() => {
+                  loadData();
+                  setActiveTab('library');
+                }}
+                onOpenInstruments={() => setIsInstrumentModalOpen(true)}
+                onNavigateToSpectro={() => setActiveTab('spectro')}
+              />
+            )}
+
+            {activeTab === 'library' && (
+              <LibraryView
                 bases={bases}
                 pastes={pastes}
                 onSelectPasteForSim={handleSelectPasteForSim}
-                onOpenWizard={() => setActiveTab('wizard')}
-                onOpenReport={handleOpenReport}
+                onNavigateToFormulationWithTarget={(refl, colorName) => {
+                  setExternalTarget({ reflectance: refl, name: colorName });
+                  setActiveTab('formulation');
+                }}
                 onRefreshData={loadData}
               />
             )}
@@ -107,43 +122,6 @@ const AppContent: React.FC = () => {
                 onNavigateToFormulation={() => setActiveTab('formulation')}
               />
             )}
-
-            {activeTab === 'wizard' && (
-              <CharacterizationWizard
-                bases={bases}
-                onComplete={() => {
-                  loadData();
-                  setActiveTab('dashboard');
-                }}
-                onOpenInstruments={() => setIsInstrumentModalOpen(true)}
-                onNavigateToSpectro={() => setActiveTab('spectro')}
-              />
-            )}
-
-            {activeTab === 'formulation' && (
-              <FormulationSimulator
-                bases={bases}
-                pastes={pastes}
-                initialPaste={simPaste}
-                initialTarget={externalTarget}
-              />
-            )}
-
-            {activeTab === 'config' && (
-              <ConfigurationView
-                bases={bases}
-                onNavigateToFormulationWithTarget={(refl, colorName) => {
-                  setExternalTarget({ reflectance: refl, name: colorName });
-                  setActiveTab('formulation');
-                }}
-              />
-            )}
-
-            {activeTab === 'report' && (
-              <IsoReportView initialCharId={reportId} />
-            )}
-
-            {activeTab === 'glossary' && <Glossary />}
           </>
         )}
       </main>
@@ -152,11 +130,11 @@ const AppContent: React.FC = () => {
       <footer className="border-t border-[var(--border)] bg-[var(--surface-0)] px-6 py-4 text-xs font-mono text-[var(--text-muted)] print:hidden transition-colors">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>TintMatch PRO • Endüstriyel Spektrofotometrik Renklendirici Karakterizasyonu ve CCM</span>
-          <span className="text-[var(--text-secondary)]">ISO 18314-1 / ISO 18314-2 • D65/10° • X-Rite RM400</span>
+          <span className="text-[var(--text-secondary)]">ISO 18314-1 / ISO 18314-2 • D65/10° • CHNSpec DS-36D (d/8°)</span>
         </div>
       </footer>
 
-      {/* Industrial Spectrophotometer Modal (CHNSpec DS-36D & RM400) */}
+      {/* Industrial Spectrophotometer Modal (CHNSpec DS-36D) */}
       <InstrumentModal
         isOpen={isInstrumentModalOpen}
         onClose={() => setIsInstrumentModalOpen(false)}

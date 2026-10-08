@@ -680,3 +680,143 @@ def characterize_letdown_series(
         "quality_gate": qg_result,
         "summary": "Industrial Validation PASSED (Calculation performed using ISO 18314-aligned colorimetric methodology)" if qg_result["status"] == "PASS" else f"Calibration Refinement Required (Mean ΔE00 = {mean_de00:.2f})"
     }
+
+
+def characterize_production_base(
+    un_tinted_reflectance: list[float] | np.ndarray,
+    black_letdowns: list[dict],
+    bootstrap_black_k: list[float] | np.ndarray,
+    bootstrap_black_s: list[float] | np.ndarray,
+    k1: float = 0.04,
+    k2: float = 0.60,
+    thickness: float = 100.0
+) -> dict:
+    """
+    Characterizes a production base paint (Base A White, Base B Medium, Base C Deep)
+    using un-tinted base reflectance and a letdown series of the pre-characterized Bootstrap Black paste.
+
+    Kubelka-Munk Two-Constant Formulation:
+        (K/S)_mix = (K_base + c * K_black) / (S_base + c * S_black)
+        Since K_base = theta_base * S_base (where theta_base = (K/S)_base from un-tinted base),
+        multiplying by (S_base + c * S_black) gives:
+        S_base * (theta_mix - theta_base) = c * (K_black - theta_mix * S_black)
+        
+    We solve S_base(lambda) via non-negative least squares across all black dilutions,
+    and then compute K_base(lambda) = theta_base(lambda) * S_base(lambda).
+    """
+    base_r_raw = np.asarray(un_tinted_reflectance, dtype=float)
+    base_r_raw = np.clip(base_r_raw, 0.001, 0.999)
+
+    r_base_int = saunderson_correction(base_r_raw, k1=k1, k2=k2)
+    theta_base = reflectance_to_ks(r_base_int)
+
+    blk_k = np.asarray(bootstrap_black_k, dtype=float)
+    blk_s = np.asarray(bootstrap_black_s, dtype=float)
+
+    concs = []
+    r_meas_list = []
+    theta_mix_list = []
+
+    for ld in black_letdowns:
+        c = float(ld["concentration"])
+        r_meas = np.asarray(ld["reflectance"], dtype=float)
+        r_meas = np.clip(r_meas, 0.001, 0.999)
+        r_int = saunderson_correction(r_meas, k1=k1, k2=k2)
+        th_mix = reflectance_to_ks(r_int)
+
+        concs.append(c)
+        r_meas_list.append(r_meas)
+        theta_mix_list.append(th_mix)
+
+    concs_arr = np.array(concs, dtype=float)
+    n_samples = len(concs)
+
+    s_base = np.zeros(N_WAVELENGTHS, dtype=float)
+    k_base = np.zeros(N_WAVELENGTHS, dtype=float)
+
+    for i in range(N_WAVELENGTHS):
+        th_b = theta_base[i]
+        k_b_i = blk_k[i]
+        s_b_i = blk_s[i]
+
+        x_vals = []
+        y_vals = []
+        for j in range(n_samples):
+            th_m = theta_mix_list[j][i]
+            c_j = concs_arr[j]
+            x_vals.append(th_m - th_b)
+            y_vals.append(c_j * (k_b_i - th_m * s_b_i))
+
+        x_arr = np.array(x_vals, dtype=float)
+        y_arr = np.array(y_vals, dtype=float)
+
+        denom = float(np.sum(x_arr * x_arr))
+        if denom > 1e-8:
+            s_est = float(np.sum(x_arr * y_arr) / denom)
+        else:
+            s_est = 1.0
+
+        # Physical lower bound on scattering (high for white, low for deep)
+        s_base[i] = max(0.005, float(s_est))
+        k_base[i] = max(1e-5, float(th_b * s_base[i]))
+
+    # Back-predictions and residuals evaluation
+    back_predictions = []
+    de00_list = []
+
+    # 1. Untinted base prediction
+    r_pred_int = ks_to_reflectance(k_base / np.maximum(s_base, 1e-6))
+    denom = np.maximum(1.0 - k2 * r_pred_int, 1e-6)
+    r_pred_meas = np.clip(k1 + (1.0 - k1) * (1.0 - k2) * r_pred_int / denom, 0.0, 1.0)
+    de00_base = float(ciede2000(base_r_raw.tolist(), r_pred_meas.tolist())["delta_e00"])
+    de00_list.append(de00_base)
+
+    back_predictions.append({
+        "sample_type": "un_tinted_base",
+        "concentration": 0.0,
+        "measured_reflectance": [round(float(v), 4) for v in base_r_raw],
+        "predicted_reflectance": [round(float(v), 4) for v in r_pred_meas],
+        "delta_e00": round(de00_base, 3)
+    })
+
+    # 2. Black letdown predictions
+    for j in range(n_samples):
+        c_j = concs_arr[j]
+        r_meas = r_meas_list[j]
+
+        k_mix = k_base + c_j * blk_k
+        s_mix = s_base + c_j * blk_s
+        r_mix_int = ks_to_reflectance(k_mix / np.maximum(s_mix, 1e-6))
+        denom_j = np.maximum(1.0 - k2 * r_mix_int, 1e-6)
+        r_pred_j = np.clip(k1 + (1.0 - k1) * (1.0 - k2) * r_mix_int / denom_j, 0.0, 1.0)
+
+        de00_j = float(ciede2000(r_meas.tolist(), r_pred_j.tolist())["delta_e00"])
+        de00_list.append(de00_j)
+
+        back_predictions.append({
+            "sample_type": "black_letdown",
+            "concentration": c_j,
+            "measured_reflectance": [round(float(v), 4) for v in r_meas],
+            "predicted_reflectance": [round(float(v), 4) for v in r_pred_j],
+            "delta_e00": round(de00_j, 3)
+        })
+
+    mean_de00 = float(np.mean(de00_list))
+    max_de00 = float(np.max(de00_list))
+
+    cr_info = calculate_opacity_contrast_ratio(k_base, s_base, thickness=thickness, k1=k1, k2=k2)
+    luminous_cr = cr_info["luminous_contrast_ratio"]
+    is_opaque = luminous_cr >= 98.0
+
+    return {
+        "absorption_k": [round(float(v), 5) for v in k_base],
+        "scattering_s": [round(float(v), 5) for v in s_base],
+        "contrast_ratio": luminous_cr,
+        "is_opaque": is_opaque,
+        "back_predictions": back_predictions,
+        "mean_delta_e00": round(mean_de00, 3),
+        "max_delta_e00": round(max_de00, 3),
+        "passed_validation": bool(mean_de00 <= 0.60),
+        "optical_system": "bootstrap_v1",
+        "summary": "Base Characterization PASSED" if mean_de00 <= 0.60 else f"Base Calibration Refinement Needed (Mean ΔE00 = {mean_de00:.2f})"
+    }

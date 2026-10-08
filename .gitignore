@@ -32,6 +32,8 @@ htmlcov/
 # Databases (auto-created & seeded on first launch)
 backend/database/*.db
 backend/database/*.db-journal
+*.db
+*.db-journal
 *.sqlite3
 
 # Node / Frontend

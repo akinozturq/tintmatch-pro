@@ -2,7 +2,7 @@
 TintMatch PRO - Color Science & CCM Engine Unit Tests
 =====================================================
 Validates Saunderson surface correction, Kubelka-Munk two-constant optimization,
-CIEDE2000 color difference, Metamerism Index, and RM400 parser.
+CIEDE2000 color difference, Metamerism Index, and spectral parser.
 """
 
 import pytest
@@ -24,8 +24,8 @@ from backend.color_engine.colorimetry import (
     ciede2000,
     compute_metamerism_index
 )
-from backend.color_engine.rm400_parser import (
-    parse_rm400_content,
+from backend.color_engine.spectral_parser import (
+    parse_spectral_content,
     get_industrial_sample_datasets
 )
 
@@ -112,10 +112,10 @@ def test_metamerism_index():
     assert mi["MI_A"] < 0.5
 
 
-def test_rm400_parser():
-    """Verify parsing of RM400 tabular spectral text."""
+def test_spectral_parser():
+    """Verify parsing of tabular spectral text."""
     csv_text = "Wavelength;Sample_1\n" + "\n".join(f"{400 + i*10};{(0.1 + i*0.01):.4f}" for i in range(31))
-    parsed = parse_rm400_content(csv_text)
+    parsed = parse_spectral_content(csv_text)
 
     assert len(parsed["samples"]) >= 1
     assert len(parsed["samples"][0]["reflectance"]) == 31

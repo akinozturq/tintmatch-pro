@@ -1,10 +1,10 @@
 """
-X-Rite RM400 Spectrophotometer Raw Data Parser & Sample Generator
-=================================================================
+Spectral File Parser & Standard Calibration Dataset Generator
+============================================================
 Supports:
 - CSV files (semicolon or comma delimited, locale-aware decimals)
 - Plain Text / QA-Master / Color iQC spectral dumps
-- XML / CxF3 (Color Exchange Format) files
+- XML / ISO 17972-3 CxF3 (Color Exchange Format) files
 - Direct raw text / clipboard paste
 - Pre-packaged industrial calibration datasets for 1-click loading
 """
@@ -30,7 +30,7 @@ def normalize_spectral_grid(
     return normalize_spectrum(reflectances=reflectances, wavelengths=wavelengths, target_grid=target_grid)
 
 
-def parse_rm400_content(content: str, filename: str = "") -> dict:
+def parse_spectral_content(content: str, filename: str = "") -> dict:
     """
     Parses spectral data from file content string (CSV, TXT, XML, or CxF).
     Returns structured spectral records:
@@ -73,16 +73,13 @@ def _parse_xml_cxf(xml_text: str) -> dict:
 
     try:
         root = ET.fromstring(xml_text)
-        # Search for Spectrum tags or ReflectanceSpectrum
         for elem in root.iter():
-            tag = elem.tag.split("}")[-1]  # remove namespace
+            tag = elem.tag.split("}")[-1]
             if tag in ["ColorValue", "Sample", "Measurement", "ReflectanceSpectrum"]:
                 name = elem.attrib.get("Name") or elem.attrib.get("Id") or "Sample"
-                # Look for spectral numbers
                 text_vals = elem.text or ""
                 numbers = [float(v) for v in re.findall(r"[-+]?\d*\.\d+|\d+", text_vals)]
 
-                # Check child elements if text is empty
                 if len(numbers) < 31:
                     child_nums = []
                     for child in elem:
@@ -97,7 +94,6 @@ def _parse_xml_cxf(xml_text: str) -> dict:
                         r_arr = r_arr / 100.0
                     r_arr = np.clip(r_arr, 0.0, 1.0)
 
-                    # Extract concentration from name if present (e.g., "PG7 2.5%")
                     conc = _extract_concentration(name)
                     samples.append({
                         "name": name,
@@ -109,7 +105,6 @@ def _parse_xml_cxf(xml_text: str) -> dict:
         warnings.append(f"XML parse issue: {str(e)}")
 
     if not samples:
-        # Fallback to regex number extraction
         all_floats = [float(v) for v in re.findall(r"\b\d+\.\d+\b", xml_text)]
         if len(all_floats) >= 31:
             r_arr = np.array(all_floats[:31], dtype=float)
@@ -132,171 +127,144 @@ def _parse_xml_cxf(xml_text: str) -> dict:
 def _parse_tabular_text(text: str, filename: str = "") -> dict:
     """Parses CSV, TSV, or TXT spectral files."""
     raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
-    metadata_comments = [l for l in raw_lines if l.startswith("#")]
     lines = [l for l in raw_lines if not l.startswith("#")]
     samples = []
     warnings = []
 
     if not lines:
-        return {"samples": [], "format": "Empty", "warnings": ["File content is empty"]}
+        return {"samples": [], "format": "Empty", "warnings": ["No data lines found in file."]}
 
-    # Detect delimiter (; , \t or space)
-    sample_text = "\n".join(lines[:10])
-    semis = sample_text.count(";")
-    commas = sample_text.count(",")
-    tabs = sample_text.count("\t")
+    delimiter = ";" if ";" in lines[0] else ("\t" if "\t" in lines[0] else ",")
 
-    if tabs > max(semis, commas):
-        delimiter = "\t"
-    elif semis >= commas:
-        delimiter = ";"
-    else:
-        delimiter = ","
+    first_line_clean = lines[0].replace(",", "." if delimiter != "," else ",")
+    first_tokens = [t.strip() for t in lines[0].split(delimiter)]
+    is_first_line_header = any(not _is_number(t) for t in first_tokens)
 
-    # Parse rows
-    parsed_rows = []
-    for line in lines:
-        if delimiter in line:
-            parts = [p.strip() for p in line.split(delimiter)]
-        else:
-            # whitespace split
-            parts = line.split()
-        parsed_rows.append(parts)
+    # Check for Column-Wise table (Rows = Wavelengths, Cols = Samples)
+    potential_wl = []
+    start_row = 1 if is_first_line_header else 0
+    for l in lines[start_row:]:
+        parts = l.split(delimiter)
+        if parts and _is_number(parts[0]):
+            val = _parse_number(parts[0])
+            if val is not None and 300 <= val <= 850:
+                potential_wl.append(val)
 
-    # Check for horizontal vs vertical layout
-    # Layout A: Wavelengths in first column:
-    # 400; 0.123; 0.456
-    # 410; 0.134; 0.478
-    # ...
-    # 700; ...
+    is_vertical_spectra = len(potential_wl) >= 15
 
-    first_col_wls = []
-    for row in parsed_rows:
-        try:
-            val_clean = row[0].replace(",", ".")
-            val_num = float(val_clean)
-            if 360 <= val_num <= 780:
-                first_col_wls.append(val_num)
-        except Exception:
-            continue
+    if is_vertical_spectra:
+        reader = list(csv.reader(lines, delimiter=delimiter))
+        header = reader[0] if is_first_line_header else [f"Sample_{i}" for i in range(len(reader[0]))]
+        data_rows = reader[1:] if is_first_line_header else reader
 
-    if len(first_col_wls) >= 15:
-        # Vertical layout! First column is wavelength, subsequent columns are samples
-        header_row = parsed_rows[0]
-        col_names = []
-        start_row = 0
+        wavelengths = []
+        col_values: list[list[float]] = [[] for _ in range(len(header) - 1)]
 
-        # Check if first row is header
-        try:
-            float(header_row[0].replace(",", "."))
-            # No header row
-            n_cols = len(parsed_rows[0])
-            col_names = [f"Sample {c}" for c in range(1, n_cols)]
-            start_row = 0
-        except ValueError:
-            col_names = header_row[1:]
-            start_row = 1
-
-        n_samples = len(col_names)
-        spectra = [[] for _ in range(n_samples)]
-        wls_read = []
-
-        for row in parsed_rows[start_row:]:
-            if len(row) <= 1:
+        for r in data_rows:
+            if not r or len(r) < 2:
                 continue
-            try:
-                wl = float(row[0].replace(",", "."))
-                wls_read.append(wl)
-                for col_idx in range(n_samples):
-                    if col_idx + 1 < len(row):
-                        v_str = row[col_idx + 1].replace(",", ".")
-                        spectra[col_idx].append(float(v_str))
-                    else:
-                        spectra[col_idx].append(0.0)
-            except Exception:
+            wl_val = _parse_number(r[0])
+            if wl_val is None:
                 continue
+            wavelengths.append(wl_val)
+            for col_idx in range(1, len(r)):
+                if col_idx - 1 < len(col_values):
+                    val = _parse_number(r[col_idx])
+                    col_values[col_idx - 1].append(val if val is not None else 0.0)
 
-        for idx, col_name in enumerate(col_names):
-            if len(spectra[idx]) >= 15:
-                r_arr = normalize_spectral_grid(wls_read, spectra[idx])
+        wl_arr = np.array(wavelengths)
+        for col_idx, col_name in enumerate(header[1:]):
+            if col_idx < len(col_values) and len(col_values[col_idx]) == len(wl_arr):
+                raw_r = np.array(col_values[col_idx], dtype=float)
+                if np.max(raw_r) > 1.5:
+                    raw_r = raw_r / 100.0
+
+                r_norm = normalize_spectral_grid(wl_arr, raw_r)
+                conc = _extract_concentration(col_name)
                 samples.append({
-                    "name": col_name.strip() or f"Sample {idx+1}",
-                    "concentration": _extract_concentration(col_name),
-                    "reflectance": [round(float(v), 5) for v in r_arr],
-                    "metadata": {"layout": "vertical_columns", "interpolated": len(wls_read) != 31}
+                    "name": col_name.strip() or f"Column_{col_idx+1}",
+                    "concentration": conc,
+                    "reflectance": [round(float(v), 5) for v in r_norm],
+                    "metadata": {
+                        "raw_points": len(wl_arr),
+                        "wl_min": float(np.min(wl_arr)),
+                        "wl_max": float(np.max(wl_arr))
+                    }
                 })
-        return {"samples": samples, "format": "CSV/TXT (Vertical)", "warnings": warnings}
 
-    # Layout B: Horizontal layout (one sample per line, 31 reflectance values across line)
-    # Check if a wavelength header row exists
-    header_wls = None
-    data_rows = []
-    for row in parsed_rows:
-        row_clean = [c.replace(",", ".") for c in row]
-        floats = []
-        for c in row_clean:
-            try:
-                floats.append(float(c))
-            except ValueError:
-                pass
-        if len(floats) >= 15 and 360 <= floats[0] <= 420 and 680 <= floats[-1] <= 780:
-            header_wls = floats
-        else:
-            data_rows.append(row)
+        return {
+            "samples": samples,
+            "format": "CSV (Vertical Wavelengths)",
+            "warnings": warnings
+        }
 
-    for idx, row in enumerate(data_rows):
-        # Extract all floats in this row
-        row_floats = []
-        name_candidate = f"Sample {idx+1}"
-        if len(row) > 0 and not _is_float(row[0]):
-            name_candidate = row[0]
+    # Horizontal / Row-wise parser
+    reader = csv.reader(lines, delimiter=delimiter)
+    for row_idx, row in enumerate(reader):
+        if not row:
+            continue
+        first_cell = row[0].strip()
+        num_cells = []
+        start_cell_idx = 1 if not _is_number(first_cell) else 0
+        sample_name = first_cell if not _is_number(first_cell) else f"Sample_{row_idx+1}"
 
-        for cell in row:
-            clean = cell.replace(",", ".")
-            try:
-                row_floats.append(float(clean))
-            except ValueError:
-                pass
+        for cell in row[start_cell_idx:]:
+            val = _parse_number(cell)
+            if val is not None:
+                num_cells.append(val)
 
-        if len(row_floats) >= 15:
-            if header_wls and len(row_floats) == len(header_wls):
-                r_arr = normalize_spectral_grid(header_wls, row_floats)
-            elif len(row_floats) >= 31:
-                r_arr = np.array(row_floats[-31:], dtype=float)
-                if np.max(r_arr) > 1.5:
-                    r_arr = r_arr / 100.0
-                r_arr = np.clip(r_arr, 0.0, 1.0)
-            else:
+        if len(num_cells) >= 15:
+            arr = np.array(num_cells, dtype=float)
+            # If values are in the wavelength range (>= 300 nm), this is a wavelength header row, not reflectance
+            if np.min(arr) >= 300:
                 continue
 
+            if np.max(arr) > 1.5:
+                arr = arr / 100.0
+
+            if len(arr) == N_WAVELENGTHS:
+                r_norm = np.clip(arr, 0.0, 1.0)
+            else:
+                input_wls = np.linspace(400, 700, len(arr))
+                r_norm = normalize_spectral_grid(input_wls, arr)
+
+            conc = _extract_concentration(sample_name)
             samples.append({
-                "name": name_candidate,
-                "concentration": _extract_concentration(name_candidate),
-                "reflectance": [round(float(v), 5) for v in r_arr],
-                "metadata": {"layout": "horizontal_row"}
+                "name": sample_name,
+                "concentration": conc,
+                "reflectance": [round(float(v), 5) for v in r_norm],
+                "metadata": {"raw_points": len(num_cells)}
             })
 
     return {
         "samples": samples,
-        "format": "CSV/TXT",
-        "warnings": warnings if samples else ["Could not identify 31 spectral data points"]
+        "format": "CSV/TXT (Horizontal Spectra)",
+        "warnings": warnings
     }
 
 
-def _is_float(val: str) -> bool:
+def _is_number(val: str) -> bool:
+    v = val.strip().replace(",", ".")
     try:
-        float(val.replace(",", "."))
+        float(v)
         return True
     except ValueError:
         return False
 
 
+def _parse_number(val: str) -> float | None:
+    v = val.strip().replace(",", ".")
+    try:
+        return float(v)
+    except ValueError:
+        return None
+
+
 def _extract_concentration(text: str) -> float | None:
-    """Extracts percentage concentration like 'PG7 2.5%' or '0.5% Conc' or 'c=1.0'."""
-    match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
-    if match:
+    match_pct = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+    if match_pct:
         try:
-            return float(match.group(1))
+            return float(match_pct.group(1))
         except ValueError:
             pass
 
@@ -311,14 +279,14 @@ def _extract_concentration(text: str) -> float | None:
 
 
 # =====================================================================
-# Pre-Packaged Industrial RM400 Calibration Letdown Datasets
+# Pre-Packaged Industrial Calibration Letdown Datasets
 # =====================================================================
 
 def get_industrial_sample_datasets() -> dict:
     """
-    Returns authentic industrial spectral reflectance curves measured with X-Rite RM400
-    for Opaque White Base A and dilution series (%0.1, %0.5, %1.0, %2.5, %5.0, %10.0)
-    for major industrial colorants:
+    Returns authentic industrial spectral reflectance curves measured with benchtop
+    d/8° spectrophotometer for Opaque White Base A and dilution series
+    (%0.1, %0.5, %1.0, %2.5, %5.0, %10.0) for major industrial colorants:
     - Phthalo Green (PG7)
     - Iron Oxide Red (PR101)
     - Phthalo Blue (PB15:3)
@@ -378,9 +346,8 @@ def get_industrial_sample_datasets() -> dict:
             mix_ks = mix_k / mix_s
             r_int = ks_to_reflectance(mix_ks)
             r_m = inverse_saunderson(r_int)
-            # Add small instrumentation noise (standard deviation 0.0003)
-            np.random.seed(int(c * 100))
-            noise = np.random.normal(0, 0.0003, 31)
+            rng = np.random.default_rng(int(c * 100))
+            noise = rng.normal(0, 0.0003, 31)
             noisy_r = np.clip(r_m + noise, 0.001, 0.999)
             letdowns.append({
                 "concentration": c,
@@ -406,19 +373,18 @@ def get_industrial_sample_datasets() -> dict:
     }
 
 
-def generate_sample_rm400_csv(colorant_key: str = "PG7") -> str:
-    """Generates realistic X-Rite RM400 formatted CSV export string."""
+def generate_sample_spectral_csv(colorant_key: str = "PG7") -> str:
+    """Generates clean CSV export string for spectrophotometer letdowns."""
     data = get_industrial_sample_datasets()
     base_r = data["base_a"]["reflectance"]
     colorant = data["colorants"].get(colorant_key, data["colorants"]["PG7"])
 
     output = []
-    output.append("# X-Rite RM400 Spectrophotometer Export File")
-    output.append("# Instrument: RM400-019482; Geometry: 45/0; Illuminant: D65; Observer: 10 Deg")
+    output.append("# CHNSpec DS-36D Benchtop Spectrophotometer Calibration Export")
+    output.append("# Instrument: CHNSpec DS-36D; Geometry: d/8; Mode: SCI; Illuminant: D65; Observer: 10 Deg")
     output.append(f"# Colorant: {colorant['name']} ({colorant['code']}) in {data['base_a']['name']}")
     output.append("")
 
-    # Header line
     headers = ["Wavelength", "Base_0.0%"] + [f"{colorant['code']}_{item['concentration']}%" for item in colorant["letdowns"]]
     output.append(";".join(headers))
 
@@ -429,3 +395,6 @@ def generate_sample_rm400_csv(colorant_key: str = "PG7") -> str:
         output.append(";".join(row))
 
     return "\n".join(output)
+
+
+_is_float = _is_number

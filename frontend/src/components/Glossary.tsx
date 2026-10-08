@@ -21,7 +21,7 @@ export const Glossary: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({
     chnspec: true,
-    rm400: true,
+    d8geometry: true,
     kubelkamunk: true,
     kmthickness: true,
     multistart: true,
@@ -53,19 +53,19 @@ Temel Ölçüm Prensipleri ve Ayrımı:
       `,
     },
     {
-      id: 'rm400',
+      id: 'd8geometry',
       category: 'Spektrofotometri & Donanım',
-      title: 'X-Rite RM400 Ölçüm Prensipleri & 45°/0° Geometrisi',
-      shortDesc: 'Dairesel 45° aydınlatma ve dik algılama ile insan gözünün görsel parlaklık algısını simüle eden taşınabilir optik geometri.',
-      formula: 'Geometri: 45° dairesel aydınlatma / 0° dikey algılama (Speküler yansıma hariç - SPEX)',
-      standards: ['ASTM E1164', 'ISO 7724-1', 'DIN 5033'],
+      title: 'Entegre Küre (d/8°) Geometrisi ve Karakterizasyon Gereksinimleri',
+      shortDesc: 'Boya ve pigment karakterizasyonunda Saunderson düzeltmesi ve Kubelka-Munk iki-sabit modeli için neden d/8° entegre küre cihazı zorunludur?',
+      formula: 'Geometri: d/8° (Diffüz aydınlatma, 8° açıyla algılama - SCI/SCE çift mod)',
+      standards: ['ISO 7724-1', 'ASTM E1164', 'DIN 5033-7'],
       content: `
-X-Rite RM400, boya, kaplama ve mürekkep sanayiinde saha ve tezgah uygulamalarında kullanılan dairesel 45°:0° optik geometrisine sahip taşınabilir bir spektrofotometredir.
+Pigment karakterizasyonu ve CCM reçete tahmini için saçılma (S) ve absorpsiyon (K) katsayılarının mutlak olarak belirlenmesi gerekir.
 
-Temel Özellikler:
-1. 45°:0° Optik Düzen: Numune yüzeyine dairesel olarak 45 derecelik açıyla odaklanan ışık, yüzeyden aynasal yansıyan (speküler) parıltıyı 0 derecede duran dedektörden uzaklaştırır. Dedektör sadece kaplamanın içine nüfuz edip saçılan renkli ışığı ölçer.
-2. Optik Geometri İzolasyonu: 45°/0° geometrisi ile d/8° entegre küre geometrisi fiziksel olarak eşdeğer değildir. TintMatch PRO mimarisinde iki geometrinin karakterizasyonları ayrı kimliklerde izole edilir ve karıştırılmaz.
-3. 400 - 700 nm Spektral Çözünürlük: Görünür spektrum 10 nm aralıklarla 31 dalga boyunda taranır.
+Neden d/8° Entegre Küre (CHNSpec DS-36D)?
+1. Yüzey Yansıma Düzeltmesi (Saunderson): Saunderson düzeltmesi (k1 harici Fresnel, k2 dahili yansıma) kaplamanın içine nüfuz eden ve çıkan diffüz ışığın entegre küre tarafından eksiksiz toplanmasını gerektirir.
+2. Çift Mod (SCI/SCE): CHNSpec DS-36D tek okumada parlaklığı içeren (SCI) ve dışlayan (SCE) spektrumları eşzamanlı ölçer. Formülasyon hesaplamaları daima malzeme pigment özelliklerini izole eden SCI modunda yürütülür.
+3. 45°/0° Cihazların Sınırları: 45°:0° cihazlar yalnızca speküler parıltıyı dışlar; siyah/beyaz zemin opaklık geçişlerini ve diffüz saçılmayı küresel olarak entegre edemez. Bu nedenle profesyonel karakterizasyon laboratuvarlarında d/8° tezgah tipi cihazlar kullanılır.
       `,
     },
     {
@@ -301,7 +301,7 @@ Flokülasyon, renklendirici pastanın dispersiyon kalitesini ve reçine-baz uyum
             <span>Renk Bilimi & Spektrofotometri Sözlüğü</span>
           </h2>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            CHNSpec DS-36D (d/8°), X-Rite RM400 (45°:0°), Saunderson, Kubelka-Munk, K-M Kalınlık (x_98), CxF3, LOOCV ve Multi-Start CCM
+            CHNSpec DS-36D (d/8° SCI/SCE), Saunderson, Kubelka-Munk, K-M Kalınlık (x_98), CxF3, LOOCV ve Multi-Start CCM
           </p>
         </div>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { BasePaint, ColorantPaste } from '../types';
 import { SpectralChart } from './SpectralChart';
 import { AddBaseModal } from './AddBaseModal';
+import { FactoryBatchHistoryTable } from './FactoryBatchHistoryTable';
 import {
   Search,
   CheckCircle2,
@@ -251,7 +252,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <SpectralChart
             series={chartSeries}
             title={`${selectedPaste?.name || 'Pigment'} Spektral Eğrileri`}
-            subtitle={`X-Rite RM400 Ham Ölçüm • ${selectedBase?.name || 'Baz A'} ile K/S Matrisi`}
+            subtitle={`CHNSpec DS-36D (d/8° SCI) Ölçüm • ${selectedBase?.name || 'Baz A'} ile K/S Matrisi`}
             height={360}
           />
 
@@ -390,6 +391,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Factory Batch Production & QA History Audit Desk */}
+      <FactoryBatchHistoryTable />
+
       {/* Add Base Paint Modal */}
       <AddBaseModal
         isOpen={isAddBaseOpen}

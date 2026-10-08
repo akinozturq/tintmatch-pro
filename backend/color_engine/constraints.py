@@ -32,6 +32,14 @@ class FormulationConstraints:
     min_dispense_threshold: float = 0.0   # Default 0.0 (no pruning unless explicitly set)
     enforce_simplex_sum: bool = False     # If True, enforces sum(c) <= 100.0
     max_pastes: Optional[int] = None      # Maximum allowed active pastes in final recipe
+    batch_size_g: float = 1000.0          # Target total batch size in grams (100g lab to 5000kg production)
+    scale_resolution_g: float = 0.01      # Manual or automated scale resolution in grams (default 0.01g)
+
+    @property
+    def effective_min_dispense_wt(self) -> float:
+        """Computes minimum dispense threshold in wt% based on batch size and scale resolution."""
+        scale_limit = (self.scale_resolution_g / max(self.batch_size_g, 1e-6)) * 100.0
+        return max(self.min_dispense_threshold, scale_limit)
 
 
 class ConstraintEngine:
@@ -130,7 +138,7 @@ class ConstraintEngine:
         processed = np.maximum(processed, 0.0)
         warnings: List[str] = []
 
-        threshold = self.constraints.min_dispense_threshold
+        threshold = self.constraints.effective_min_dispense_wt
         if threshold > 0.0:
             for idx, c in enumerate(processed):
                 if 0.0 < c < threshold:
@@ -210,7 +218,7 @@ class ConstraintEngine:
         max_pastes_violated = bool(eff_max_pastes is not None and active_count > eff_max_pastes)
 
         # Minimum dispense threshold check
-        threshold = self.constraints.min_dispense_threshold
+        threshold = self.constraints.effective_min_dispense_wt
         dispense_violated = False
         sub_threshold_pigments: Dict[str, float] = {}
         if check_dispense and threshold > 0.0:
@@ -243,6 +251,8 @@ class ConstraintEngine:
             "max_pastes": eff_max_pastes,
             "max_pastes_violated": max_pastes_violated,
             "min_dispense_threshold": round(float(threshold), 4) if threshold > 0.0 else None,
+            "batch_size_g": float(self.constraints.batch_size_g),
+            "scale_resolution_g": float(self.constraints.scale_resolution_g),
             "dispense_violated": dispense_violated,
             "sub_threshold_pigments": sub_threshold_pigments,
             "is_feasible": is_feasible

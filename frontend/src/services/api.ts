@@ -9,7 +9,6 @@ import type {
   DeviceConnectionState,
   InstrumentItem,
   ChnspecStatusInfo,
-  Rm400StatusInfo,
   MeasurementRecord,
   InstrumentComparisonRequest,
   InstrumentComparisonResult,
@@ -22,7 +21,12 @@ import type {
   CardColor,
   ProposerResponse,
   CanScaledRecipe,
-  BatchMatchResponse
+  BatchMatchResponse,
+  BootstrapSystemStatus,
+  CharacterizeBaseFromBootstrapPayload,
+  CharacterizeBaseResponse,
+  RecipeHistoryAttempt,
+  FactoryBatchRecord
 } from '../types';
 
 const BASE_URL = '/api';
@@ -87,7 +91,7 @@ export async function calculateCharacterization(payload: {
   return res.json();
 }
 
-export async function importRm400(file?: File, rawText?: string): Promise<{
+export async function importSpectralFile(file?: File, rawText?: string): Promise<{
   samples: Array<{
     name: string;
     concentration: number | null;
@@ -105,11 +109,11 @@ export async function importRm400(file?: File, rawText?: string): Promise<{
     formData.append('raw_text', rawText);
   }
 
-  const res = await fetch(`${BASE_URL}/characterization/import-rm400`, {
+  const res = await fetch(`${BASE_URL}/characterization/import-spectral-file`, {
     method: 'POST',
     body: formData,
   });
-  if (!res.ok) throw new Error('X-Rite RM400 verisi içe aktarılamadı');
+  if (!res.ok) throw new Error('Spektral dosya içe aktarılamadı');
   return res.json();
 }
 
@@ -209,12 +213,18 @@ export async function fetchOptimizationProfiles(): Promise<OptimizationProfileIn
 export async function matchColor(payload: {
   target_reflectance: number[];
   base_id: number;
+  geometry?: string;
+  measurement_mode?: string;
+  optical_system?: string;
   paste_ids?: number[];
   max_pastes?: number;
   max_total_load?: number;
   k1?: number;
   k2?: number;
   profile_id?: string;
+  batch_size_g?: number;
+  scale_resolution_g?: number;
+  target_tolerance_de?: number;
 }): Promise<MatchResponse> {
   const res = await fetch(`${BASE_URL}/formulation/match`, {
     method: 'POST',
@@ -224,6 +234,76 @@ export async function matchColor(payload: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Reçete eşleştirme algoritması başarısız oldu');
+  }
+  return res.json();
+}
+
+export async function saveRecipe(payload: {
+  name: string;
+  base_id: number;
+  pastes: Array<{ paste_id?: number; id?: number; concentration: number; amount_g?: number }>;
+  predicted_reflectance: number[];
+  lab: [number, number, number] | { L: number; a: number; b: number };
+  hex_color: string;
+  delta_e00?: number;
+  contrast_ratio?: number;
+  profile_id?: string;
+  calculation_hash?: string;
+  calculation_id?: string;
+  geometry?: string;
+  batch_size_g?: number;
+  scale_resolution_g?: number;
+  input_hash?: string;
+  output_hash?: string;
+  recipe_confidence?: any;
+  operator_notes?: string;
+}): Promise<{
+  success: boolean;
+  id: number;
+  calculation_hash: string;
+  attempt_number: number;
+  message: string;
+}> {
+  const res = await fetch(`${BASE_URL}/formulation/recipes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Reçete kaydedilemedi');
+  }
+  return res.json();
+}
+
+export async function recordDrawdownMeasurement(
+  recipeId: number,
+  attemptNumber: number,
+  payload: {
+    measured_reflectance: number[];
+    sample_name?: string;
+    actual_dispensed?: Array<{ id: number | string; amount_g: number }>;
+    batch_size_g?: number;
+    operator_notes?: string;
+  }
+): Promise<{
+  success: boolean;
+  recipe_id: number;
+  attempt_number: number;
+  de00_predicted_vs_measured: number;
+  outcome: 'ACCEPTED' | 'ADDBACK_REQUIRED' | 'REJECTED';
+  outcome_message: string;
+  measured_lab: { L: number; a: number; b: number };
+  addback_suggestion?: any;
+}> {
+  const res = await fetch(`${BASE_URL}/formulation/recipes/${recipeId}/attempts/${attemptNumber}/result`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Drawdown ölçüm kaydı başarısız oldu');
   }
   return res.json();
 }
@@ -318,60 +398,6 @@ export async function measureChnspec(
   return res.json();
 }
 
-export async function getRm400Status(): Promise<Rm400StatusInfo> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/status`);
-  if (!res.ok) throw new Error('RM400 durumu alınamadı');
-  return res.json();
-}
-
-export async function connectRm400(): Promise<{
-  success: boolean;
-  connected: boolean;
-  is_mock: boolean;
-  connection_state: DeviceConnectionState;
-  message: string;
-}> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/connect`, { method: 'POST' });
-  if (!res.ok) throw new Error('RM400 bağlantı hatası');
-  return res.json();
-}
-
-export async function disconnectRm400(): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/disconnect`, { method: 'POST' });
-  if (!res.ok) throw new Error('RM400 bağlantısı kesilemedi');
-  return res.json();
-}
-
-export async function calibrateRm400(step: 'White' | 'Black' = 'White'): Promise<{
-  success: boolean;
-  step: string;
-  message: string;
-}> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/calibrate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ step }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'RM400 kalibrasyon hatası');
-  }
-  return res.json();
-}
-
-export async function measureRm400(sampleName: string = 'Lab Sample'): Promise<MeasurementRecord> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/measure`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sample_name: sampleName, save_to_archive: true }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'RM400 ölçüm hatası');
-  }
-  return res.json();
-}
-
 export async function compareInstruments(
   payload: InstrumentComparisonRequest
 ): Promise<InstrumentComparisonResult> {
@@ -390,12 +416,6 @@ export async function compareInstruments(
 export async function getChnspecCalibrationHealth(): Promise<CalibrationHealthInfo> {
   const res = await fetch(`${BASE_URL}/instruments/chnspec/calibration-health`);
   if (!res.ok) throw new Error('CHNSpec kalibrasyon durumu alınamadı');
-  return res.json();
-}
-
-export async function getRm400CalibrationHealth(): Promise<CalibrationHealthInfo> {
-  const res = await fetch(`${BASE_URL}/instruments/rm400/calibration-health`);
-  if (!res.ok) throw new Error('RM400 kalibrasyon durumu alınamadı');
   return res.json();
 }
 
@@ -594,3 +614,57 @@ export async function batchMatchCard(payload: {
   return res.json();
 }
 
+export async function fetchBootstrapStatus(): Promise<BootstrapSystemStatus> {
+  const res = await fetch(`${BASE_URL}/characterization/bootstrap-status`);
+  if (!res.ok) throw new Error('Bootstrap durum bilgisi alınamadı');
+  return res.json();
+}
+
+export async function setupBootstrapSystem(payload: {
+  clear_base_id: number;
+  bootstrap_black_paste_id: number;
+  bootstrap_white_paste_id: number;
+}): Promise<{
+  success: boolean;
+  message: string;
+  optical_system?: string;
+  [key: string]: any;
+}> {
+  const res = await fetch(`${BASE_URL}/characterization/bootstrap-system`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Bootstrap sistemi kurulum hatası');
+  }
+  return res.json();
+}
+
+export async function characterizeBaseFromBootstrap(
+  payload: CharacterizeBaseFromBootstrapPayload
+): Promise<CharacterizeBaseResponse> {
+  const res = await fetch(`${BASE_URL}/characterization/base-from-bootstrap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Baz karakterizasyon hatası');
+  }
+  return res.json();
+}
+
+export async function fetchRecipeAttempts(recipeId: number): Promise<RecipeHistoryAttempt[]> {
+  const res = await fetch(`${BASE_URL}/formulation/recipes/${recipeId}/attempts`);
+  if (!res.ok) throw new Error('Reçete deneme geçmişi yüklenemedi');
+  return res.json();
+}
+
+export async function fetchFactoryBatches(limit: number = 50): Promise<FactoryBatchRecord[]> {
+  const res = await fetch(`${BASE_URL}/formulation/batches?limit=${limit}`);
+  if (!res.ok) throw new Error('Fabrika üretim parti geçmişi yüklenemedi');
+  return res.json();
+}

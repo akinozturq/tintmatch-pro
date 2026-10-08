@@ -14,13 +14,13 @@ try:
     from backend.color_engine.constants import WAVELENGTHS, N_WAVELENGTHS
     from backend.color_engine.saunderson import saunderson_correction
     from backend.color_engine.kubelka_munk import characterize_letdown_series, reflectance_to_ks
-    from backend.color_engine.rm400_parser import get_industrial_sample_datasets
+    from backend.color_engine.spectral_parser import get_industrial_sample_datasets
     from backend.color_engine.colorimetry import reflectance_to_hex, reflectance_to_lab
 except ImportError:
     from color_engine.constants import WAVELENGTHS, N_WAVELENGTHS
     from color_engine.saunderson import saunderson_correction
     from color_engine.kubelka_munk import characterize_letdown_series, reflectance_to_ks
-    from color_engine.rm400_parser import get_industrial_sample_datasets
+    from color_engine.spectral_parser import get_industrial_sample_datasets
     from color_engine.colorimetry import reflectance_to_hex, reflectance_to_lab
 
 DB_PATH = Path(__file__).resolve().parent / "tintmatch.db"
@@ -50,6 +50,9 @@ def init_db():
         absorption_k TEXT NOT NULL,
         scattering_s TEXT NOT NULL,
         geometry TEXT DEFAULT '45°/0°',
+        measurement_mode TEXT DEFAULT 'SCI',
+        optical_system TEXT DEFAULT 'bootstrap_v1',
+        is_bootstrap_base BOOLEAN DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -66,6 +69,9 @@ def init_db():
         unit_s TEXT NOT NULL,
         unit_ks TEXT NOT NULL,
         geometry TEXT NOT NULL DEFAULT '45°/0°',
+        measurement_mode TEXT NOT NULL DEFAULT 'SCI',
+        optical_system TEXT NOT NULL DEFAULT 'bootstrap_v1',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
         characterization_version INTEGER DEFAULT 1,
         active_characterization_id INTEGER,
         mean_delta_e00 REAL NOT NULL DEFAULT 0.0,
@@ -83,9 +89,9 @@ def init_db():
         paste_name TEXT,
         base_id INTEGER,
         base_name TEXT,
-        instrument TEXT DEFAULT 'X-Rite RM400 (45°/0°)',
+        instrument TEXT DEFAULT 'CHNSpec DS-36D (d/8°)',
         instrument_id INTEGER,
-        geometry TEXT DEFAULT '45°/0°',
+        geometry TEXT DEFAULT 'd/8°',
         measurement_mode TEXT DEFAULT 'SCI',
         version INTEGER DEFAULT 1,
         measurement_context_json TEXT,
@@ -128,10 +134,10 @@ def init_db():
     CREATE TABLE IF NOT EXISTS instruments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        model TEXT NOT NULL DEFAULT 'X-Rite RM400',
+        model TEXT NOT NULL DEFAULT 'CHNSpec DS-36D',
         serial_number TEXT UNIQUE,
-        geometry TEXT NOT NULL DEFAULT '45°/0°',
-        aperture_mm REAL NOT NULL DEFAULT 4.0,
+        geometry TEXT NOT NULL DEFAULT 'd/8°',
+        aperture_mm REAL NOT NULL DEFAULT 10.0,
         calibration_date TIMESTAMP,
         calibration_expiry_hours INTEGER DEFAULT 8,
         last_calibrated_at TIMESTAMP,
@@ -199,6 +205,16 @@ def init_db():
         cur.execute("ALTER TABLE recipes ADD COLUMN characterization_version INTEGER DEFAULT 1")
     if "characterization_ids_json" not in recipe_cols:
         cur.execute("ALTER TABLE recipes ADD COLUMN characterization_ids_json TEXT")
+    if "input_hash" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN input_hash TEXT")
+    if "output_hash" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN output_hash TEXT")
+    if "batch_size_g" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN batch_size_g REAL DEFAULT 1000.0")
+    if "scale_resolution_g" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN scale_resolution_g REAL DEFAULT 0.01")
+    if "recipe_confidence_json" not in recipe_cols:
+        cur.execute("ALTER TABLE recipes ADD COLUMN recipe_confidence_json TEXT")
 
     # Migrate recipe_history table columns
     cur.execute("PRAGMA table_info(recipe_history)")
@@ -209,6 +225,22 @@ def init_db():
         cur.execute("ALTER TABLE recipe_history ADD COLUMN characterization_ids_json TEXT")
     if "calculation_id" not in hist_cols:
         cur.execute("ALTER TABLE recipe_history ADD COLUMN calculation_id TEXT")
+    if "batch_size_g" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN batch_size_g REAL DEFAULT 1000.0")
+    if "scale_resolution_g" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN scale_resolution_g REAL DEFAULT 0.01")
+    if "actual_dispensed_json" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN actual_dispensed_json TEXT")
+    if "measured_reflectance" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN measured_reflectance TEXT")
+    if "measured_lab_json" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN measured_lab_json TEXT")
+    if "de00_predicted_vs_measured" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN de00_predicted_vs_measured REAL")
+    if "outcome" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN outcome TEXT DEFAULT 'PENDING'")
+    if "addback_suggestion_json" not in hist_cols:
+        cur.execute("ALTER TABLE recipe_history ADD COLUMN addback_suggestion_json TEXT")
 
     # Migrate instruments table columns
     cur.execute("PRAGMA table_info(instruments)")
@@ -223,6 +255,12 @@ def init_db():
     base_cols = [row[1] for row in cur.fetchall()]
     if "geometry" not in base_cols:
         cur.execute("ALTER TABLE bases ADD COLUMN geometry TEXT DEFAULT '45°/0°'")
+    if "measurement_mode" not in base_cols:
+        cur.execute("ALTER TABLE bases ADD COLUMN measurement_mode TEXT DEFAULT 'SCI'")
+    if "optical_system" not in base_cols:
+        cur.execute("ALTER TABLE bases ADD COLUMN optical_system TEXT DEFAULT 'bootstrap_v1'")
+    if "is_bootstrap_base" not in base_cols:
+        cur.execute("ALTER TABLE bases ADD COLUMN is_bootstrap_base BOOLEAN DEFAULT 0")
 
     # Migrate measurements table columns
     cur.execute("PRAGMA table_info(measurements)")
@@ -263,6 +301,47 @@ def init_db():
         cur.execute("ALTER TABLE pastes ADD COLUMN active_characterization_id INTEGER REFERENCES characterizations(id)")
     if "cost_per_kg" not in paste_cols:
         cur.execute("ALTER TABLE pastes ADD COLUMN cost_per_kg REAL DEFAULT 150.0")
+    if "measurement_mode" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN measurement_mode TEXT NOT NULL DEFAULT 'SCI'")
+    if "optical_system" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN optical_system TEXT NOT NULL DEFAULT 'bootstrap_v1'")
+    if "status" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'")
+    if "bootstrap_role" not in paste_cols:
+        cur.execute("ALTER TABLE pastes ADD COLUMN bootstrap_role TEXT DEFAULT NULL")
+
+    # Synchronize status: Auto-reject pastes that failed validation
+    cur.execute("UPDATE pastes SET status = 'REJECTED' WHERE passed_validation = 0")
+    cur.execute("UPDATE pastes SET status = 'ACTIVE' WHERE passed_validation = 1 AND (status IS NULL OR status = '')")
+
+    # Set bootstrap roles for standard seeded records if null
+    cur.execute("UPDATE pastes SET bootstrap_role = 'black' WHERE code = 'PBk7' AND bootstrap_role IS NULL")
+    cur.execute("UPDATE bases SET is_bootstrap_base = 1 WHERE code = 'BASE-D' AND (is_bootstrap_base = 0 OR is_bootstrap_base IS NULL)")
+
+    cur.execute("SELECT id FROM pastes WHERE code = 'PW6'")
+    if not cur.fetchone():
+        white_k = [0.015 + (i * 0.001) for i in range(31)]
+        white_s = [1.25 - (i * 0.008) for i in range(31)]
+        white_ks = [k / s for k, s in zip(white_k, white_s)]
+        cur.execute("SELECT id FROM bases WHERE code = 'BASE-D'")
+        base_d_r = cur.fetchone()
+        base_d_id = base_d_r[0] if base_d_r else 1
+        cur.execute("""
+        INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, measurement_mode, optical_system, status, bootstrap_role, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'd/8°', 'SCI', 'bootstrap_v1', 'ACTIVE', 'white', 1, 0.12, 1, ?)
+        """, (
+            "Titanium Dioxide White", "PW6", "#f8fafc", 2.10,
+            json.dumps([round(v, 4) for v in white_k]),
+            json.dumps([round(v, 4) for v in white_s]),
+            json.dumps([round(v, 4) for v in white_ks]),
+            base_d_id
+        ))
+        pw6_id = cur.lastrowid
+        cur.execute("""
+        INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+        VALUES (?, 'Titanium Dioxide White', ?, 'Base D - Transparent Clear', 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, 0.04, 0.60, '[]', '{}', 0.12, 1)
+        """, (pw6_id, base_d_id))
+        cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pw6_id))
 
     # Can Sizes table (Pre-filled can sizes with headspace check)
     cur.execute("""
@@ -335,13 +414,6 @@ def init_db():
     if cur.fetchone()[0] == 0:
         cur.execute("""
         INSERT INTO instruments (name, model, serial_number, geometry, aperture_mm, calibration_date)
-        VALUES ('Primary Lab Spectrophotometer', 'X-Rite RM400', 'XR-RM400-08941', '45°/0° Directional', 4.0, CURRENT_TIMESTAMP)
-        """)
-
-    cur.execute("SELECT COUNT(*) FROM instruments WHERE model LIKE '%DS-36D%'")
-    if cur.fetchone()[0] == 0:
-        cur.execute("""
-        INSERT INTO instruments (name, model, serial_number, geometry, aperture_mm, calibration_date)
         VALUES ('CHNSpec Benchtop Spectrophotometer', 'CHNSpec DS-36D', 'DS36D-COM4', 'd/8° Integrating Sphere', 10.0, CURRENT_TIMESTAMP)
         """)
 
@@ -354,7 +426,10 @@ def init_db():
 
     # Check if configuration data needs seeding
     cur.execute("SELECT COUNT(*) FROM can_sizes")
-    if cur.fetchone()[0] == 0:
+    has_cans = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM products")
+    has_products = cur.fetchone()[0]
+    if has_cans == 0 or has_products == 0:
         _seed_configuration_data(conn)
 
     conn.close()
@@ -449,10 +524,10 @@ def _seed_default_data(conn: sqlite3.Connection):
         # Insert characterization record
         cur.execute("""
         INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-        VALUES (?, ?, ?, ?, ?, '45°/0°', 'SPEX', 1, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, 'd/8°', 'SCI', 1, ?, ?, ?, ?, ?, ?)
         """, (
             paste_id, pdata["name"], base_a_id, "Base A - Opaque White",
-            "X-Rite RM400 (45°/0° Spectrophotometer)", 0.04, 0.60,
+            "CHNSpec DS-36D (d/8° Spectrophotometer)", 0.04, 0.60,
             json.dumps(pdata["letdowns"]), json.dumps(res),
             res["mean_delta_e00"], 1 if res["passed_validation"] else 0
         ))
@@ -465,7 +540,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     black_ks = [k / s for k, s in zip(black_k, black_s)]
     cur.execute("""
     INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'd/8°', 1, ?, ?, ?)
     """, (
         "Carbon Black", "PBk7", "#18181b", 1.15,
         json.dumps([round(v, 4) for v in black_k]),
@@ -476,7 +551,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     pbk7_id = cur.lastrowid
     cur.execute("""
     INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-    VALUES (?, 'Carbon Black', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.18, 1)
+    VALUES (?, 'Carbon Black', ?, 'Base A - Opaque White', 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, 0.04, 0.60, '[]', '{}', 0.18, 1)
     """, (pbk7_id, base_a_id))
     cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pbk7_id))
 
@@ -485,7 +560,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     yellow_ks = [k / s for k, s in zip(yellow_k, yellow_s)]
     cur.execute("""
     INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'd/8°', 1, ?, ?, ?)
     """, (
         "Bismuth Vanadate Yellow", "PY184", "#eab308", 1.85,
         json.dumps([round(v, 4) for v in yellow_k]),
@@ -496,7 +571,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     py184_id = cur.lastrowid
     cur.execute("""
     INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-    VALUES (?, 'Bismuth Vanadate Yellow', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.22, 1)
+    VALUES (?, 'Bismuth Vanadate Yellow', ?, 'Base A - Opaque White', 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, 0.04, 0.60, '[]', '{}', 0.22, 1)
     """, (py184_id, base_a_id))
     cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, py184_id))
 
@@ -506,7 +581,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     magenta_ks = [k / s for k, s in zip(magenta_k, magenta_s)]
     cur.execute("""
     INSERT INTO pastes (name, code, color_hex, density, unit_k, unit_s, unit_ks, geometry, characterization_version, mean_delta_e00, passed_validation, characterization_base_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, '45°/0°', 1, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'd/8°', 1, ?, ?, ?)
     """, (
         "Quinacridone Magenta", "PR122", "#db2777", 1.30,
         json.dumps([round(v, 4) for v in magenta_k]),
@@ -517,7 +592,7 @@ def _seed_default_data(conn: sqlite3.Connection):
     pr122_id = cur.lastrowid
     cur.execute("""
     INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
-    VALUES (?, 'Quinacridone Magenta', ?, 'Base A - Opaque White', 'X-Rite RM400 (45°/0°)', '45°/0°', 'SPEX', 1, 0.04, 0.60, '[]', '{}', 0.24, 1)
+    VALUES (?, 'Quinacridone Magenta', ?, 'Base A - Opaque White', 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, 0.04, 0.60, '[]', '{}', 0.24, 1)
     """, (pr122_id, base_a_id))
     cur.execute("UPDATE pastes SET active_characterization_id = ? WHERE id = ?", (cur.lastrowid, pr122_id))
 

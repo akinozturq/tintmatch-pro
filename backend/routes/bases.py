@@ -56,6 +56,10 @@ def list_bases():
             "reflectance": refl,
             "absorption_k": json.loads(r["absorption_k"]),
             "scattering_s": json.loads(r["scattering_s"]),
+            "geometry": r["geometry"] if "geometry" in r.keys() else "45°/0°",
+            "measurement_mode": r["measurement_mode"] if "measurement_mode" in r.keys() else "SCI",
+            "optical_system": r["optical_system"] if "optical_system" in r.keys() else "bootstrap_v1",
+            "is_bootstrap_base": bool(r["is_bootstrap_base"]) if "is_bootstrap_base" in r.keys() else False,
             "hex": hex_c,
             "lab": {
                 "L": round(lab[0], 2),
@@ -88,6 +92,10 @@ def get_base(base_id: int):
         "reflectance": refl,
         "absorption_k": json.loads(row["absorption_k"]),
         "scattering_s": json.loads(row["scattering_s"]),
+        "geometry": row["geometry"] if "geometry" in row.keys() else "45°/0°",
+        "measurement_mode": row["measurement_mode"] if "measurement_mode" in row.keys() else "SCI",
+        "optical_system": row["optical_system"] if "optical_system" in row.keys() else "bootstrap_v1",
+        "is_bootstrap_base": bool(row["is_bootstrap_base"]) if "is_bootstrap_base" in row.keys() else False,
         "hex": reflectance_to_hex(refl),
         "lab": {
             "L": round(lab[0], 2),

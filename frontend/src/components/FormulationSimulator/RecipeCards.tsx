@@ -18,6 +18,23 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
 }) => {
   if (!allRecipes) return null;
 
+  const renderConfidenceBadge = (recipe?: RecipeMatch) => {
+    const conf = recipe?.recipe_confidence;
+    if (!conf) return null;
+    const color =
+      conf.status_color === 'green'
+        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+        : conf.status_color === 'yellow'
+        ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+        : 'text-rose-400 bg-rose-500/10 border-rose-500/30';
+    return (
+      <div className={`mt-1 px-1.5 py-0.5 rounded text-[9px] font-mono border inline-flex items-center gap-1 ${color}`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+        <span>Güven: {conf.score}/100</span>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-2 pt-2 border-t border-[var(--border)]">
       <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)]">
@@ -35,7 +52,12 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
               : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete A</div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete A</span>
+            <span className="text-[9px] font-mono text-[var(--text-muted)]">
+              {allRecipes.recipe_a?.matched_pastes?.length || 0} pasta
+            </span>
+          </div>
           <div className="text-[9px] text-[var(--text-muted)]">Color Match</div>
           <div className="mt-1 font-mono text-[11px] font-bold text-[var(--brand-clay)]">
             ΔE {allRecipes.recipe_a?.delta_e00?.toFixed(2) || '0.00'}
@@ -43,6 +65,7 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
           <div className="text-[9px] font-mono text-[var(--text-muted)]">
             %{allRecipes.recipe_a?.total_load?.toFixed(1) || '0.0'} yük
           </div>
+          {renderConfidenceBadge(allRecipes.recipe_a)}
         </button>
 
         {/* Recipe B Card */}
@@ -55,7 +78,12 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
               : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete B</div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete B</span>
+            <span className="text-[9px] font-mono text-[var(--text-muted)]">
+              {allRecipes.recipe_b?.matched_pastes?.length || 0} pasta
+            </span>
+          </div>
           <div className="text-[9px] text-[var(--text-muted)]">Light Stability</div>
           <div className="mt-1 font-mono text-[11px] font-bold text-[var(--warning-text)]">
             MI {allRecipes.recipe_b?.composite_mi?.toFixed(2) || '0.00'}
@@ -63,6 +91,7 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
           <div className="text-[9px] font-mono text-[var(--text-muted)]">
             ΔE {allRecipes.recipe_b?.delta_e00?.toFixed(2) || '0.00'}
           </div>
+          {renderConfidenceBadge(allRecipes.recipe_b)}
         </button>
 
         {/* Recipe C Card */}
@@ -75,7 +104,12 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
               : 'bg-[var(--surface-0)] border border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
-          <div className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete C</div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-[var(--text-primary)] truncate">Reçete C</span>
+            <span className="text-[9px] font-mono text-[var(--text-muted)]">
+              {allRecipes.recipe_c?.matched_pastes?.length || 0} pasta
+            </span>
+          </div>
           <div className="text-[9px] text-[var(--text-muted)]">Ekonomi / Yük</div>
           <div className="mt-1 font-mono text-[11px] font-bold text-[var(--success-text)]">
             %{allRecipes.recipe_c?.total_load?.toFixed(1) || '0.0'}
@@ -83,6 +117,7 @@ export const RecipeCards: React.FC<RecipeCardsProps> = ({
           <div className="text-[9px] font-mono text-[var(--text-muted)]">
             ΔE {allRecipes.recipe_c?.delta_e00?.toFixed(2) || '0.00'}
           </div>
+          {renderConfidenceBadge(allRecipes.recipe_c)}
         </button>
       </div>
     </div>

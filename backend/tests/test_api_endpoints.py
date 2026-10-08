@@ -68,9 +68,9 @@ def test_characterization_samples_and_calculate():
     assert len(calc_data["unit_s"]) == 31
 
 
-def test_rm400_import_endpoint():
-    csv_content = "# X-Rite RM400 Export\nWavelength;PG7_1%\n" + "\n".join(f"{400+i*10};{(0.1+i*0.01):.4f}" for i in range(31))
-    resp = client.post("/api/characterization/import-rm400", data={"raw_text": csv_content})
+def test_spectral_file_import_endpoint():
+    csv_content = "# CHNSpec DS-36D Export\nWavelength;PG7_1%\n" + "\n".join(f"{400+i*10};{(0.1+i*0.01):.4f}" for i in range(31))
+    resp = client.post("/api/characterization/import-spectral-file", data={"raw_text": csv_content})
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["samples"]) >= 1

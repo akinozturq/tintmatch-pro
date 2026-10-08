@@ -26,8 +26,8 @@ def test_compare_identical_spectra():
     res = compare_spectral_measurements(
         ref_spectrum=spectrum,
         target_spectrum=spectrum,
-        ref_meta={"instrument": "Test RM400", "geometry": "45°/0°"},
-        target_meta={"instrument": "Test RM400 #2", "geometry": "45°/0°"}
+        ref_meta={"instrument": "CHNSpec DS-36D #1", "geometry": "d/8°"},
+        target_meta={"instrument": "CHNSpec DS-36D #2", "geometry": "d/8°"}
     )
     assert res["success"] is True
     assert res["colorimetric_difference"]["delta_e00"] < 1e-3
@@ -47,7 +47,7 @@ def test_compare_cross_geometry_gloss_trap():
     res = compare_spectral_measurements(
         ref_spectrum=body_r,
         target_spectrum=sci_r,
-        ref_meta={"instrument": "X-Rite RM400", "geometry": "45°/0°", "mode": "SPEX"},
+        ref_meta={"instrument": "Reference 45/0", "geometry": "45°/0°", "mode": "SPEX"},
         target_meta={"instrument": "CHNSpec DS-36D", "geometry": "d/8°", "mode": "SCI"}
     )
     assert res["success"] is True
@@ -68,7 +68,7 @@ def test_api_instruments_compare_endpoint():
         "target_reflectance": target_r,
         "ref_geometry": "45°/0°",
         "target_geometry": "d/8°",
-        "ref_name": "RM400 Reference",
+        "ref_name": "Reference 45/0",
         "target_name": "DS-36D Target",
         "ref_mode": "SPEX",
         "target_mode": "SCI"

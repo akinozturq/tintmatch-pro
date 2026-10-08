@@ -12,4 +12,4 @@ from .colorimetry import (
     calculate_composite_metamerism,
 )
 from .formulation import predict_recipe, match_color_ccm, evaluate_recipe_objective, calculate_pigment_sensitivity_matrix
-from .rm400_parser import parse_rm400_content, get_industrial_sample_datasets, generate_sample_rm400_csv
+from .spectral_parser import parse_spectral_content, get_industrial_sample_datasets, generate_sample_spectral_csv

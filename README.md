@@ -6,266 +6,219 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-193%20passed%20%7C%2083%25%20cov-brightgreen)](backend/tests/)
-[![CCM Validation](https://img.shields.io/badge/CCM%20Validation-1.0%20(12%20Pillars)-success)](#-ccm-validation-10-end-to-end-sayısal-doğrulama-ve-kıyaslama-paketi)
-[![Standard](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20ISO%2017972--3-blue)](https://www.iso.org/standard/66597.html)
+[![Tests](https://img.shields.io/badge/Tests-202%20passed%20%7C%20100%25%20success-brightgreen)](backend/tests/)
+[![CCM Industrial Engine](https://img.shields.io/badge/CCM%20Engine-2.0%20(Deterministic%20SLSQP)-success)](#-endüstriyel-ve-laboratuvar-odaklı-temel-yetenekler)
+[![Hardware](https://img.shields.io/badge/Spectrophotometer-CHNSpec%20DS--36D%20(d%2F8°)-blue)](#-donanım-entegrasyonu-chnspec-ds-36d)
+[![Color Science](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20Saunderson%20K--M-blue)](https://www.iso.org/standard/66597.html)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
-> **B2B Spektrofotometrik Renklendirici Pasta ve Baz Karakterizasyonu & Bilgisayarlı Renk Eşleme (CCM - Computer Color Matching) Web Uygulaması**
+> **B2B Spektrofotometrik Renklendirici Karakterizasyonu & Endüstriyel Bilgisayarlı Renk Eşleme (CCM - Computer Color Matching) Platformu**
 
-**TintMatch PRO**, boya, kaplama, otomotiv ve mürekkep sanayiine yönelik olarak tasarlanmış; **CHNSpec DS-36D** (d/8° entegre küre) ve **X-Rite RM400** (45°:0°) spektrofotometre donanım entegrasyonuna sahip, **Saunderson yüzey düzeltmesi** ile **Çift Sabitli Kubelka-Munk** modelini çalıştıran, $\Delta E_{00} < 0.30$ self-fit, LOOCV $\le 0.50$ dış-örneklem doğrulama kapıları ve **CCM VALIDATION 1.0 (12 Pillar)** kapsamlı endüstriyel sayısal doğrulama ve kıyaslama (standard-referenced computational validation) paketine sahip profesyonel bir endüstriyel laboratuvar platformudur.
+**TintMatch PRO**, boya, kaplama, masterbatch ve kimya sanayiinde laboratuvar koloristlerinin ve fabrika operatörlerinin her gün güvenle kullanabileceği; **CHNSpec DS-36D** (d/8° entegre küre) spektrofotometre donanım entegrasyonuna sahip, **Saunderson yüzey düzeltmeli Çift Sabitli Kubelka-Munk** modelini çalıştıran, **0.01 g manuel terazi hassasiyetinde** üretilebilir reçeteler sunan profesyonel bir endüstriyel renk laboratuvarı platformudur.
+
+---
+
+## 🎯 Endüstriyel ve Laboratuvar Odaklı Temel Yetenekler
+
+```text
+       Hedef Numune Ölçümü (CHNSpec DS-36D)
+                        ↓
+    Güvenlik Kapısı (Geometri, Mod & Onaylı Pasta Kontrolü)
+                        ↓
+     SLSQP Deterministik Çözücü (Önayarlı Optimizasyon)
+                        ↓
+     0.01 g Terazi Yuvarlama & Dozajlanabilir Net Tablo
+                        ↓
+     Fiziksel Çekim (Drawdown) & DS-36D Doğrulama
+                        ↓
+    ΔE₀₀ Tolerans İçi?  ── Evet ──>  [ ✓ KABUL EDİLDİ ] (Reçeteyi Arşive Kaydet)
+         │
+       Hayır
+         ↓
+  [ 🧪 Otomatik Add-Back ] ──> Tanka İlave Gram Önerisi (Yeni Karışım)
+```
+
+### 1. 0.01 g Terazi Hassasiyeti & Değişken Parti Boyutu
+- Laboratuvarda **100 g deneme** boyundan, fabrikada **5000 kg tank üretimine** kadar her parti boyutu desteklenir.
+- Solver çıktıları laboratuvar terazisinin hassasiyetine (**0.01 g**) analitik olarak yuvarlanır.
+- Taşıyıcı baz miktarı formülasyon kuralına göre hesaplanır:
+  $$W_{\text{baz}} = W_{\text{parti}} - \sum W_{\text{pasta}}$$
+- Reçete tablosunda hem **Net Tartım Gramı** hem de operatörün teraziyi sıfırlamadan ardışık döküm yapabileceği **Kümülatif Tartım Gramı** gösterilir.
+
+### 2. Bootstrap Optik Karakterizasyon Çerçevesi
+- Endüstri standardı 3-aşamalı bootstrap kalibrasyon:
+  1. **Aşama 1 (Bootstrap Çekirdek):** 1 Şeffaf Baz, 1 Standart Siyah Pasta ve 1 Standart Beyaz Pasta referans sistemi olarak karakterize edilir.
+  2. **Aşama 2 (Renklendirici Pastalar):** Tüm diğer pastalar bu bootstrap referans üçlüsü üzerinden bağımsız olarak karakterize edilir.
+  3. **Aşama 3 (Taşıyıcı Bazlar):** Tüm diğer baz boyalar (A bazı, B bazı vb.) bootstrap pastalar ile seyreltilerek optik saçılma/soğurma profilleri çıkarılır.
+
+### 3. Önayarlı Reçete Optimizasyonu (3 Net Önayar)
+Gereksiz kafa karışıklığını önlemek için tek ve odaklı bir reçete tablosu üzerinde 3 optimizasyon önayarı:
+- 🎯 **En İyi Renk (Min $\Delta E_{00}$):** D65 günışığı altında hedefe en yakın kolorimetrik eşleşme.
+- 💡 **Düşük Metamerizm:** D65, A (akkor flaman) ve F2/F11 (floresan) ışıkları altında renk stabilitesi.
+- 💰 **En Uygun Fiyat:** Minimum pasta sayısı ve hammadde maliyeti tasarrufu.
+
+### 4. Fiziksel Drawdown Doğrulaması & Otomatik Add-Back Motoru
+- Formül hazırlandıktan sonra çekilen numune filmi (drawdown) **CHNSpec DS-36D** ile tek tıkla okunur.
+- Hedef ile çekim arasındaki fark hesaplanır:
+  - $\Delta E_{00} \le 0.50 \implies$ **Kabul Edildi** (Doğrulanmış Golden Batch olarak arşive kaydedilir).
+  - $0.50 < \Delta E_{00} \le 1.50 \implies$ **İlave Gerekiyor (Add-Back):** Partiyi kurtarmak için tanka eklenecek ilave pasta gramajları otomatik hesaplanır.
+  - $\Delta E_{00} > 1.50 \implies$ **Reddedildi:** Formül iptal edilir, operatöre uyarı verilir.
+
+### 5. Innovatint Uyumlu Ambalaj ve Teneke Ölçekleme
+- **1 L Kutu, 2.5 L Galon, 15 L Kova** gibi standart ambalaj boyutları.
+- Otomatik tepe boşluğu (headspace) ve kova maliyeti hesaplama.
+- Dozajlama ve ambalaj etiket çıktısı (`window.print()`).
+
+### 6. Deterministik Çözücü & Kanonik Dual Hash İzlenebilirliği
+- Aynı girdiye (hedef spektrum, baz, pasta havuzu, tolerans) her zaman **bit düzeyinde aynı reçete çıktısı**.
+- Random seed veya rastlantısal optimizasyon adımları tamamen engellenmiştir.
+- Her hesaplama, girdi ve çıktı için bağımsız kanonik **SHA-256 hash** ile mühürlenir.
+
+### 7. Reçete Güven Skoru & Kalite Kapıları
+- Bilimsel diagnostik operatör kararına dönüştürülür:
+  - **🟢 YÜKSEK (85-100):** Karakterizasyon geçerli, ekstrapolasyon yok, dozaj tartılabilir.
+  - **🟡 ORTA (65-84):** İnce ayar gerekebilir, sınır konsantrasyonlara yakın.
+  - **🔴 BLOKE (< 65):** Uyumsuz geometri, reddedilmiş pasta veya tartılamaz mikro-dozaj riski.
+
+---
+
+## 🖥️ 4 Temel Laboratuvar Ekranı (Sadeleştirilmiş UI/UX)
+
+TintMatch PRO arayüzü, laboratuvar koloristinin pratik iş akışına göre 4 odaklı çalışma masasında toplanmıştır:
+
+1. **CCM Reçete Masası (`formulation`) [Varsayılan Ana Ekran]:**
+   - 📷 **[CHNSpec DS-36D ile Oku]:** Tek tıkla spektrofotometreden 31 dalga boyu hedef okuma ve hedef açıklığına ($L^*$) göre baz boya otomatik önerisi.
+   - **Renk Paleti & RAL/NCS Hızlı Kartelası:** Manuel renk seçimi veya hazır karteladan yükleme.
+   - **Önayar Seçimi:** 🎯 En İyi Renk | 💡 Düşük Metamerizm | 💰 En Uygun Fiyat.
+   - **0.01 g Üretilebilir Tartım Tablosu:** Net ve kümülatif tartım, iş emri yazdırma, panoya kopyalama.
+   - **[💾 Reçeteyi Kaydet]:** Tek tıkla reçeteyi üretim arşivine aktarma.
+   - **[🎚️ Manuel Sürgülere Aktar]:** Otomatik reçetedeki oranları sürgülere aktararak $\pm 0.1$ g hassas ayarlama.
+   - **[📦 Kutu & Ambalaj Boyutları]:** Katlanabilir panelde 1L, 2.5L, 15L kova ölçekleri.
+   - **[🧪 Drawdown & Add-Back]:** Çekim doğrulaması ve tank düzeltmesi.
+
+2. **K-M Karakterizasyon Sihirbazı (`wizard`):**
+   - 3 Aşamalı Bootstrap kalibrasyonu.
+   - CxF3 XML, CSV ve spektrofotometreden ham letdown spektrumları yükleme.
+   - Sunucu tarafında K/S ve Saunderson matris türetimi.
+   - LOOCV (Leave-One-Out Cross-Validation) $\le 0.50$ ve Self-Fit $\le 0.30$ kalite kapısı denetimi.
+
+3. **Laboratuvar Kütüphanesi & Kartelalar (`library`):**
+   - **Pastalar & Bazlar:** K/S logaritmik spektral eğrileri, birim yoğunluklar, fiyatlar ve yeni baz ekleme.
+   - **Renk Kartelaları:** Standart RAL, NCS kartelaları oluşturma, renk ekleme ve 1 tıkla CCM hedefi olarak aktarma.
+   - **Kutu & Ambalaj Boyutları:** Ambalaj tanımlama, dara ve tepe boşlukları.
+   - **Üretim & Reçete Arşivi:** Geçmiş formülasyon denemeleri, attempt geçmişi ve drawdown sonuçları.
+
+4. **Spektrofotometre Yönetimi (`spectro`):**
+   - CHNSpec DS-36D seri port (COM) algılama ve canlı bağlantı.
+   - Siyah/Beyaz karo kalibrasyonu ve 8 saatlik vardiya sayacı denetimi (HTTP 428 kapısı).
 
 ---
 
 ## 🔬 Bilimsel ve Matematiksel Çekirdek
 
-### 1. Spektral Çözünürlük ve Optik Geometri
+### Spektral Çözünürlük ve Optik Geometri
 - **Ölçüm Aralığı:** 400 nm – 700 nm, 10 nm çözünürlük (**31 spektral kanal**).
-- **Cihaz Geometrisi:** 
-  - CHNSpec DS-36D: d/8° difüz entegre küre geometrisi (SCI speküler dahil & SCE speküler hariç).
-  - X-Rite RM400: 45°:0° dairesel aydınlatma / dik algılama (SPEX).
-- **Kolorimetri Standardı:** CIE D65 Aydınlatıcı (6504 K Günışığı) & CIE 1964 10° Ek Standart Gözlemci (ASTM E308 / ISO 18314).
+- **Cihaz Geometrisi:** d/8° entegre küre geometrisi (SCI speküler dahil & SCE speküler hariç).
+- **Kolorimetri Standardı:** CIE D65 Aydınlatıcı (6504 K) & CIE 1964 10° Standart Gözlemci (ASTM E308 / ISO 18314).
 
-### 2. Saunderson Yüzey Yansıma Düzeltmesi
-Hava ile boya filmi ($n \approx 1.5$) arasındaki kırılma indisi farkından kaynaklanan dış Fresnel yansımasını ve iç yayılma yansımasını ayrıştırarak gerçek pigment etkileşimini temsil eden iç reflektansı ($R_i$) türetir:
+### Saunderson Yüzey Düzeltmesi
+Fresnel dış yansıması ($k_1 = 0.040$) ve iç yayılma yansıması ($k_2 = 0.600$) ayrılarak iç reflektans ($R_i$) türetilir:
 $$R_i(\lambda) = \frac{R_m(\lambda) - k_1}{1 - k_1 - k_2 + k_2 R_m(\lambda)}$$
 
-Ters Saunderson dönüşümü ile iç reflektanstan ölçülebilir yüzey yansıması ($R_m$) hesaplanır:
-$$R_m(\lambda) = k_1 + \frac{(1 - k_1)(1 - k_2) R_i(\lambda)}{1 - k_2 R_i(\lambda)}$$
-
-*Varsayılan Fresnel Katsayıları:* $k_1 = 0.040$ (Dış Yüzey Yansıması), $k_2 = 0.600$ (İç Yayılma Yansıması). Çift yönlü analitik bijeksiyon doğruluğu $\pm 10^{-6}$ olarak test edilmiştir.
-
-### 3. Çift Sabitli Kubelka-Munk Modeli (Two-Constant K-M)
-Her dalga boyunda pigmentlerin soğurma katsayısı $K(\lambda)$ ve saçılma katsayısı $S(\lambda)$ ayrı ayrı optimize edilir:
+### Çift Sabitli Kubelka-Munk Modeli (Two-Constant K-M)
 $$a(\lambda) = 1 + \frac{K(\lambda)}{S(\lambda)}, \quad b(\lambda) = \sqrt{a(\lambda)^2 - 1}$$
 $$R(K, S, x, R_g) = \frac{1 - R_g [a - b \coth(b S x)]}{a + b \coth(b S x) - R_g}$$
-
-Şeffaf limit durumunda ($S \to 0$), model otomatik ve süreklilikle **Beer-Lambert** yasasına ($R = R_g e^{-2 K x}$) geçer.
-
-> [!NOTE]
-> **Kubelka-Munk Baz Saçılma Ölçekleme Notu:** Formülasyon hesaplamalarında $S_{\text{base}}(\lambda) = 1.0$ kabulü, literatürde ve endüstriyel CCM sistemlerinde standart bir *referans ölçekleme kuralıdır* (relative optical scale convention). Bu kabul, baz boyanın mutlak fiziksel saçılmasının tam olarak $1.0$ olduğunu iddia etmez; renklendirici pastaların birim $K(\lambda)$ ve $S(\lambda)$ katsayılarının baz boyaya göreli normalize edilmiş optik ölçeğini tanımlar. Farklı baz boyalar için doğrudan ölçülen $K_{\text{base}}$ ve $S_{\text{base}}$ spektrumları desteklenmektedir.
-
-### 4. K-M Film Kalınlığı ve Kritik Örtücülük ($x_{98}$) Kalibrasyonu
-- **Kritik Örtücülük Kalınlığı ($x_{98}$):** ASTM D2805 / ISO 2814 standardına uygun olarak kontrast oranının $CR \ge 98.0\%$ seviyesine ulaştığı minimum film kalınlığını ($\mu\text{m}$) analitik olarak hesaplar.
-- **Çift Alt Tabaka Kalınlık İnversiyonu:** Siyah zemin ($R_{g1} = 0.04$) ve beyaz zemin ($R_{g2} = 0.82$) üzerinde çekilen yaş/kuru filmlerin spektral reflektanslarından film kalınlığını ($x$) ve optik saçılma gücünü ($S \cdot x$) tersine çevirerek hassas kalibre eder.
-
-### 5. Geri Tahmin (Self-Fit) & Görülmemiş Numune Tahmini (LOOCV)
-Seyreltme serisi (%0.1 - %10.0) ölçümleri üzerinden türetilen $K(\lambda)$ ve $S(\lambda)$ matrisleri iki seviyeli kalite kapısından geçer:
-- **Self-Fit Geri Tahmin Doğrulaması:** Modele eğitildiği konsantrasyonlar geri beslenir:
-  $$\Delta E_{00} < 0.30 \implies \textbf{ONAYLANDI (PASS - ISO 18314 metodolojisine dayalı hesaplama)}$$
-- **Görülmemiş Numune Tahmini (LOOCV):** $n \ge 4$ seyreltme serilerinde Leave-One-Out Cross-Validation çalıştırılarak her bir numune eğitim dışı bırakılır ve serbestlik derecesi korunarak modelin tahmin gücü test edilir:
-  $$\Delta E_{00}^{\text{LOOCV}} \le 0.50 \implies \textbf{GENELLEŞTİRİLEBİLİR (Tolerans Profili Denetimi)}$$
-
-### 6. Metamerizm ve Çoklu Aydınlatıcı Kararlılığı
-Formülasyonun günışığı dışındaki aydınlatıcılar altında renk değiştirme riski iki ayrı analitik metrikle denetlenir:
-- **Aydınlatıcı Eşleşme Hata Yayılımı (Illuminant Match Error Spread):** D65 referans aydınlatıcısına göre ikincil ve üçüncül ışık kaynakları altındaki formülasyon hata sapmasını ölçer:
-  $$\text{Spread}(A) = |\Delta E_{00}(\text{A}) - \Delta E_{00}(\text{D65})|, \quad \text{Spread}(F11) = |\Delta E_{00}(\text{TL84 / F11}) - \Delta E_{00}(\text{D65})|$$
-  $$\text{Spread}_{\max} = \max(\Delta E_{00}(A), \Delta E_{00}(F11)) - \Delta E_{00}(\text{D65})$$
-- **ISO 18314-4 / DIN 6172 Özel Metamerizm İndeksi ($M_t$):** D65 altındaki artık eşleşme hatasını ortadan kaldırmak amacıyla, test aydınlatıcısı altında çarpımsal tristimulus düzeltmesi ($X_{\text{bat,corr}} = X_{\text{bat}} \cdot \frac{X_{\text{std,D65}}}{X_{\text{bat,D65}}}$) uygulayarak numune çiftleri arasındaki gerçek spektral metamerizm indeksini hesaplar:
-  $$M_t = \Delta E_{00}(\text{Standard}_t, \text{Batch}_{\text{corr}, t})$$
-
-### 7. Kontrast Oranı & %98 Opasite Denetimi
-Leneta kartı üzerinde siyah zemin ($R_g=0.04$) ve beyaz zemin ($R_g=0.82$) fotometrik yansımaları oranlanarak örtücülük denetlenir:
-$$CR = \frac{Y_{\text{siyah}}}{Y_{\text{beyaz}}} \times 100\% \ge 98.0\% \implies \textbf{Tam Örtücü Baz (Base A)}$$
-
-### 8. ISO 17972-3 CxF3 Çift Yönlü Entegrasyon
-- **CxF3 Parser & Serializer:** ISO 17972-3 XML standardında spektral veri alımı ve dışa aktarımı.
-- **PCHIP Normalizasyon:** Standart dışı aralıklardaki (örn. 380–730 nm @ 10 nm veya 400–700 nm @ 20 nm) spektrumlar PCHIP (Piecewise Cubic Hermite Interpolating Polynomial) ile standart 31 kanala dönüştürülür.
-- **Dışa Aktarım (Export):** Numunelerin geometri, konsantrasyon ve spektral eğrilerini endüstriyel CxF3 XML formatında dışa aktarma ve $10^{-5}$ doğrulukla round-trip doğrulaması.
-
----
-
-## 🛡️ CCM VALIDATION 1.0 End-to-End Sayısal Doğrulama ve Kıyaslama Paketi
-
-TintMatch PRO, endüstriyel renk laboratuvarlarında matematiksel, fiziksel ve donanımsal güvenilirliği garanti altına alan, uluslararası standart metodolojileri (ISO 18314, ISO 17972-3, ASTM D2805, DIN 6172) referans alınarak geliştirilmiş **12 Doğrulama Sütunu (12 Pillars)** ile kapsamlı olarak doğrulanmış ve kıyaslanmıştır (standard-referenced computational validation):
-
-> [!NOTE]
-> **Standart ve Uyumluluk Notu:** Bu doğrulama süreci, algoritmaların ISO, DIN ve ASTM standartlarında tanımlanan matematiksel ve optik formülasyonlara sayısal uygunluğunu, sentetik altın veri setlerini ve gerçek cihaz ölçümlerini kapsayan algoritmik bir doğrulama paketidir (computational validation suite); bağımsız üçüncü taraf akredite kuruluşlarca verilen resmi yasal/akredite ürün sertifikasyonu yerine geçmez.
-
-| Sütun | Modül / Dosya | Kapsam & Bulgular | Test Durumu |
-| :--- | :--- | :--- | :---: |
-| **1. Full-library SLSQP Benchmark** | `benchmark_slsqp_library.py` | $N$-boyutlu tam kütüphane optimizasyonu ile NNLS ön elemeli SLSQP karşılaştırıldı. Koyu hedeflerde tam uzay SLSQP'nin sıfır gradyanlarda yerel minimuma takılabildiği ($\Delta E_{00} = 1.243$), NNLS ön elemesinin ise global optimuma ulaştığı ($\Delta E_{00} = 0.011$) ve $3\times$ daha hızlı çalıştığı kanıtlandı. | **PASSED** (2/2) |
-| **2. NNLS Candidate-Screening Ablation** | `benchmark_nnls_ablation.py` | Doğrusal NNLS, nokta çarpım (spectral correlation) ve greedy seçim algoritmaları karşılaştırıldı. Nokta çarpım yönteminin pastel tonlarda parlak sarıyı kaçırarak $\Delta E_{00} = 7.711$ hataya yol açtığı, NNLS'nin ise $\Delta E_{00} = 0.034$ ile kusursuz çalıştığı doğrulandı. Havuz boyutu $K \ge 4$ için Pareto platosuna ulaşıldığı kanıtlandı. | **PASSED** (2/2) |
-| **3. Multi-start SLSQP Benchmark** | `benchmark_multistart.py` | Farklı başlangıç vektörleri ($x_{0,\text{nnls}}$, $x_{0,\text{zero}}$, $x_{0,\text{uniform}}$, perturbasyonlar) test edildi. Solver'a opsiyonel `enable_multistart` ve `num_starts` parametreleri entegre edildi. | **PASSED** (2/2) |
-| **4. K-M Thickness-Scale Calibration** | `kubelka_munk.py` | ASTM D2805 / ISO 2814 uyumlu kritik örtücülük kalınlığı ($x_{98}$) ve siyah/beyaz çift alt tabaka yansımalarından film kalınlığı tersine çevirme fonksiyonları geliştirildi. Asimptotik limitler doğrulandı. | **PASSED** (5/5) |
-| **5. K-M Synthetic Golden Dataset** | `synthetic_golden_dataset.json` | 15 analitik olarak sentezlenmiş altın standart hedef (pastel, doymuş, nötr, koyu, metamerik). Sıfır gürültüde ters formülasyon hatası $\Delta E_{00} \le 0.05$; $\pm 0.005$ Gauss gürültüsünde $\Delta E_{00} \le 0.30$ stabilitesi kanıtlandı. | **PASSED** (3/3) |
-| **6. Real RM400 Historical Dataset** | `test_real_rm400_validation.py` | Gerçek X-Rite RM400 cihazından alınmış letdown verileri (PB15, PG7, PR101) üzerinden karakterizasyon, LOOCV ($\Delta E_{00} \le 0.50$, ortalama $\le 0.30$) ve çoklu pigment karışım re-match süreçleri doğrulandı. | **PASSED** (2/2) |
-| **7. Blind Target Dataset** | `blind_targets_dataset.json` | 15 endüstriyel stres hedefi: Metamerik çiftler, ultra-pastel dozajlar, gamut dışı kütle sınırları, F11/A ışık kaynaklarında metamerizm sapması ve toprak tonları başarıyla çözüldü. | **PASSED** (4/4) |
-| **8. CxF3 Semantic Parser & Serializer** | `cxf_parser.py` | ISO 17972-3 XML standardına tam uyumlu ayrıştırıcı ve dışa aktarıcı. 20 nm adım ve farklı aralıklardaki spektrumlar PCHIP ile 31 noktaya normalize edildi; %0-100 ölçek dönüşümü ve tam roundtrip ($10^{-5}$ doğruluk) doğrulandı. | **PASSED** (5/5) |
-| **9. Physical R/K/S Invariant Tests** | `test_physical_invariants.py` | Yansıma sınırları ($0 \le R \le 1$), Saunderson çift yönlü bijeksiyonu ($\pm 10^{-6}$), K-M $K/S$ evirme doğruluğu, soğurucu renklendiricilerde monotonluk ($\partial R / \partial c \le 0$) ve enerji korunumu doğrulandı. | **PASSED** (6/6) |
-| **10. Reproducibility & Canonical Hashes** | `hashing.py` | Girdi permütasyonundan bağımsız (sıralama invariant) kanonik SHA-256 hash hesaplayıcı. Ardışık çalıştırmalarda bit düzeyinde ($10^{-9}$) tekrarlanabilirlik ve çok iş parçacıklı eşzamanlılık kararlılığı kanıtlandı. | **PASSED** (3/3) |
-| **11. Constraint-Aware Sensitivity Tests** | `test_constraint_aware_sensitivity.py` | `ConstraintEngine 2.0` stres koşullarında test edildi: Aşırı talepte sert kütle tavanı ($\le 10.0\%$), grup üst sınırı (örn. Sarı $\le 2.0\%$), minimum dozaj eşiği altındaki mikro damlaların budanması ve sınır noktalarında gradyan sürekliliği doğrulandı. | **PASSED** (5/5) |
-| **12. Instrument Calibration Hard-Gate** | `instruments.py`, `chnspec_driver.py` | 8 saatlik vardiya süresi dolan veya kalibre edilmemiş cihazlarda ölçüm isteği **HTTP 428 Precondition Required** ile engellendi. Acil durum denetim takibi için `force_measure=True` (`EXPIRED_FORCED`) bayrağı ve saat manipülasyonu tespit sistemi doğrulandı. | **PASSED** (5/5) |
-
----
-
-## 🎨 Minimalist Endüstriyel Laboratuvar Tasarımı
-
-TintMatch PRO, endüstriyel laboratuvar cihazlarının estetiğini yansıtan, dikkat dağıtmayan **minimalist bir karanlık tema** ile geliştirilmiştir:
-- **Renk Paleti:** `#09090b` nötr kanvas, `#121215` / `#18181b` kart yüzeyleri, `border-zinc-800` ince 1px kenarlıklar.
-- **Tipografi:** Yüksek okunurluğa sahip sans-serif tipografi ve spektral metrikler için monospace sayısal göstergeler.
-- **Yüksek Bilgi Yoğunluğu:** Gereksiz süslemelerden arındırılmış, veri odaklı 3 sütunlu laboratuvar tezgahı düzeni.
-- **Laboratuvar Doğrulama Raporu:** ISO 18314 analitik kolorimetri hesaplama metodolojisi doğrulama raporu için minimalist İsviçre laboratuvar raporu formatı (`window.print()`, CSV ve CxF3 dışa aktarımı).
-
----
-
-## 🖥️ Arayüz Modülleri
-
-1. **Laboratuvar Çalışma Alanı (Workbench Dashboard):**
-   - **Sol Panel:** Pasta ve baz kütüphanesi, anlık arama, kütle konsantrasyonu seçimi (%0.1 - %10.0).
-   - **Orta Panel:** 400–700 nm spektral yansıma ($R\%$) ve $K/S$ logaritmik eğrisi arasında tek tıkla geçiş; hassas Recharts grafikleri.
-   - **Sağ Panel:** CIE $L^*a^*b^*$ değerleri, sRGB dijital renk kutucuğu (swatch), D65 / A / F11 metamerizm indeksleri ve Leneta kontrast oranı.
-2. **Spektrofotometre Entegrasyon & Kalibrasyon Masası:**
-   - CHNSpec DS-36D (USB COM4) ve X-Rite RM400 cihaz durumu, port tarama ve canlı bağlantı.
-   - Kalibrasyon sağlık paneli: Beyaz/Siyah karo kalibrasyonu, 8 saatlik vardiya sayacı ve HTTP 428 sert kapı bildirimleri.
-3. **Karakterizasyon Sihirbazı & Çoklu Format İçe Aktarım:**
-   - 4 Adımlı akış: Spektrofotometre / CxF3 / CSV / TXT Veri Yükleme $\rightarrow$ Baz Boya Tanımlama $\rightarrow$ Seyreltme Serisi $\rightarrow$ Çift Sabitli K-M Çözümleme.
-   - Dahili endüstriyel veri setleri (Phthalo Green PG7, Iron Oxide Red PR101, Phthalo Blue PB15:3).
-   - Geri tahmin artık değer (residuals) tablosu ve LOOCV kalite onayı.
-4. **Canlı Reçete Simülatörü & Auto-Match CCM 2.0:**
-   - Pasta oranlarını değiştiren ince kaydırıcılar (sliders) ve canlı renk kutucuğu.
-   - **Auto-Match CCM 2.0:** Hedef spektruma göre SLSQP kısıt motoruyla $\sum c_i \le \text{max\_total\_load}$ şartını kesin olarak sağlayan, 3 bağımsız optimizasyon profili türeten motor:
-     - **Reçete A (Color Match):** En yüksek D65 günışığı kolorimetrik uyumu ($\Delta E_{00} \le 0.50$).
-     - **Reçete B (Light Stability):** Çoklu aydınlatıcı kararlılığı ve metamerizm yayılımı ($MI_{\text{composite}}$) ceza ağırlıklı formülasyon.
-     - **Reçete C (Economy / Low Load):** Toplam pigment yükünü minimize eden formülasyon.
-   - **What-If Pigment Duyarlılık Matrisi:** Her pigment için $\frac{\partial \Delta E_{00}}{\partial c}, \frac{\partial L^*}{\partial c}, \frac{\partial a^*}{\partial c}, \frac{\partial b^*}{\partial c}$ kısmi türevleri ve formülatör tavsiyeleri.
-   - **SLSQP Çözücü Teşhisi:** `OPTIMAL_CONVERGED`, kütle marjı, multi-start durumu, SHA-256 hesaplama hash izlenebilirliği.
-5. **ISO 18314 Hesaplama Uygunluk Raporu & CxF3 Dışa Aktarım:**
-   - ISO 18314-1/2 hesaplama metodolojisine uygunluk doğrulama raporu, yazıcı/PDF çıktısı, 31-kanal birim $K(\lambda), S(\lambda), (K/S)(\lambda)$ CSV ve ISO 17972-3 CxF3 XML dışa aktarımı.
-6. **Renk Bilimi & Spektrofotometri Sözlüğü:**
-   - X-Rite RM400, CHNSpec DS-36D, Saunderson düzeltmesi, Kubelka-Munk, CIEDE2000, Metamerizm, Flokülasyon ve Rub-Out testleri teknik kılavuzu.
+Şeffaf limit durumunda ($S \to 0$), model analitik olarak **Beer-Lambert** yasasına ($R = R_g e^{-2 K x}$) geçer.
 
 ---
 
 ## 🏗️ Sistem Mimarisi
 
-```
+```text
 TintMatch PRO
 ├── backend/
-│   ├── color_engine/           # Bilimsel ve matematiksel renk motoru
-│   │   ├── benchmarks/         # Benchmark & ablasyon test araçları
-│   │   │   ├── benchmark_slsqp_library.py  # Tam kütüphane vs Screened SLSQP
-│   │   │   ├── benchmark_nnls_ablation.py  # Aday eleme ablasyonu
-│   │   │   └── benchmark_multistart.py     # Multi-start yerel minimum araştırması
-│   │   ├── constants.py        # 31 kanal (400-700 nm), CIE 10°/2°, D65, A, F11, F2 SPDs
-│   │   ├── profiles.py         # ColorScienceProfile & OptimizationProfile (A/B/C)
-│   │   ├── quality_gate.py     # Policy-Driven Quality Gate & Yönsel artıklar
-│   │   ├── saunderson.py       # Fresnel yüzey düzeltmesi ve ters analitik bijeksiyon
+│   ├── color_engine/           # Bilimsel ve endüstriyel CCM motoru
+│   │   ├── addback.py          # Otomatik Add-Back / İlave pasta düzeltme motoru
+│   │   ├── colorimetry.py      # CIE L*a*b*, XYZ, CIEDE2000, Metamerizm (ISO 18314-4)
+│   │   ├── constants.py        # 31 kanal (400-700 nm), CIE 10°/2°, D65, A, F11, F2
+│   │   ├── constraints.py      # Kütle tavanı, grup limitleri, 0.01g dojaz eşiği
+│   │   ├── context_gate.py     # Geometri, mod, onaylı pasta ve kalibrasyon güvenlik kapısı
+│   │   ├── cxf_parser.py       # ISO 17972-3 CxF3 XML ayrıştırıcı ve serileştirici
+│   │   ├── formulation.py      # SLSQP Çözücü, 3 önayar, 0.01g yuvarlama, dual hash
+│   │   ├── hashing.py          # Kanonik SHA-256 deterministik hash motoru
 │   │   ├── kubelka_munk.py     # Çift ve tek sabitli K-M, kontrast oranı, x_98 kalınlık
-│   │   ├── colorimetry.py      # XYZ, CIE L*a*b*, sRGB hex, CIEDE2000, Metamerizm İndeksi
-│   │   ├── formulation.py      # CCM Engine 2.0 (SLSQP, Multi-Start, Duyarlılık Matrisi)
-│   │   ├── constraints.py      # ConstraintEngine 2.0 (Kütle tavanı, gruplar, dozaj eşiği)
-│   │   ├── cxf_parser.py       # ISO 17972-3 CxF3 XML parser, serializer & PCHIP
-│   │   ├── hashing.py          # Kanonik permütasyon-bağımsız SHA-256 hash motoru
-│   │   ├── instrument_comparison.py # Optik geometri ayrımı & cihaz karşılaştırma
-│   │   ├── spectrum_normalizer.py   # Kesin ekstrapolasyon bariyeri & grid normalizasyonu
-│   │   └── rm400_parser.py     # X-Rite RM400 CSV/TXT/XML parser
-│   ├── database/               # SQLite veritabanı katmanı
-│   │   └── db.py               # Instruments, Measurements, Recipes (SHA-256 hash) ve Şema
-│   ├── devices/                # Spektrofotometre donanım sürücüleri
-│   │   ├── chnspec_driver.py   # CHNSpec DS-36D (clr / ConnectedMeasure.dll, d/8° SCI/SCE)
-│   │   └── rm400_driver.py     # X-Rite RM400 (ctypes / RM400.dll, 45°:0°)
+│   │   ├── profiles.py         # Renk bilimi ve optimizasyon profilleri
+│   │   ├── quality_gate.py     # Self-fit (ΔE < 0.30) ve LOOCV (ΔE ≤ 0.50) kapısı
+│   │   ├── recipe_confidence.py# Reçete güven skoru (0-100) ve operatör rehberliği
+│   │   ├── saunderson.py       # Fresnel yüzey düzeltmesi ve analitik bijeksiyon
+│   │   ├── spectral_parser.py  # CxF3, CSV, TXT genel spektral ayrıştırıcı
+│   │   └── spectrum_normalizer.py # Ekstrapolasyon bariyeri ve grid normalizasyonu
+│   ├── database/               # SQLite veritabanı
+│   │   └── db.py               # Şema, tablolar, attempt takibi, cascade silmeler
+│   ├── devices/                # Donanım sürücüleri
+│   │   └── chnspec_driver.py   # CHNSpec DS-36D d/8° SCI/SCE donanım sürücüsü
 │   ├── routes/                 # FastAPI REST API yönlendiricileri
-│   │   ├── bases.py            # Baz boya yönetimi ve opasite denetimi
+│   │   ├── bases.py            # Baz boya yönetimi
+│   │   ├── characterization.py # Karakterizasyon, bootstrap kurulumu ve K-M matrisleri
+│   │   ├── configuration.py    # Kutu boyutları, renk kartelaları ve toplu eşleme
+│   │   ├── formulation.py      # CCM motoru, reçete geçmişi ve drawdown kayıtları
+│   │   ├── instruments.py      # CHNSpec DS-36D bağlantı, kalibrasyon (HTTP 428 kapısı)
 │   │   ├── pastes.py           # Renklendirici pasta kütüphanesi
-│   │   ├── characterization.py # Karakterizasyon, CxF3/RM400 içe aktarım ve K-M matris türetimi
-│   │   ├── formulation.py      # Canlı reçete simülasyonu, 3-profil CCM eşleme ve duyarlılık
-│   │   ├── instruments.py      # Cihaz bağlantı, ölçüm, kalibrasyon sert kapısı (HTTP 428)
-│   │   └── reports.py          # ISO 18314 metodolojik uygunluk raporu ve CSV/CxF3 dışa aktarımı
-│   ├── tests/                  # Pytest kapsamlı test paketi (193 test, %83 Kapsam)
-│   │   ├── data/
-│   │   │   ├── synthetic_golden_dataset.json # 15 Altın standart hedef
-│   │   │   ├── blind_targets_dataset.json    # 15 Endüstriyel stres hedefi
-│   │   │   └── real_rm400_dataset/           # PB15 CxF3, PG7 CSV, PR101 TXT
-│   │   ├── test_benchmark_full_library.py    # Pillar 1
-│   │   ├── test_nnls_ablation.py             # Pillar 2
-│   │   ├── test_multistart_slsqp.py          # Pillar 3
-│   │   ├── test_km_thickness_calibration.py  # Pillar 4
-│   │   ├── test_km_synthetic_golden.py       # Pillar 5
-│   │   ├── test_real_rm400_validation.py     # Pillar 6
-│   │   ├── test_blind_targets.py             # Pillar 7
-│   │   ├── test_cxf3_parser.py               # Pillar 8
-│   │   ├── test_physical_invariants.py       # Pillar 9
-│   │   ├── test_reproducibility_hashes.py    # Pillar 10
-│   │   ├── test_constraint_aware_sensitivity.py # Pillar 11
-│   │   ├── test_instrument_calibration_hard_gate.py # Pillar 12
-│   │   ├── test_ccm_execution_pipeline_hardening.py # Negative scenario & pipeline hardening
-│   │   ├── test_audit_round_2.py            # Geometry isolation, dual SCI/SCE, LOOCV guard
-│   │   ├── test_audit_round_3.py            # Authoritative constraints, dual-metric screening, CORS
-│   │   ├── test_audit_round_4.py            # QP projection, InfeasibleConstraintSet, empty recipe safety, health sync
-│   │   ├── test_metamerism_standards.py     # ISO 18314-4 / DIN 6172 Special Metamerism & Illuminant Spread
-│   │   ├── test_chnspec_driver.py
-│   │   ├── test_spectrum_normalizer.py
-│   │   ├── test_instrument_comparison.py
-│   │   ├── test_recipe_history.py
-│   │   ├── test_characterization_coverage.py
-│   │   ├── test_matching_coverage.py
-│   │   └── test_deterministic_regression.py
-│   └── main.py                 # FastAPI v2.2.0 girişi ve statik React SPA sunumu
-├── frontend/                   # React 19 + TypeScript + Vite + Tailwind CSS SPA
+│   │   └── reports.py          # CSV dışa aktarımı
+│   ├── tests/                  # 202 Kapsamlı Otomasyon Testi (%100 Başarılı)
+│   └── main.py                 # FastAPI uygulaması ve SPA sunumu
+├── frontend/                   # React 19 + TypeScript + Vite + Tailwind CSS
 │   ├── src/
-│   │   ├── components/         # Minimalist UI bileşenleri
-│   │   │   ├── Header.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── SpectralChart.tsx
-│   │   │   ├── CharacterizationWizard.tsx
-│   │   │   ├── FormulationSimulator.tsx
-│   │   │   ├── IsoReportView.tsx
-│   │   │   └── Glossary.tsx
+│   │   ├── components/
+│   │   │   ├── FormulationSimulator/ # CCM Reçete Masası
+│   │   │   │   ├── BatchTicketModal.tsx       # A4 İş Emri Yazdırma
+│   │   │   │   ├── CanSizingView.tsx          # Kutu ve Ambalaj Dozajlama
+│   │   │   │   ├── ConcentrationSliders.tsx   # Manuel İnce Ayar Sürgüleri
+│   │   │   │   ├── DrawdownVerificationModal.tsx # Drawdown & Add-Back Modalı
+│   │   │   │   ├── ManufacturableRecipeTable.tsx # 0.01g Terazi Tartım Tablosu
+│   │   │   │   ├── RecipeConfidenceCard.tsx   # Reçete Güven Skoru
+│   │   │   │   ├── SpectralPreview.tsx        # Spektral Eğri Karşılaştırma
+│   │   │   │   └── index.tsx                  # Reçete Masası Ana Görünümü
+│   │   │   ├── BootstrapCharacterizationWorkflow.tsx # 3-Aşamalı Bootstrap
+│   │   │   ├── CharacterizationWizard.tsx     # Karakterizasyon Sihirbazı
+│   │   │   ├── FactoryBatchHistoryTable.tsx   # Geçmiş Üretim Arşivi
+│   │   │   ├── Header.tsx                     # 4 Sekmeli Laboratuvar Navigasyonu
+│   │   │   ├── LibraryView.tsx                # Birleşik Kütüphane & Kartela Masası
+│   │   │   └── SpectroSettingsView.tsx        # DS-36D Spektrofotometre Masası
 │   │   ├── services/api.ts     # Tip güvenli REST API istemcisi
 │   │   ├── types.ts            # TypeScript veri arayüzleri
 │   │   └── App.tsx             # Ana uygulama kabuğu
-│   └── dist/                   # Üretim derlemesi (backend tarafından doğrudan sunulur)
+│   └── dist/                   # Üretim derlemesi (FastAPI tarafından doğrudan sunulur)
 ├── .gitignore
 ├── README.md
-└── run_server.py               # Tek tıkla bağımsız başlatıcı
+└── run_server.py               # Tek tıkla bağımsız sunucu başlatıcı
 ```
 
 ---
 
-## 🧪 Kapsamlı Otomasyon Testleri (Test Suite: 193 Test, %83 Kapsam)
+## 🧪 Kapsamlı Otomasyon Testleri (202 Test, %100 Başarılı)
 
 ```bash
-python -m pytest --cov=backend.color_engine --cov=backend.routes --cov=backend.devices backend/tests/
+python -m pytest backend/tests/ -q
 ```
 
 ```text
-Name                                                            Stmts   Miss  Cover
------------------------------------------------------------------------------------
-backend\color_engine\__init__.py                                    6      0   100%
-backend\color_engine\addback.py                                   130      3    98%
-backend\color_engine\benchmarks\__init__.py                         0      0   100%
-backend\color_engine\benchmarks\benchmark_candidate_recall.py     124     42    66%
-backend\color_engine\benchmarks\benchmark_multistart.py            17      0   100%
-backend\color_engine\benchmarks\benchmark_nnls_ablation.py         67      2    97%
-backend\color_engine\benchmarks\benchmark_slsqp_library.py        116      8    93%
-backend\color_engine\colorimetry.py                               189      3    98%
-backend\color_engine\constants.py                                  16      0   100%
-backend\color_engine\constraints.py                               202     18    91%
-backend\color_engine\cxf_parser.py                                128     20    84%
-backend\color_engine\formulation.py                               510     49    90%
-backend\color_engine\hashing.py                                    39      5    87%
-backend\color_engine\instrument_comparison.py                      64      5    92%
-backend\color_engine\kubelka_munk.py                              297     16    95%
-backend\color_engine\profiles.py                                  193     11    94%
-backend\color_engine\quality_gate.py                              158     16    90%
-backend\color_engine\rm400_parser.py                              218     54    75%
-backend\color_engine\saunderson.py                                 31      1    97%
-backend\color_engine\spectrum_normalizer.py                        72      4    94%
-backend\devices\chnspec_driver.py                                 452    182    60%
-backend\devices\rm400_driver.py                                   211     90    57%
-backend\routes\__init__.py                                          0      0   100%
-backend\routes\bases.py                                            76     41    46%
-backend\routes\characterization.py                                142      9    94%
-backend\routes\configuration.py                                   278     98    65%
-backend\routes\formulation.py                                     315     11    97%
-backend\routes\instruments.py                                     150     24    84%
-backend\routes\pastes.py                                           42     12    71%
-backend\routes\reports.py                                          52      2    96%
------------------------------------------------------------------------------------
-TOTAL                                                            4295    726    83%
-======================= 193 passed in 419.82s (0:06:59) =======================
+........................................................................ [ 35%]
+........................................................................ [ 71%]
+..........................................................               [100%]
+202 passed in 204.91s (0:03:24)
 ```
+
+- **Bootstrap İş Akışı Testleri:** `test_bootstrap_workflow.py` (4/4 PASSED)
+- **Üretilebilir Reçete & 0.01 g Terazi:** `test_manufacturable_recipes.py` (6/6 PASSED)
+- **Endüstriyel Güvenilirlik & Context Gate:** `test_industrial_reliability.py` (6/6 PASSED)
+- **Reçete Geçmişi & Add-Back Takibi:** `test_recipe_history.py` (3/3 PASSED)
+- **Innovatint Ambalaj ve Kutu Ölçekleme:** `test_innovatint_workflow.py` (7/7 PASSED)
+- **Deterministik SLSQP & Kanonik Hash:** `test_reproducibility_hashes.py` & `test_deterministic_regression.py` (8/8 PASSED)
+- **Fiziksel Değişmezler & Enerji Korunumu:** `test_physical_invariants.py` (6/6 PASSED)
+- **CHNSpec DS-36D Sürücü & Kalibrasyon Kapısı:** `test_chnspec_driver.py` & `test_instrument_calibration_hard_gate.py` (9/9 PASSED)
+- **CxF3 XML Ayrıştırıcı & Serileştirici:** `test_cxf3_parser.py` (5/5 PASSED)
+- **Tüm Test Paketi:** **202 / 202 PASSED (100% Başarılı)**
 
 ---
 
@@ -273,7 +226,8 @@ TOTAL                                                            4295    726    
 
 ### Gereksinimler
 - Python 3.11 veya üzeri
-- Node.js 18+ (sadece frontend geliştirme için; üretim derlemesi `dist/` içerisinde mevcuttur)
+- Windows 10/11 (CHNSpec DS-36D donanım sürücüsü USB seri portu için)
+- Node.js 18+ (sadece frontend geliştirme için; üretim derlemesi `frontend/dist/` içerisinde hazır olarak mevcuttur)
 
 ### 1. Kurulum
 ```bash
@@ -282,12 +236,12 @@ cd tintmatch-pro
 
 # Python sanal ortamı oluşturun ve bağımlılıkları yükleyin
 python -m venv .venv
-source .venv/bin/activate  # Windows için: .venv\Scripts\activate
-pip install -r backend/requirements.txt  # veya: pip install fastapi uvicorn scipy numpy colour-science pytest pytest-cov
+.venv\Scripts\activate
+pip install -r backend/requirements.txt
 ```
 
 ### 2. Uygulamayı Başlatma
-Tek bir komutla hem FastAPI backend'i hem de üretim React SPA arayüzünü ayağa kaldırabilirsiniz:
+Tek bir komutla hem FastAPI backend'i hem de derlenmiş React SPA laboratuvar arayüzünü ayağa kaldırabilirsiniz:
 ```bash
 python run_server.py
 ```
@@ -297,12 +251,13 @@ Tarayıcınızdan açın:
 - **Swagger API Dokümantasyonu:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ### 3. Frontend Geliştirici Modu (Hot-Reload)
+Frontend kaynak kodlarını canlı düzenlemek için:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Geliştirici sunucusu [http://localhost:5173](http://localhost:5173) adresinde çalışır ve API isteklerini otomatik olarak `http://127.0.0.1:8000` adresine yönlendirir.
+Geliştirici sunucusu [http://localhost:5173](http://localhost:5173) adresinde açılır ve API çağrılarını otomatik olarak `http://127.0.0.1:8000` backend sunucusuna iletir.
 
 ---
 

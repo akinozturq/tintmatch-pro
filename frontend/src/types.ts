@@ -9,6 +9,10 @@ export interface BasePaint {
   reflectance: number[];
   absorption_k: number[];
   scattering_s: number[];
+  geometry?: string;
+  measurement_mode?: string;
+  optical_system?: string;
+  is_bootstrap_base?: boolean;
   hex: string;
   lab: { L: number; a: number; b: number };
   created_at: string;
@@ -26,9 +30,13 @@ export interface ColorantPaste {
   mean_delta_e00: number;
   passed_validation: boolean;
   geometry?: string;
+  measurement_mode?: string;
+  optical_system?: string;
+  status?: 'ACTIVE' | 'CONDITIONAL' | 'REJECTED' | 'SIMULATION';
   characterization_version?: number;
   active_characterization_id?: number | null;
   characterization_base_id?: number | null;
+  cost_per_kg?: number;
   created_at?: string;
 }
 
@@ -82,21 +90,6 @@ export interface ChnspecStatusInfo {
     description: string;
     is_recommended: boolean;
   }>;
-}
-
-export interface Rm400StatusInfo {
-  instrument: string;
-  driver_available: boolean;
-  is_mock: boolean;
-  connection_state: DeviceConnectionState;
-  dll_path: string;
-  interface_version: string;
-  connected: boolean;
-  serial_number: string;
-  calibration: {
-    calibrated: boolean;
-    timestamp?: string;
-  } | null;
 }
 
 export interface MeasurementRecord {
@@ -381,7 +374,24 @@ export interface OptimizationProfileInfo {
   };
 }
 
+export interface RecipeConfidenceCheck {
+  name: string;
+  status: 'PASS' | 'WARN' | 'FAIL';
+  detail: string;
+}
+
+export interface RecipeConfidence {
+  confidence_level: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  score: number;
+  status_color: 'green' | 'yellow' | 'red';
+  summary: string;
+  checks: RecipeConfidenceCheck[];
+  operator_guidance: string[];
+  warnings: string[];
+}
+
 export interface RecipeMatch {
+  recipe_id?: number;
   profile_id: string;
   profile_name: string;
   description: string;
@@ -392,7 +402,11 @@ export interface RecipeMatch {
     name: string;
     code: string;
     hex: string;
+    color_hex?: string;
     concentration: number;
+    amount_g?: number;
+    raw_amount_g?: number;
+    raw_concentration?: number;
     unit_k?: number[];
     unit_s?: number[];
   }>;
@@ -400,6 +414,15 @@ export interface RecipeMatch {
   delta_e00: number;
   composite_mi: number;
   total_load: number;
+  base_amount_g?: number;
+  total_colorant_g?: number;
+  batch_size_g?: number;
+  scale_resolution_g?: number;
+  extrapolation_warning?: boolean;
+  extrapolation_notes?: string[];
+  input_hash?: string;
+  output_hash?: string;
+  recipe_confidence?: RecipeConfidence;
   passed_target_threshold: boolean;
   status: string;
   diagnostics?: {
@@ -423,6 +446,9 @@ export interface MatchResponse {
     code: string;
     hex: string;
     concentration: number;
+    amount_g?: number;
+    raw_amount_g?: number;
+    raw_concentration?: number;
     unit_k?: number[];
     unit_s?: number[];
   }>;
@@ -430,6 +456,15 @@ export interface MatchResponse {
   delta_e00: number;
   composite_mi: number;
   total_colorant_load: number;
+  base_amount_g?: number;
+  total_colorant_g?: number;
+  batch_size_g?: number;
+  scale_resolution_g?: number;
+  extrapolation_warning?: boolean;
+  extrapolation_notes?: string[];
+  input_hash?: string;
+  output_hash?: string;
+  recipe_confidence?: RecipeConfidence;
   passed_target_threshold: boolean;
   status: string;
   diagnostics?: {
@@ -448,6 +483,9 @@ export interface MatchResponse {
     recipe_b: RecipeMatch;
     recipe_c: RecipeMatch;
   };
+  geometry?: string;
+  measurement_mode?: string;
+  excluded_pastes?: Array<{ id: number | string; name: string; code?: string; reason: string }>;
 }
 
 export interface CalibrationHealthInfo {
@@ -455,6 +493,7 @@ export interface CalibrationHealthInfo {
   last_calibrated_at: number | null;
   elapsed_hours: number | null;
   remaining_hours: number;
+  hours_remaining?: number;
   expiry_hours: number;
   message: string;
 }
@@ -654,5 +693,109 @@ export interface BatchMatchResponse {
   passed_colors: number;
   success_rate_pct: number;
   results: BatchMatchItem[];
+}
+
+export interface BootstrapSystemStatus {
+  optical_system: string;
+  is_system_ready: boolean;
+  stages: {
+    stage1: {
+      name: string;
+      description: string;
+      status: 'COMPLETED' | 'PENDING';
+      clear_base: { id: number; name: string; code: string; base_type: string } | null;
+      black_paste: { id: number; name: string; code: string; color_hex: string } | null;
+      white_paste: { id: number; name: string; code: string; color_hex: string } | null;
+    };
+    stage2: {
+      name: string;
+      description: string;
+      status: 'COMPLETED' | 'PENDING';
+      count: number;
+      pastes: Array<{ id: number; name: string; code: string; color_hex: string; status: string; mean_delta_e00: number }>;
+    };
+    stage3: {
+      name: string;
+      description: string;
+      status: 'COMPLETED' | 'PENDING';
+      count: number;
+      bases: Array<{ id: number; name: string; code: string; base_type: string; contrast_ratio: number; is_opaque: boolean }>;
+    };
+  };
+}
+
+export interface CharacterizeBaseFromBootstrapPayload {
+  name: string;
+  code: string;
+  base_type: string;
+  density?: number;
+  un_tinted_reflectance: number[];
+  black_letdowns: Array<{ concentration: number; reflectance: number[] }>;
+  bootstrap_black_paste_id?: number;
+  k1?: number;
+  k2?: number;
+  thickness?: number;
+  geometry?: string;
+  measurement_mode?: string;
+  optical_system?: string;
+}
+
+export interface CharacterizeBaseResponse {
+  success: boolean;
+  base_id: number;
+  name: string;
+  code: string;
+  base_type: string;
+  contrast_ratio: number;
+  is_opaque: boolean;
+  mean_delta_e00: number;
+  max_delta_e00: number;
+  passed_validation: boolean;
+  back_predictions: any[];
+  absorption_k: number[];
+  scattering_s: number[];
+  summary: string;
+}
+
+export interface RecipeHistoryAttempt {
+  id: number;
+  recipe_id: number;
+  attempt_number: number;
+  pastes: Array<{
+    id: number | string;
+    name: string;
+    code: string;
+    concentration: number;
+    amount_g?: number;
+  }>;
+  predicted_reflectance?: number[];
+  measured_reflectance?: number[];
+  measured_lab?: { L: number; a: number; b: number };
+  actual_dispensed?: Record<string, number>;
+  batch_size_g?: number;
+  scale_resolution_g?: number;
+  delta_e00: number;
+  de00_predicted_vs_measured?: number;
+  outcome?: 'PENDING' | 'ACCEPTED' | 'ADDBACK_REQUIRED' | 'REJECTED';
+  addback_suggestion?: any;
+  operator_notes?: string;
+  created_at: string;
+}
+
+export interface FactoryBatchRecord {
+  id: number;
+  recipe_id: number;
+  recipe_name: string;
+  base_name: string;
+  base_code: string;
+  attempt_number: number;
+  batch_size_g: number;
+  scale_resolution_g: number;
+  delta_e00: number;
+  de00_predicted_vs_measured?: number;
+  outcome?: 'PENDING' | 'ACCEPTED' | 'ADDBACK_REQUIRED' | 'REJECTED';
+  measured_lab?: { L: number; a: number; b: number };
+  operator_notes?: string;
+  created_at: string;
 }
 

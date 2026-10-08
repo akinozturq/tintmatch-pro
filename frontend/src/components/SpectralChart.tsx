@@ -29,7 +29,7 @@ interface SpectralChartProps {
 export const SpectralChart: React.FC<SpectralChartProps> = ({
   series,
   title = "400 - 700 nm Spektral Analiz",
-  subtitle = "10 nm Çözünürlüklü X-Rite RM400 Yansıma ve K/S Eğrileri",
+  subtitle = "10 nm Çözünürlüklü CHNSpec DS-36D Yansıma ve K/S Eğrileri",
   height = 340,
 }) => {
   const [viewMode, setViewMode] = useState<'reflectance' | 'ks'>('reflectance');

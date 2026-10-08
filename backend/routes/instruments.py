@@ -3,7 +3,6 @@ Instruments API Router
 ======================
 Endpoints for interacting with laboratory spectrophotometers:
 1. CHNSpec DS-36D Benchtop Spectrophotometer (d/8° Integrating Sphere, USB CDC / COM4).
-2. X-Rite RM400 Portable Spectrophotometer (45°/0° Directional, 64-bit DLL).
 Handles hardware connection, auto-discovery of COM ports, calibration, and spectral acquisition.
 """
 
@@ -11,22 +10,11 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..devices.rm400_driver import rm400_driver
 from ..devices.chnspec_driver import chnspec_driver, CHNSpecDriver
 from ..color_engine.instrument_comparison import compare_spectral_measurements
 from ..database.db import get_db_connection
 
 router = APIRouter(prefix="/api/instruments", tags=["instruments"])
-
-
-class CalibrateRequest(BaseModel):
-    step: str = Field("White", description="Calibration step to execute ('White', 'Black')")
-
-
-class MeasureRequest(BaseModel):
-    sample_name: str | None = Field("Lab Sample", description="Sample identification")
-    save_to_archive: bool = Field(True, description="Whether to record measurement in measurements table")
-    force_measure: bool = Field(False, description="Emergency override to bypass calibration hard-gate (records EXPIRED_FORCED in audit)")
 
 
 class CHNSpecConnectRequest(BaseModel):
@@ -176,123 +164,6 @@ def get_chnspec_calibration_health():
     return chnspec_driver.get_calibration_health()
 
 
-# =========================================================================
-# X-Rite RM400 Spectrophotometer Endpoints
-# =========================================================================
-
-@router.get("/rm400/status")
-def get_rm400_status():
-    """Queries hardware status, driver version, calibration state, and serial number."""
-    connected = rm400_driver.is_connected()
-    cal = rm400_driver.get_calibration_status()
-    version = rm400_driver.get_interface_version()
-    serial = rm400_driver.get_serial_number()
-
-    return {
-        "instrument": "X-Rite RM400",
-        "driver_available": rm400_driver.is_available,
-        "is_mock": rm400_driver.is_mock,
-        "connection_state": rm400_driver.connection_state,
-        "dll_path": rm400_driver.dll_path,
-        "interface_version": version,
-        "connected": connected,
-        "serial_number": serial,
-        "calibration": cal
-    }
-
-
-@router.post("/rm400/connect")
-def connect_rm400():
-    """Attempts to connect to RM400 hardware."""
-    success = rm400_driver.connect()
-    return {
-        "success": success,
-        "connected": rm400_driver.is_connected(),
-        "is_mock": rm400_driver.is_mock,
-        "connection_state": rm400_driver.connection_state,
-        "message": "Connected to X-Rite RM400" if success else "Unable to establish connection to RM400."
-    }
-
-
-@router.post("/rm400/disconnect")
-def disconnect_rm400():
-    """Disconnects from RM400."""
-    success = rm400_driver.disconnect()
-    return {"success": success, "message": "RM400 disconnected."}
-
-
-@router.post("/rm400/calibrate")
-def calibrate_rm400(req: CalibrateRequest):
-    """Executes calibration step on RM400."""
-    success = rm400_driver.calibrate(req.step)
-    return {
-        "success": success,
-        "step": req.step,
-        "message": f"Calibration step '{req.step}' completed successfully." if success else "Calibration failed."
-    }
-
-
-@router.post("/rm400/measure")
-def measure_sample(req: MeasureRequest):
-    """Commands RM400 to take a spectral measurement and normalizes it."""
-    cal_health = rm400_driver.get_calibration_health()
-    cal_status = cal_health.get("status", "VALID")
-
-    if cal_status in ["EXPIRED", "UNCALIBRATED", "CALIBRATION_INVALID"]:
-        if not req.force_measure:
-            raise HTTPException(
-                status_code=428,
-                detail={
-                    "error_code": "INSTRUMENT_CALIBRATION_EXPIRED",
-                    "message": cal_health.get("message", "Instrument calibration expired or uncalibrated. Physical recalibration required before measurement."),
-                    "instrument": "X-Rite RM400",
-                    "calibration_health": cal_health
-                }
-            )
-        cal_status = f"{cal_status}_FORCED"
-
-    try:
-        meas = rm400_driver.measure()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    meas["calibration_health"] = cal_health
-
-    # Optionally archive into measurements table
-    if req.save_to_archive:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        inst_row = cur.execute("SELECT id FROM instruments WHERE model LIKE '%RM400%' LIMIT 1").fetchone()
-        if not inst_row:
-            conn.close()
-            raise HTTPException(
-                status_code=500,
-                detail="X-Rite RM400 spectrophotometer is not found in the verified instrument registry. Controlled registration required."
-            )
-        inst_id = inst_row["id"]
-
-        cur.execute("""
-        INSERT INTO measurements (instrument_id, operator, sample_name, raw_content, parsed_json, geometry, measurement_mode, specular_included, is_simulation, calibration_status)
-        VALUES (?, 'RM400 Operator', ?, ?, ?, '45°/0°', 'SPEX', 0, ?, ?)
-        """, (
-            inst_id,
-            req.sample_name or "Lab Sample",
-            json.dumps(meas["reflectance"]),
-            json.dumps(meas),
-            1 if meas.get("is_mock", False) else 0,
-            cal_status
-        ))
-        conn.commit()
-        meas["measurement_id"] = cur.lastrowid
-        conn.close()
-
-    return meas
-
-
-@router.get("/rm400/calibration-health")
-def get_rm400_calibration_health():
-    """Returns calibration expiry and freshness health status for X-Rite RM400."""
-    return rm400_driver.get_calibration_health()
 
 
 # =========================================================================
@@ -302,9 +173,9 @@ def get_rm400_calibration_health():
 class InstrumentCompareRequest(BaseModel):
     ref_reflectance: list[float] = Field(..., description="Reference 31-point spectral reflectance [400..700 nm]")
     target_reflectance: list[float] = Field(..., description="Target 31-point spectral reflectance [400..700 nm]")
-    ref_geometry: str | None = Field("45°/0°", description="Geometry of reference instrument (e.g. '45°/0°')")
+    ref_geometry: str | None = Field("d/8°", description="Geometry of reference instrument (e.g. 'd/8°')")
     target_geometry: str | None = Field("d/8°", description="Geometry of target instrument (e.g. 'd/8°')")
-    ref_name: str | None = Field("X-Rite RM400 (45°/0°)", description="Reference instrument name")
+    ref_name: str | None = Field("Reference Spectrophotometer (d/8°)", description="Reference instrument name")
     target_name: str | None = Field("CHNSpec DS-36D (d/8°)", description="Target instrument name")
     ref_mode: str | None = Field(None, description="Reference mode (e.g. 'SPEX', 'SCI', 'SCE')")
     target_mode: str | None = Field(None, description="Target mode (e.g. 'SCI', 'SCE')")

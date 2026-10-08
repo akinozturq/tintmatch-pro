@@ -34,9 +34,8 @@ from backend.color_engine.kubelka_munk import (
     characterize_letdown_series
 )
 from backend.color_engine.instrument_comparison import compare_spectral_measurements
-from backend.color_engine.rm400_parser import get_industrial_sample_datasets
+from backend.color_engine.spectral_parser import get_industrial_sample_datasets
 from backend.devices.chnspec_driver import CHNSpecDriver
-from backend.devices.rm400_driver import RM400Driver
 
 client = TestClient(app)
 
@@ -47,7 +46,7 @@ client = TestClient(app)
 
 def test_solver_geometry_mismatch_rejected():
     """Verify solver rejects matching when target geometry does not match base geometry."""
-    # Target requests d/8° sphere measurement, but Base #1 is 45°/0°
+    # Target requests 45°/0° measurement, but Base #1 is d/8°
     req_body = {
         "target_reflectance": [0.5] * 31,
         "base_id": 1,
@@ -61,12 +60,12 @@ def test_solver_geometry_mismatch_rejected():
 
 def test_solver_rejects_empty_candidates_when_no_pastes_for_geometry():
     """Verify solver queries only pastes matching the requested geometry, rejecting without fallback."""
-    # Create a dummy base with geometry 'd/8°'
+    # Create a dummy base with custom geometry 'diffuse/0°'
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
     INSERT INTO bases (name, code, base_type, contrast_ratio, reflectance, absorption_k, scattering_s, geometry)
-    VALUES ('Sphere Test Base', 'BASE-D8-TEST', 'white_a', 99.0, ?, ?, ?, 'd/8°')
+    VALUES ('Custom Geometry Base', 'BASE-DIFFUSE-TEST', 'white_a', 99.0, ?, ?, ?, 'diffuse/0°')
     """, (
         json.dumps([0.8] * 31),
         json.dumps([0.02] * 31),
@@ -77,16 +76,16 @@ def test_solver_rejects_empty_candidates_when_no_pastes_for_geometry():
     conn.close()
 
     try:
-        # Request match for d/8° geometry where no d/8° pastes exist
+        # Request match for diffuse/0° geometry where no diffuse/0° pastes exist
         req_body = {
             "target_reflectance": [0.3] * 31,
             "base_id": sphere_base_id,
-            "geometry": "d/8°",
+            "geometry": "diffuse/0°",
             "max_pastes": 3
         }
         resp = client.post("/api/formulation/match", json=req_body)
         assert resp.status_code == 400
-        assert "No characterized colorant pastes found matching optical geometry 'd/8°'" in resp.json()["detail"]
+        assert "No characterized colorant pastes found matching optical geometry 'diffuse/0°'" in resp.json()["detail"]
     finally:
         # Cleanup dummy base
         conn = get_db_connection()
@@ -242,22 +241,6 @@ def test_chnspec_driver_transitions_to_error_state():
     assert "Serial port I/O error" in driver.last_error
 
 
-def test_rm400_driver_transitions_to_error_state():
-    """Verify RM400Driver transitions to ERROR state upon unhandled exception."""
-    driver = RM400Driver(dll_path="C:/non_existent_rm400.dll")
-    assert driver.connection_state == "DISCONNECTED"
-
-    # Simulate dll.Connect raising an exception
-    class FaultyDll:
-        def Connect(self):
-            raise RuntimeError("FTDI USB controller communication failed")
-    driver.dll = FaultyDll()
-
-    ok = driver.connect()
-    assert ok is False
-    assert driver.connection_state == "ERROR"
-    assert "FTDI USB controller" in driver.last_error
-
 
 # ============================================================================
 # 6. Multi-Wavelength Jacobian Condition Quantiles
@@ -385,7 +368,7 @@ def test_instrument_comparison_tolerance_profile_and_diagnostics():
     res = compare_spectral_measurements(
         ref_spectrum=ref_r,
         target_spectrum=target_r,
-        ref_meta={"instrument": "X-Rite RM400", "geometry": "45°/0°", "mode": "SPEX"},
+        ref_meta={"instrument": "Reference 45°/0° Standard", "geometry": "45°/0°", "mode": "SPEX"},
         target_meta={"instrument": "CHNSpec DS-36D", "geometry": "d/8°", "mode": "SCI"},
         tolerance_profile=TOLERANCE_INDUSTRIAL
     )

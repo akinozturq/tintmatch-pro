@@ -57,7 +57,6 @@ from backend.color_engine.formulation import (
 )
 from backend.color_engine.addback import calculate_production_addback
 from backend.devices.chnspec_driver import CHNSpecDriver
-from backend.devices.rm400_driver import RM400Driver
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -463,13 +462,3 @@ def test_instrument_calibration_expiry():
     health_expired = chnspec.get_calibration_health()
     assert health_expired["status"] == "EXPIRED"
 
-    # 2. RM400 driver calibration tracking
-    rm400 = RM400Driver()
-    rm400._is_mock = True
-
-    rm400.calibrate("White")
-    rm_health = rm400.get_calibration_health()
-    assert rm_health["status"] == "VALID"
-
-    rm400._last_calibrated_at = time.time() - (9.0 * 3600.0)
-    assert rm400.get_calibration_health()["status"] == "EXPIRED"

@@ -38,7 +38,7 @@ DEFAULT_DLL_SEARCH_DIRS = [
 class CHNSpecDriver:
     """Hardware driver for CHNSpec DS-36D spectrophotometer."""
 
-    def __init__(self, dll_dir: Optional[str] = None):
+    def __init__(self, dll_dir: Optional[str] = None, allow_mock: Optional[bool] = None):
         self.dll_dir = None
         self._is_mock = False
         self._dev = None
@@ -76,8 +76,18 @@ class CHNSpecDriver:
                         continue
 
         if not self._clr_initialized:
-            logger.info("CHNSpec driver operating in simulated (MOCK) mode.")
-            self._is_mock = True
+            env_mode = os.environ.get("TINTMATCH_MODE", "").lower()
+            mock_permitted = (allow_mock is not False) and (
+                allow_mock is True or env_mode in ("demo", "mock", "test") or "pytest" in sys.modules
+            )
+            if mock_permitted:
+                logger.info("CHNSpec driver operating in simulated (MOCK) mode.")
+                self._is_mock = True
+            else:
+                self._is_mock = False
+                self._connection_state = "ERROR"
+                self._last_error = "ConnectedMeasure.dll not found or failed to load. Hardware driver unavailable."
+                logger.error(f"CHNSpec driver error: {self._last_error}")
 
     def _init_pythonnet(self, dll_dir: str):
         """Initializes pythonnet and binds ConnectedMeasure types."""
@@ -244,6 +254,12 @@ class CHNSpecDriver:
                 self._connection_state = "CONNECTED_MOCK"
                 self._last_error = None
                 return True
+
+            if self._dev is None:
+                self._connected = False
+                self._connection_state = "ERROR"
+                self._last_error = "Hardware DLL not loaded and mock mode is disabled in production."
+                return False
 
             target_port = port or self.auto_detect_port() or "COM4"
             try:

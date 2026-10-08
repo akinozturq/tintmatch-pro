@@ -146,3 +146,36 @@ def test_recipe_save_and_attempt_tracking():
     # Recipe should not exist
     att_resp_deleted = client.get(f"/api/formulation/recipes/{recipe_id}/attempts")
     assert att_resp_deleted.status_code == 404
+
+
+def test_factory_batches_audit_endpoint():
+    """Verify that GET /api/formulation/batches returns batch records with QA decisions."""
+    conn = get_db_connection()
+    base = conn.execute("SELECT id FROM bases LIMIT 1").fetchone()
+    conn.close()
+    base_id = base["id"] if base else 1
+
+    payload = {
+        "name": "Audit Batch Red",
+        "base_id": base_id,
+        "pastes": [{"id": 1, "name": "Yellow", "concentration": 1.0}],
+        "predicted_reflectance": [0.15] * 31,
+        "lab": {"L": 50.0, "a": 25.0, "b": 15.0},
+        "hex_color": "#d9534f",
+        "delta_e00": 0.35,
+        "operator_notes": "Factory Trial Run"
+    }
+
+    save_resp = client.post("/api/formulation/recipes", json=payload)
+    assert save_resp.status_code == 200
+    recipe_id = save_resp.json()["id"]
+
+    batches_resp = client.get("/api/formulation/batches?limit=10")
+    assert batches_resp.status_code == 200
+    batches = batches_resp.json()
+    assert isinstance(batches, list)
+    matching = [b for b in batches if b["recipe_id"] == recipe_id]
+    assert len(matching) >= 1
+    assert matching[0]["recipe_name"] == "Audit Batch Red"
+    assert matching[0]["batch_size_g"] >= 100
+    assert matching[0]["operator_notes"] == "Factory Trial Run"

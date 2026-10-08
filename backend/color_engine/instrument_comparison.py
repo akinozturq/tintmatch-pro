@@ -2,8 +2,8 @@
 Instrument Comparison & Inter-Model Correlation Engine
 ======================================================
 Provides rigorous comparison between measurements from different spectrophotometers:
-- X-Rite RM400 (45°/0° Directional)
-- CHNSpec DS-36D (d/8° Integrating Sphere, SCI and SCE)
+- CHNSpec DS-36D Benchtop (d/8° Integrating Sphere, SCI and SCE)
+- Inter-instrument calibration standards & reference spectrophotometers
 
 Analyzes:
 1. Wavelength-by-wavelength spectral difference Delta R(lambda) and bias
