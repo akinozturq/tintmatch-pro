@@ -550,7 +550,7 @@ export async function createColorCard(payload: {
 export async function addCardColor(cardId: number, payload: {
   color_code: string;
   color_name: string;
-  hex: string;
+  hex?: string;
   reflectance: number[];
 }): Promise<any> {
   const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}/colors`, {
@@ -562,6 +562,32 @@ export async function addCardColor(cardId: number, payload: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Kartela rengi eklenemedi');
   }
+  return res.json();
+}
+
+export async function addBatchCardColors(cardId: number, colors: Array<{
+  color_code: string;
+  color_name: string;
+  hex?: string;
+  reflectance: number[];
+}>): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}/colors/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ colors }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Toplu renk ekleme başarısız');
+  }
+  return res.json();
+}
+
+export async function deleteCardColor(cardId: number, colorId: number): Promise<any> {
+  const res = await fetch(`${BASE_URL}/configuration/color-cards/${cardId}/colors/${colorId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Kartela rengi silinemedi');
   return res.json();
 }
 

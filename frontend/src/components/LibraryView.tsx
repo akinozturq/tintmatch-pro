@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { BasePaint, ColorantPaste, CanSize, ColorCard, CardColor } from '../types';
 import { SpectralChart } from './SpectralChart';
 import { AddBaseModal } from './AddBaseModal';
+import { AddCardColorModal } from './AddCardColorModal';
 import { FactoryBatchHistoryTable } from './FactoryBatchHistoryTable';
 import {
   fetchCanSizes,
@@ -11,6 +12,7 @@ import {
   fetchCardColors,
   createColorCard,
   addCardColor,
+  deleteCardColor,
   deleteColorCard
 } from '../services/api';
 import {
@@ -68,8 +70,36 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [cardSearch, setCardSearch] = useState('');
   const [selectedColor, setSelectedColor] = useState<CardColor | null>(null);
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
+  const [isAddColorOpen, setIsAddColorOpen] = useState(false);
   const [newCardCode, setNewCardCode] = useState('');
   const [newCardName, setNewCardName] = useState('');
+
+  const refreshCardColors = async () => {
+    if (!selectedCardId) return;
+    try {
+      const [data, updatedCards] = await Promise.all([
+        fetchCardColors(selectedCardId),
+        fetchColorCards(),
+      ]);
+      const colorsList = Array.isArray(data) ? data : data.colors || [];
+      setCardColors(colorsList);
+      setCards(updatedCards);
+      if (colorsList.length > 0 && (!selectedColor || !colorsList.some((c: CardColor) => c.id === selectedColor.id))) {
+        setSelectedColor(colorsList[0]);
+      }
+    } catch {}
+  };
+
+  const handleDeleteCardColor = async (colorId: number) => {
+    if (!confirm('Bu rengi karteladan silmek istediğinize emin misiniz?')) return;
+    if (!selectedCardId) return;
+    try {
+      await deleteCardColor(selectedCardId, colorId);
+      refreshCardColors();
+    } catch (err: any) {
+      alert(err.message || 'Renk silinemedi');
+    }
+  };
 
   useEffect(() => {
     fetchCanSizes().then(setCanSizes).catch(() => {});
@@ -528,46 +558,79 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     İstediğiniz renge tıklayarak doğrudan CCM Reçete Masası'na hedef olarak aktarabilirsiniz
                   </p>
                 </div>
-                <div className="relative">
-                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-2 text-[var(--text-muted)]" />
-                  <input
-                    type="text"
-                    placeholder="Renk ara..."
-                    value={cardSearch}
-                    onChange={(e) => setCardSearch(e.target.value)}
-                    className="pl-8 pr-2.5 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] w-40 focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="h-3.5 w-3.5 absolute left-2.5 top-2 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      placeholder="Renk ara..."
+                      value={cardSearch}
+                      onChange={(e) => setCardSearch(e.target.value)}
+                      className="pl-8 pr-2.5 py-1 bg-[var(--surface-0)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] w-36 focus:outline-none focus:ring-1 focus:ring-[var(--brand-clay)]"
+                    />
+                  </div>
+                  {selectedCardId && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddColorOpen(true)}
+                      className="px-3 py-1 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Yeni Renk Ekle</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Swatch Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
-                {cardColors
-                  .filter((col) => col.color_name.toLowerCase().includes(cardSearch.toLowerCase()) || col.color_code.toLowerCase().includes(cardSearch.toLowerCase()))
-                  .map((col) => {
-                    const isSelected = selectedColor?.id === col.id;
-                    return (
-                      <div
-                        key={col.id}
-                        onClick={() => setSelectedColor(col)}
-                        className={`p-2 rounded border cursor-pointer transition-all flex flex-col items-center gap-1.5 text-center ${
-                          isSelected
-                            ? 'border-[var(--brand-clay)] ring-1 ring-[var(--brand-clay)] shadow-xs bg-[var(--surface-0)]'
-                            : 'border-[var(--border)] hover:border-[var(--border-strong)] bg-[var(--surface-1)]'
-                        }`}
-                      >
+              {/* Empty state if card has 0 colors */}
+              {cardColors.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed border-[var(--border)] rounded-[var(--radius)] space-y-3">
+                  <Palette className="h-8 w-8 text-[var(--text-muted)] mx-auto opacity-50" />
+                  <div>
+                    <span className="font-bold text-xs text-[var(--text-primary)] block">Bu Kartelada Henüz Renk Yok</span>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                      Spektrofotometre ile okutarak, 31-dalga boyu spektrum yapıştırarak veya CSV yükleyerek hemen renk ekleyin.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddColorOpen(true)}
+                    className="px-3.5 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white text-xs font-bold font-mono rounded inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>İlk Rengi Ekle</span>
+                  </button>
+                </div>
+              ) : (
+                /* Swatch Grid */
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
+                  {cardColors
+                    .filter((col) => col.color_name.toLowerCase().includes(cardSearch.toLowerCase()) || col.color_code.toLowerCase().includes(cardSearch.toLowerCase()))
+                    .map((col) => {
+                      const isSelected = selectedColor?.id === col.id;
+                      return (
                         <div
-                          className="w-12 h-12 rounded-sm border border-black/20 shadow-xs"
-                          style={{ backgroundColor: col.hex }}
-                        />
-                        <div className="w-full truncate font-mono">
-                          <span className="block text-[11px] font-bold text-[var(--text-primary)] truncate">{col.color_code}</span>
-                          <span className="text-[10px] text-[var(--text-muted)] truncate block">{col.color_name}</span>
+                          key={col.id}
+                          onClick={() => setSelectedColor(col)}
+                          className={`p-2 rounded border cursor-pointer transition-all flex flex-col items-center gap-1.5 text-center ${
+                            isSelected
+                              ? 'border-[var(--brand-clay)] ring-1 ring-[var(--brand-clay)] shadow-xs bg-[var(--surface-0)]'
+                              : 'border-[var(--border)] hover:border-[var(--border-strong)] bg-[var(--surface-1)]'
+                          }`}
+                        >
+                          <div
+                            className="w-12 h-12 rounded-sm border border-black/20 shadow-xs"
+                            style={{ backgroundColor: col.hex }}
+                          />
+                          <div className="w-full truncate font-mono">
+                            <span className="block text-[11px] font-bold text-[var(--text-primary)] truncate">{col.color_code}</span>
+                            <span className="text-[10px] text-[var(--text-muted)] truncate block">{col.color_name}</span>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-              </div>
+                      );
+                    })}
+                </div>
+              )}
 
               {/* Selected Color Action Footer */}
               {selectedColor && (
@@ -587,16 +650,26 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </div>
                   </div>
 
-                  {onNavigateToFormulationWithTarget && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => onNavigateToFormulationWithTarget(selectedColor.reflectance, `${selectedColor.color_code} ${selectedColor.color_name}`)}
-                      className="px-3.5 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                      type="button"
+                      onClick={() => handleDeleteCardColor(selectedColor.id)}
+                      className="p-1.5 text-[var(--text-muted)] hover:text-red-500 rounded border border-[var(--border)] hover:bg-[var(--surface-1)] cursor-pointer"
+                      title="Bu Rengi Karteladan Sil"
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Bu Rengi CCM'de Eşle</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                  )}
+                    {onNavigateToFormulationWithTarget && (
+                      <button
+                        onClick={() => onNavigateToFormulationWithTarget(selectedColor.reflectance, `${selectedColor.color_code} ${selectedColor.color_name}`)}
+                        className="px-3.5 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white text-xs font-bold rounded flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Bu Rengi CCM'de Eşle</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -819,6 +892,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Add Card Color Modal */}
+      {selectedCardId && (
+        <AddCardColorModal
+          isOpen={isAddColorOpen}
+          onClose={() => setIsAddColorOpen(false)}
+          cardId={selectedCardId}
+          cardName={cards.find((c) => c.id === selectedCardId)?.name || 'Kartela'}
+          onSuccess={refreshCardColors}
+        />
       )}
     </div>
   );

@@ -54,8 +54,12 @@ class ColorCardCreate(BaseModel):
 class CardColorCreate(BaseModel):
     color_code: str = Field(..., json_schema_extra={"example": "RAL 7035"})
     color_name: str = Field(..., json_schema_extra={"example": "Işık Grisi (Light Grey)"})
-    hex: str = Field(..., json_schema_extra={"example": "#D7D7D7"})
+    hex: str | None = Field(default=None, json_schema_extra={"example": "#D7D7D7"})
     reflectance: list[float] = Field(..., description="31-point spectral reflectance (400-700 nm)")
+
+
+class CardColorBatchCreate(BaseModel):
+    colors: list[CardColorCreate]
 
 
 class PasteInput(BaseModel):
@@ -341,6 +345,52 @@ def add_card_color(card_id: int, data: CardColorCreate):
         raise HTTPException(status_code=400, detail=f"Kartela rengi eklenemedi: {str(e)}")
     conn.close()
     return {"id": new_id, "color_code": data.color_code, "lab": lab_dict, "hex": hex_val}
+
+
+@router.post("/color-cards/{card_id}/colors/batch")
+def add_batch_card_colors(card_id: int, data: CardColorBatchCreate):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    inserted = []
+    try:
+        for c in data.colors:
+            if len(c.reflectance) != 31:
+                continue
+            refl_arr = np.asarray(c.reflectance, dtype=float)
+            if np.max(refl_arr) > 1.5:
+                refl_arr = refl_arr / 100.0
+            refl_arr = np.clip(refl_arr, 0.0001, 0.9999)
+            lab_vals = reflectance_to_lab(refl_arr, illuminant="D65", observer="10")
+            lab_dict = {"L": round(lab_vals[0], 2), "a": round(lab_vals[1], 2), "b": round(lab_vals[2], 2)}
+            hex_val = c.hex if c.hex else reflectance_to_hex(refl_arr)
+            cur.execute("""
+            INSERT OR REPLACE INTO card_colors (card_id, color_code, color_name, hex, lab_json, reflectance_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                card_id,
+                c.color_code.strip(),
+                c.color_name.strip(),
+                hex_val,
+                json.dumps(lab_dict),
+                json.dumps([round(float(v), 5) for v in refl_arr])
+            ))
+            inserted.append(c.color_code)
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Toplu kartela rengi ekleme hatası: {str(e)}")
+    conn.close()
+    return {"success": True, "count": len(inserted), "colors": inserted}
+
+
+@router.delete("/color-cards/{card_id}/colors/{color_id}")
+def delete_card_color(card_id: int, color_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM card_colors WHERE card_id = ? AND id = ?", (card_id, color_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": f"Renk {color_id} karteladan silindi."}
 
 
 @router.delete("/color-cards/{card_id}")

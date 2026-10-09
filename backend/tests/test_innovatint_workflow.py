@@ -194,3 +194,53 @@ def test_batch_color_card_matching():
     for r in res["results"]:
         assert "color_code" in r
         assert "delta_e00" in r
+
+
+def test_color_cards_batch_and_delete():
+    client = TestClient(app)
+
+    # 1. Create a temporary card
+    card_res = client.post("/api/configuration/color-cards", json={
+        "code": "TEST-CARD-BATCH",
+        "name": "Test Batch Card",
+        "description": "Testing batch insertion and deletion"
+    })
+    assert card_res.status_code == 200
+    card_id = card_res.json()["id"]
+
+    # 2. Batch add 2 colors
+    batch_payload = {
+        "colors": [
+            {
+                "color_code": "BATCH-01",
+                "color_name": "Batch Blue",
+                "reflectance": [0.1] * 31
+            },
+            {
+                "color_code": "BATCH-02",
+                "color_name": "Batch Green",
+                "reflectance": [0.2] * 31
+            }
+        ]
+    }
+    batch_res = client.post(f"/api/configuration/color-cards/{card_id}/colors/batch", json=batch_payload)
+    assert batch_res.status_code == 200
+    assert batch_res.json()["count"] == 2
+
+    # Verify colors listed
+    list_res = client.get(f"/api/configuration/color-cards/{card_id}/colors")
+    assert list_res.status_code == 200
+    colors = list_res.json()["colors"]
+    assert len(colors) == 2
+    color_to_del_id = colors[0]["id"]
+
+    # 3. Delete single color
+    del_color_res = client.delete(f"/api/configuration/color-cards/{card_id}/colors/{color_to_del_id}")
+    assert del_color_res.status_code == 200
+
+    # Verify 1 remains
+    list_after = client.get(f"/api/configuration/color-cards/{card_id}/colors").json()["colors"]
+    assert len(list_after) == 1
+
+    # Cleanup card
+    client.delete(f"/api/configuration/color-cards/{card_id}")
