@@ -43,8 +43,12 @@ export interface ColorantPaste {
 export interface Letdown {
   concentration: number;
   reflectance: number[];
+  reflectance_black?: number[];
   lab?: { L: number; a: number; b: number };
   hex?: string;
+  actual_colorant_g?: number;
+  actual_base_g?: number;
+  actual_total_g?: number;
 }
 
 export interface BackPrediction {
@@ -240,6 +244,14 @@ export interface CharacterizationResult {
   loocv_status?: string;
   characterization_gate?: QualityGateResult;
   quality_gate?: QualityGateResult;
+  dual_substrate_evaluations?: Array<{
+    concentration: number;
+    estimated_thickness_um: number;
+    contrast_ratio: number;
+    is_opaque: boolean;
+    spectral_rmse: number;
+  }>;
+  mean_calibrated_thickness_um?: number;
 }
 
 export interface MetamerismData {
@@ -548,8 +560,63 @@ export interface AddBackCorrectionResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Industrial Configuration & Workflow Types (Innovatint Architecture)
+// Industrial Configuration & Characterization Workflow Types
 // ---------------------------------------------------------------------------
+
+export interface MixtureTemplateItem {
+  id?: number;
+  series_type: 'BWC' | 'BW' | 'BWO' | string;
+  item_order?: number;
+  name: string;
+  concentration_pct: number;
+  colorant_ratio: number;
+  white_ratio?: number;
+  black_ratio?: number;
+  base_ratio?: number;
+  is_masstone?: boolean;
+  description?: string;
+  created_at?: string;
+}
+
+export interface MixtureProposal {
+  id?: number;
+  name: string;
+  series_type: string;
+  concentration_pct: number;
+  is_masstone: boolean;
+  description: string;
+  proposal: {
+    base_weight_g: number;
+    colorant_weight_g: number;
+    black_weight_g: number;
+    white_weight_g: number;
+    total_weight_g: number;
+  };
+  actual_defaults: {
+    actual_base_g: number;
+    actual_colorant_g: number;
+    actual_total_g: number;
+  };
+  is_dispensable: boolean;
+  instruction: string;
+}
+
+export interface CharacterizationSetItem {
+  id: number;
+  code: string;
+  name: string;
+  system_mode: string;
+  default_thickness_um: number;
+  k1: number;
+  k2: number;
+  white_substrate_r?: string;
+  black_substrate_r?: string;
+  clear_base_id?: number;
+  white_component_id?: number;
+  black_paste_id?: number;
+  status: string;
+  created_at?: string;
+}
 
 export interface CanSize {
   id: number;
@@ -798,4 +865,54 @@ export interface FactoryBatchRecord {
   operator_notes?: string;
   created_at: string;
 }
+
+export interface BootstrapCalibrationResult {
+  unit_k_white: number[];
+  unit_s_white: number[];
+  unit_ks_white: number[];
+  unit_k_black: number[];
+  unit_s_black: number[];
+  unit_ks_black: number[];
+  wavelengths: number[];
+  back_predictions: Array<{
+    name: string;
+    concentration: number;
+    effective_concentration: number;
+    measured_reflectance: number[];
+    predicted_reflectance: number[];
+    measured_lab: [number, number, number];
+    predicted_lab: [number, number, number];
+    delta_e00: number;
+    contrast_ratio?: number | null;
+    passed: boolean;
+  }>;
+  mean_delta_e00: number;
+  max_delta_e00: number;
+  r_squared: number;
+  spectral_rmse: number;
+  passed_validation: boolean;
+  optical_system: string;
+  summary: string;
+}
+
+export interface SetupBootstrapSystemPayload {
+  clear_base_id: number;
+  bootstrap_black_paste_id?: number;
+  bootstrap_white_paste_id?: number;
+  black_paste_id?: number;
+  white_paste_id?: number;
+  optical_system?: string;
+  k1?: number;
+  k2?: number;
+  thickness?: number;
+  bw_letdowns?: Array<{
+    concentration: number;
+    reflectance: number[];
+    reflectance_black?: number[];
+    actual_colorant_g?: number;
+    actual_base_g?: number;
+    actual_total_g?: number;
+  }>;
+}
+
 

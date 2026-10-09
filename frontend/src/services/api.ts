@@ -1,6 +1,7 @@
 import type {
   BasePaint,
   ColorantPaste,
+  Letdown,
   CharacterizationResult,
   RecipeSimulation,
   Iso18314Report,
@@ -26,7 +27,9 @@ import type {
   CharacterizeBaseFromBootstrapPayload,
   CharacterizeBaseResponse,
   RecipeHistoryAttempt,
-  FactoryBatchRecord
+  FactoryBatchRecord,
+  BootstrapCalibrationResult,
+  SetupBootstrapSystemPayload
 } from '../types';
 
 const BASE_URL = '/api';
@@ -74,7 +77,7 @@ export async function deletePaste(id: number): Promise<{ success: boolean }> {
 export async function calculateCharacterization(payload: {
   base_id?: number;
   base_reflectance?: number[];
-  letdowns: Array<{ concentration: number; reflectance: number[] }>;
+  letdowns: Letdown[];
   k1?: number;
   k2?: number;
   use_two_constant?: boolean;
@@ -163,7 +166,7 @@ export async function saveCharacterization(payload: {
   characterization_version?: number;
   is_simulation?: boolean;
   allow_simulation_save?: boolean;
-  letdowns: Array<{ concentration: number; reflectance: number[] }>;
+  letdowns: Letdown[];
   calculation_results: CharacterizationResult;
 }): Promise<{ success: boolean; paste_id: number; characterization_id?: number; version?: number; message: string }> {
   const res = await fetch(`${BASE_URL}/characterization/save`, {
@@ -658,20 +661,50 @@ export async function fetchBootstrapStatus(): Promise<BootstrapSystemStatus> {
   return res.json();
 }
 
-export async function setupBootstrapSystem(payload: {
+export async function calculateBootstrapCalibration(payload: {
   clear_base_id: number;
-  bootstrap_black_paste_id: number;
-  bootstrap_white_paste_id: number;
-}): Promise<{
-  success: boolean;
-  message: string;
-  optical_system?: string;
-  [key: string]: any;
-}> {
-  const res = await fetch(`${BASE_URL}/characterization/bootstrap-system`, {
+  black_paste_id?: number;
+  white_paste_id?: number;
+  k1?: number;
+  k2?: number;
+  thickness?: number;
+  bw_letdowns: Array<{
+    concentration: number;
+    reflectance: number[];
+    reflectance_black?: number[];
+    actual_colorant_g?: number;
+    actual_base_g?: number;
+    actual_total_g?: number;
+  }>;
+}): Promise<BootstrapCalibrationResult> {
+  const res = await fetch(`${BASE_URL}/characterization/bootstrap-calculate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Bootstrap kalibrasyon hesaplama hatası');
+  }
+  return res.json();
+}
+
+export async function setupBootstrapSystem(payload: SetupBootstrapSystemPayload): Promise<{
+  success: boolean;
+  message: string;
+  optical_system?: string;
+  calculation?: BootstrapCalibrationResult;
+  [key: string]: any;
+}> {
+  const body = {
+    ...payload,
+    black_paste_id: payload.black_paste_id || payload.bootstrap_black_paste_id,
+    white_paste_id: payload.white_paste_id || payload.bootstrap_white_paste_id,
+  };
+  const res = await fetch(`${BASE_URL}/characterization/bootstrap-system`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -706,3 +739,100 @@ export async function fetchFactoryBatches(limit: number = 50): Promise<FactoryBa
   if (!res.ok) throw new Error('Fabrika üretim parti geçmişi yüklenemedi');
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Recommended Mixture Series / Templates API
+// ---------------------------------------------------------------------------
+
+export async function fetchMixtureTemplates(seriesType?: string): Promise<any[]> {
+  const url = seriesType
+    ? `${BASE_URL}/characterization/mixture-templates?series_type=${encodeURIComponent(seriesType)}`
+    : `${BASE_URL}/characterization/mixture-templates`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Önerilen karışım şablonları yüklenemedi');
+  return res.json();
+}
+
+export async function createMixtureTemplate(payload: {
+  series_type: string;
+  name: string;
+  concentration_pct: number;
+  colorant_ratio?: number;
+  white_ratio?: number;
+  black_ratio?: number;
+  base_ratio?: number;
+  is_masstone?: boolean;
+  description?: string;
+  item_order?: number;
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/characterization/mixture-templates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Karışım şablonu eklenemedi');
+  }
+  return res.json();
+}
+
+export async function updateMixtureTemplate(id: number, payload: any): Promise<any> {
+  const res = await fetch(`${BASE_URL}/characterization/mixture-templates/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Karışım şablonu güncellenemedi');
+  }
+  return res.json();
+}
+
+export async function deleteMixtureTemplate(id: number): Promise<any> {
+  const res = await fetch(`${BASE_URL}/characterization/mixture-templates/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Karışım şablonu silinemedi');
+  }
+  return res.json();
+}
+
+export async function resetMixtureTemplates(seriesType?: string): Promise<any> {
+  const url = seriesType
+    ? `${BASE_URL}/characterization/mixture-templates/reset?series_type=${encodeURIComponent(seriesType)}`
+    : `${BASE_URL}/characterization/mixture-templates/reset`;
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) throw new Error('Karışım şablonları sıfırlanamadı');
+  return res.json();
+}
+
+export async function generateProposedMixtures(payload: {
+  series_type: string;
+  batch_weight_g: number;
+  paste_density: number;
+  base_density: number;
+  min_scale_resolution_g?: number;
+  custom_items?: any[];
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/characterization/proposer/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Önerilen karışımlar üretilemedi');
+  }
+  return res.json();
+}
+
+export async function fetchCharacterizationSets(): Promise<any[]> {
+  const res = await fetch(`${BASE_URL}/characterization/sets`);
+  if (!res.ok) throw new Error('Karakterizasyon setleri yüklenemedi');
+  return res.json();
+}
+

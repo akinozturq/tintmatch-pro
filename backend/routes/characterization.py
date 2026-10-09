@@ -12,7 +12,13 @@ import numpy as np
 
 from ..database.db import get_db_connection
 from ..color_engine.constants import WAVELENGTHS
-from ..color_engine.kubelka_munk import characterize_letdown_series, characterize_production_base
+from ..color_engine.kubelka_munk import (
+    characterize_letdown_series,
+    characterize_production_base,
+    characterize_bootstrap_triplet,
+    calibrate_thickness_from_drawdown,
+    calculate_opacity_contrast_ratio
+)
 from ..color_engine.quality_gate import evaluate_characterization_gate
 from ..color_engine.spectral_parser import (
     parse_spectral_content,
@@ -26,7 +32,45 @@ router = APIRouter(prefix="/api/characterization", tags=["characterization"])
 
 class LetdownItem(BaseModel):
     concentration: float = Field(..., description="Mass concentration percentage (e.g. 0.1, 0.5, 1.0, 2.5, 5.0, 10.0)")
-    reflectance: list[float] = Field(..., description="31-point measured reflectance (400-700 nm)")
+    reflectance: list[float] = Field(..., description="31-point measured reflectance over white substrate (400-700 nm)")
+    reflectance_black: list[float] | None = Field(None, description="Optional 31-point measured reflectance over black substrate (400-700 nm)")
+    actual_colorant_g: float | None = Field(None, description="Laboratuvarda fiilen tartılan pasta gramajı")
+    actual_base_g: float | None = Field(None, description="Laboratuvarda fiilen tartılan baz gramajı")
+    actual_total_g: float | None = Field(None, description="Laboratuvarda fiilen tartılan toplam numune gramajı")
+
+
+class MixtureTemplateCreate(BaseModel):
+    series_type: str = Field(..., description="'BWC', 'BW', or 'BWO'")
+    name: str
+    concentration_pct: float
+    colorant_ratio: float = 0.0
+    white_ratio: float = 0.0
+    black_ratio: float = 0.0
+    base_ratio: float = 1.0
+    is_masstone: bool = False
+    description: str | None = None
+    item_order: int | None = None
+
+
+class MixtureTemplateUpdate(BaseModel):
+    name: str | None = None
+    concentration_pct: float | None = None
+    colorant_ratio: float | None = None
+    white_ratio: float | None = None
+    black_ratio: float | None = None
+    base_ratio: float | None = None
+    is_masstone: bool | None = None
+    description: str | None = None
+    item_order: int | None = None
+
+
+class ProposeMixturesRequest(BaseModel):
+    series_type: str = Field("BWC", description="'BWC' for colorants, 'BW' for bootstrap, 'BWO' for bases")
+    batch_weight_g: float = Field(100.0, description="Hedef baz veya toplam karışım ağırlığı (g)")
+    paste_density: float = Field(1.35, description="Pasta yoğunluğu (g/cm³)")
+    base_density: float = Field(1.45, description="Baz yoğunluğu (g/cm³)")
+    min_scale_resolution_g: float = Field(0.01, description="Laboratuvar terazisi hassasiyeti (g)")
+    custom_items: list[dict] | None = None
 
 
 class CharacterizeRequest(BaseModel):
@@ -63,6 +107,21 @@ class SetupBootstrapSystemRequest(BaseModel):
     black_paste_id: int = Field(..., description="ID of the reference black paste (e.g. PBk7)")
     white_paste_id: int = Field(..., description="ID of the reference white paste (e.g. PW6)")
     optical_system: str = Field("bootstrap_v1", description="Optical system identifier")
+    k1: float = Field(0.04, description="Saunderson internal reflection k1")
+    k2: float = Field(0.60, description="Saunderson internal reflection k2")
+    thickness: float = Field(100.0, description="Film drawdown thickness in um")
+    bw_letdowns: list[LetdownItem] = Field(default_factory=list, description="Optional measured BW letdown ladder to calculate curves")
+
+
+class BootstrapCalculateRequest(BaseModel):
+    clear_base_id: int = Field(..., description="ID of the clear transparent base")
+    black_paste_id: int = Field(..., description="ID of reference black paste")
+    white_paste_id: int = Field(..., description="ID of reference white paste")
+    k1: float = Field(0.04, description="Saunderson internal reflection k1")
+    k2: float = Field(0.60, description="Saunderson internal reflection k2")
+    thickness: float = Field(100.0, description="Film drawdown thickness in um")
+    bw_letdowns: list[LetdownItem] = Field(..., description="Measured BW letdown series")
+
 
 
 class CharacterizeBaseFromBootstrapRequest(BaseModel):
@@ -81,11 +140,234 @@ class CharacterizeBaseFromBootstrapRequest(BaseModel):
     optical_system: str = Field("bootstrap_v1")
 
 
+# ============================================================================
+# Recommended Mixture Series / Templates Management Endpoints
+# ============================================================================
+
+@router.get("/mixture-templates")
+def list_mixture_templates(series_type: str | None = None):
+    """
+    List recommended mixture templates for colorants ('BWC'), bootstrap ('BW'), or bases ('BWO').
+    """
+    conn = get_db_connection()
+    if series_type:
+        rows = conn.execute(
+            "SELECT * FROM mixture_templates WHERE series_type = ? ORDER BY item_order ASC, concentration_pct DESC",
+            (series_type.upper(),)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM mixture_templates ORDER BY series_type ASC, item_order ASC, concentration_pct DESC"
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/mixture-templates")
+def create_mixture_template(item: MixtureTemplateCreate):
+    """
+    Adds a new mixture item into the recommended series template.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    max_order = cur.execute(
+        "SELECT MAX(item_order) FROM mixture_templates WHERE series_type = ?",
+        (item.series_type.upper(),)
+    ).fetchone()[0] or 0
+    item_order = item.item_order if item.item_order is not None else max_order + 1
+
+    cur.execute("""
+    INSERT INTO mixture_templates (
+        series_type, item_order, name, concentration_pct,
+        colorant_ratio, white_ratio, black_ratio, base_ratio,
+        is_masstone, description
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        item.series_type.upper(), item_order, item.name, item.concentration_pct,
+        item.colorant_ratio, item.white_ratio, item.black_ratio, item.base_ratio,
+        1 if item.is_masstone else 0, item.description
+    ))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"success": True, "id": new_id, "message": f"'{item.name}' önerilen karışım serisine başarıyla eklendi."}
+
+
+@router.put("/mixture-templates/{template_id}")
+def update_mixture_template(template_id: int, item: MixtureTemplateUpdate):
+    """
+    Updates/edits an existing mixture template in the series.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    existing = cur.execute("SELECT * FROM mixture_templates WHERE id = ?", (template_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Karışım şablonu bulunamadı.")
+
+    cur.execute("""
+    UPDATE mixture_templates SET
+        name = COALESCE(?, name),
+        concentration_pct = COALESCE(?, concentration_pct),
+        colorant_ratio = COALESCE(?, colorant_ratio),
+        white_ratio = COALESCE(?, white_ratio),
+        black_ratio = COALESCE(?, black_ratio),
+        base_ratio = COALESCE(?, base_ratio),
+        is_masstone = COALESCE(?, is_masstone),
+        description = COALESCE(?, description),
+        item_order = COALESCE(?, item_order)
+    WHERE id = ?
+    """, (
+        item.name, item.concentration_pct,
+        item.colorant_ratio, item.white_ratio, item.black_ratio, item.base_ratio,
+        (1 if item.is_masstone else 0) if item.is_masstone is not None else None,
+        item.description, item.item_order, template_id
+    ))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Karışım şablonu başarıyla güncellendi."}
+
+
+@router.delete("/mixture-templates/{template_id}")
+def delete_mixture_template(template_id: int):
+    """
+    Deletes a mixture from the recommended series template.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    existing = cur.execute("SELECT name FROM mixture_templates WHERE id = ?", (template_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Karışım şablonu bulunamadı.")
+    name = existing["name"]
+    cur.execute("DELETE FROM mixture_templates WHERE id = ?", (template_id,))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": f"'{name}' karışım serisinden silindi."}
+
+
+@router.post("/mixture-templates/reset")
+def reset_mixture_templates(series_type: str | None = None):
+    """
+    Restores recommended mixture templates to factory industrial defaults.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if series_type:
+        cur.execute("DELETE FROM mixture_templates WHERE series_type = ?", (series_type.upper(),))
+    else:
+        cur.execute("DELETE FROM mixture_templates")
+    conn.commit()
+    from ..database.db import _seed_mixture_templates
+    _seed_mixture_templates(conn)
+    conn.close()
+    return {"success": True, "message": "Önerilen karışım serileri varsayılan endüstriyel değerlere sıfırlandı."}
+
+
+@router.post("/proposer/generate")
+def generate_proposed_mixtures(req: ProposeMixturesRequest):
+    """
+    Generates scalable preparation proposals with target dispensing amounts,
+    minimum laboratory scale feasibility checks, and customizable concentration items.
+    """
+    conn = get_db_connection()
+    templates = conn.execute(
+        "SELECT * FROM mixture_templates WHERE series_type = ? ORDER BY item_order ASC, concentration_pct DESC",
+        (req.series_type.upper(),)
+    ).fetchall()
+    conn.close()
+
+    items_to_process = [dict(t) for t in templates]
+    if req.custom_items and len(req.custom_items) > 0:
+        items_to_process = req.custom_items
+
+    proposals = []
+    base_wt = float(req.batch_weight_g)
+
+    for item in items_to_process:
+        conc = float(item.get("concentration_pct", 0.0))
+        is_mass = bool(item.get("is_masstone", False))
+        c_ratio = float(item.get("colorant_ratio", conc / 100.0))
+        blk_ratio = float(item.get("black_ratio", 0.0))
+        wht_ratio = float(item.get("white_ratio", 0.0))
+        b_ratio = float(item.get("base_ratio", 1.0 - c_ratio - blk_ratio - wht_ratio))
+
+        if is_mass and conc >= 99.0:
+            target_base_g = 0.0
+            target_paste_g = round(base_wt, 3)
+            target_black_g = 0.0
+            target_white_g = 0.0
+            target_total_g = round(base_wt, 3)
+        else:
+            target_base_g = round(base_wt * max(b_ratio, 0.0), 3) if b_ratio < 1.0 else round(base_wt, 3)
+            target_paste_g = round(base_wt * (conc / 100.0), 3)
+            target_black_g = round(base_wt * blk_ratio, 3) if blk_ratio > 0 else 0.0
+            target_white_g = round(base_wt * wht_ratio, 3) if wht_ratio > 0 else 0.0
+            target_total_g = round(target_base_g + target_paste_g + target_black_g + target_white_g, 3)
+
+        active_wt = target_paste_g if target_paste_g > 0 else (target_black_g if target_black_g > 0 else target_base_g)
+        is_dispensable = active_wt >= req.min_scale_resolution_g
+
+        instruction = (
+            f"Saf Pasta: {target_paste_g:.2f}g tartın."
+            if is_mass and target_base_g == 0
+            else f"{target_base_g:.2f}g Taşıyıcı Baz + {target_paste_g:.2f}g Renklendirici Pasta tartıp homojenleştirin."
+        )
+        if target_black_g > 0:
+            instruction += f" (+ {target_black_g:.3f}g Referans Siyah)"
+
+        proposals.append({
+            "id": item.get("id"),
+            "name": item.get("name", f"%{conc} Karışımı"),
+            "series_type": req.series_type.upper(),
+            "concentration_pct": conc,
+            "is_masstone": is_mass,
+            "description": item.get("description", ""),
+            "proposal": {
+                "base_weight_g": target_base_g,
+                "colorant_weight_g": target_paste_g,
+                "black_weight_g": target_black_g,
+                "white_weight_g": target_white_g,
+                "total_weight_g": target_total_g
+            },
+            "actual_defaults": {
+                "actual_base_g": target_base_g,
+                "actual_colorant_g": target_paste_g,
+                "actual_total_g": target_total_g
+            },
+            "is_dispensable": is_dispensable,
+            "instruction": instruction
+        })
+
+    return {
+        "series_type": req.series_type.upper(),
+        "batch_weight_g": req.batch_weight_g,
+        "paste_density": req.paste_density,
+        "base_density": req.base_density,
+        "min_scale_resolution_g": req.min_scale_resolution_g,
+        "count": len(proposals),
+        "proposals": proposals
+    }
+
+
+@router.get("/sets")
+def list_characterization_sets():
+    """
+    Returns configured optical characterization sets (Saunderson constants, substrates, roles).
+    """
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM characterization_sets ORDER BY id ASC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @router.post("/calculate")
 def calculate_characterization(req: CharacterizeRequest):
     """
     Executes Two-Constant Kubelka-Munk least-squares optimization across the letdown series.
     Calculates K(λ), S(λ), back-predicts reflectance, and computes CIEDE2000 residuals.
+    Supports dynamic concentration from actual weighed amounts and dual-substrate (Rw, Rb) evaluation.
     """
     if len(req.letdowns) == 0:
         raise HTTPException(status_code=400, detail="At least 1 letdown dilution measurement is required.")
@@ -109,10 +391,26 @@ def calculate_characterization(req: CharacterizeRequest):
     if base_r is None:
         raise HTTPException(status_code=400, detail="A valid Base Paint (or 31-point base reflectance) is required.")
 
-    letdown_dicts = [
-        {"concentration": item.concentration, "reflectance": item.reflectance}
-        for item in req.letdowns
-    ]
+    letdown_dicts = []
+    has_dual_substrate = False
+    for item in req.letdowns:
+        conc = float(item.concentration)
+        if item.actual_colorant_g is not None and item.actual_total_g is not None and item.actual_total_g > 0:
+            conc = round((float(item.actual_colorant_g) / float(item.actual_total_g)) * 100.0, 4)
+        elif item.actual_colorant_g is not None and item.actual_base_g is not None and (item.actual_base_g + item.actual_colorant_g) > 0:
+            conc = round((float(item.actual_colorant_g) / (float(item.actual_base_g) + float(item.actual_colorant_g))) * 100.0, 4)
+
+        entry = {
+            "concentration": conc,
+            "reflectance": item.reflectance,
+            "reflectance_black": item.reflectance_black,
+            "actual_colorant_g": item.actual_colorant_g,
+            "actual_base_g": item.actual_base_g,
+            "actual_total_g": item.actual_total_g
+        }
+        if item.reflectance_black and len(item.reflectance_black) == 31:
+            has_dual_substrate = True
+        letdown_dicts.append(entry)
 
     try:
         results = characterize_letdown_series(
@@ -124,6 +422,35 @@ def calculate_characterization(req: CharacterizeRequest):
             base_s=base_s,
             use_two_constant=req.use_two_constant
         )
+
+        # Dual-substrate thickness & opacity analysis if black measurements are available
+        if has_dual_substrate and results.get("unit_k") and results.get("unit_s"):
+            dual_evals = []
+            for item in letdown_dicts:
+                if item.get("reflectance_black") and len(item["reflectance_black"]) == 31:
+                    c = item["concentration"]
+                    c_scaled = c / 100.0
+                    total_k = np.array(base_k or [0.01] * 31) + c_scaled * np.array(results["unit_k"])
+                    total_s = np.array(base_s or [1.0] * 31) + c_scaled * np.array(results["unit_s"])
+                    cal_res = calibrate_thickness_from_drawdown(
+                        r_black=item["reflectance_black"],
+                        r_white=item["reflectance"],
+                        K=total_k,
+                        S=total_s,
+                        k1=req.k1,
+                        k2=req.k2
+                    )
+                    dual_evals.append({
+                        "concentration": c,
+                        "estimated_thickness_um": cal_res["estimated_thickness_um"],
+                        "contrast_ratio": cal_res["luminous_contrast_ratio"],
+                        "is_opaque": cal_res["is_opaque"],
+                        "spectral_rmse": cal_res["spectral_rmse"]
+                    })
+            if dual_evals:
+                results["dual_substrate_evaluations"] = dual_evals
+                results["mean_calibrated_thickness_um"] = round(float(np.mean([d["estimated_thickness_um"] for d in dual_evals])), 1)
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Characterization optimization failed: {str(e)}")
 
@@ -233,10 +560,22 @@ def save_characterization(req: SaveCharacterizationRequest):
 
     # Authoritative server calculation when letdowns are provided
     if req.letdowns and len(req.letdowns) > 0:
-        letdown_dicts = [
-            {"concentration": l.concentration, "reflectance": l.reflectance}
-            for l in req.letdowns
-        ]
+        letdown_dicts = []
+        for l in req.letdowns:
+            conc = float(l.concentration)
+            if l.actual_colorant_g is not None and l.actual_total_g is not None and l.actual_total_g > 0:
+                conc = round((float(l.actual_colorant_g) / float(l.actual_total_g)) * 100.0, 4)
+            elif l.actual_colorant_g is not None and l.actual_base_g is not None and (l.actual_base_g + l.actual_colorant_g) > 0:
+                conc = round((float(l.actual_colorant_g) / (float(l.actual_base_g) + float(l.actual_colorant_g))) * 100.0, 4)
+            letdown_dicts.append({
+                "concentration": conc,
+                "reflectance": l.reflectance,
+                "reflectance_black": l.reflectance_black,
+                "actual_colorant_g": l.actual_colorant_g,
+                "actual_base_g": l.actual_base_g,
+                "actual_total_g": l.actual_total_g
+            })
+
         try:
             computed_res = characterize_letdown_series(
                 base_reflectance=base_r,
@@ -332,6 +671,19 @@ def save_characterization(req: SaveCharacterizationRequest):
             "characterization_version": target_version
         }
 
+        # Serialized letdowns with actual weights
+        serialized_letdowns = [
+            {
+                "concentration": l.concentration,
+                "reflectance": l.reflectance,
+                "reflectance_black": l.reflectance_black,
+                "actual_colorant_g": l.actual_colorant_g,
+                "actual_base_g": l.actual_base_g,
+                "actual_total_g": l.actual_total_g
+            }
+            for l in req.letdowns
+        ]
+
         # Insert characterization record
         cur.execute("""
         INSERT INTO characterizations (
@@ -344,7 +696,7 @@ def save_characterization(req: SaveCharacterizationRequest):
             paste_id, req.name, req.base_id, base_name, req.instrument, req.instrument_id,
             req.geometry, req.measurement_mode, target_version, json.dumps(meas_context),
             req.k1, req.k2,
-            json.dumps([{"concentration": l.concentration, "reflectance": l.reflectance} for l in req.letdowns]),
+            json.dumps(serialized_letdowns),
             json.dumps(res_to_save), mean_de00, 1 if passed else 0
         ))
         char_id = cur.lastrowid
@@ -481,14 +833,133 @@ def get_bootstrap_status():
     }
 
 
+@router.post("/bootstrap-calculate")
+def calculate_bootstrap_calibration(req: BootstrapCalculateRequest):
+    """
+    Computes Stage 1 Bootstrap K_black(λ) and S_white(λ) curves, back-predictions,
+    and validation residuals from the measured BW dilution series without locking.
+    """
+    if len(req.bw_letdowns) == 0:
+        raise HTTPException(status_code=400, detail="En az 1 adet BW seyreltme ölçümü gereklidir.")
+
+    ld_dicts = []
+    for item in req.bw_letdowns:
+        ld_dicts.append({
+            "concentration": item.concentration,
+            "reflectance": item.reflectance,
+            "reflectance_black": item.reflectance_black,
+            "actual_base_g": item.actual_base_g,
+            "actual_paste_g": item.actual_colorant_g
+        })
+
+    try:
+        res = characterize_bootstrap_triplet(
+            bw_letdowns=ld_dicts,
+            k1=req.k1,
+            k2=req.k2,
+            thickness=req.thickness
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bootstrap hesaplama hatası: {str(e)}")
+
+
 @router.post("/bootstrap-system")
 def setup_bootstrap_system(req: SetupBootstrapSystemRequest):
     """
     Sets or locks the core Bootstrap reference triplet:
     Clear Base (is_bootstrap_base=1) + Black Paste (bootstrap_role='black') + White Paste (bootstrap_role='white').
+    If bw_letdowns are supplied, performs two-constant Kubelka-Munk calibration to derive
+    physical K_black(λ) and S_white(λ) curves and stores them in the database.
     """
     conn = get_db_connection()
     cur = conn.cursor()
+
+    calc_res = None
+    if req.bw_letdowns and len(req.bw_letdowns) > 0:
+        ld_dicts = []
+        for item in req.bw_letdowns:
+            ld_dicts.append({
+                "concentration": item.concentration,
+                "reflectance": item.reflectance,
+                "reflectance_black": item.reflectance_black,
+                "actual_base_g": item.actual_base_g,
+                "actual_paste_g": item.actual_colorant_g
+            })
+
+        calc_res = characterize_bootstrap_triplet(
+            bw_letdowns=ld_dicts,
+            k1=req.k1,
+            k2=req.k2,
+            thickness=req.thickness
+        )
+
+        # Update White Paste with derived curves
+        cur.execute("""
+            UPDATE pastes SET
+                unit_k = ?,
+                unit_s = ?,
+                unit_ks = ?,
+                mean_delta_e00 = ?,
+                passed_validation = 1,
+                status = 'ACTIVE',
+                characterization_base_id = ?
+            WHERE id = ?
+        """, (
+            json.dumps(calc_res["unit_k_white"]),
+            json.dumps(calc_res["unit_s_white"]),
+            json.dumps(calc_res["unit_ks_white"]),
+            calc_res["mean_delta_e00"],
+            req.clear_base_id,
+            req.white_paste_id
+        ))
+
+        # Update Black Paste with derived curves
+        cur.execute("""
+            UPDATE pastes SET
+                unit_k = ?,
+                unit_s = ?,
+                unit_ks = ?,
+                mean_delta_e00 = ?,
+                passed_validation = 1,
+                status = 'ACTIVE',
+                characterization_base_id = ?
+            WHERE id = ?
+        """, (
+            json.dumps(calc_res["unit_k_black"]),
+            json.dumps(calc_res["unit_s_black"]),
+            json.dumps(calc_res["unit_ks_black"]),
+            calc_res["mean_delta_e00"],
+            req.clear_base_id,
+            req.black_paste_id
+        ))
+
+        # Log characterizations
+        white_row = cur.execute("SELECT name FROM pastes WHERE id = ?", (req.white_paste_id,)).fetchone()
+        black_row = cur.execute("SELECT name FROM pastes WHERE id = ?", (req.black_paste_id,)).fetchone()
+        base_row = cur.execute("SELECT name FROM bases WHERE id = ?", (req.clear_base_id,)).fetchone()
+
+        white_name = white_row["name"] if white_row else "Reference White"
+        black_name = black_row["name"] if black_row else "Reference Black"
+        base_name = base_row["name"] if base_row else "Clear Base"
+
+        cur.execute("""
+            INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+            VALUES (?, ?, ?, ?, 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, ?, ?, ?, ?, ?, 1)
+        """, (
+            req.white_paste_id, white_name, req.clear_base_id, base_name,
+            req.k1, req.k2, json.dumps([ld.model_dump() for ld in req.bw_letdowns]),
+            json.dumps(calc_res), calc_res["mean_delta_e00"]
+        ))
+
+        cur.execute("""
+            INSERT INTO characterizations (paste_id, paste_name, base_id, base_name, instrument, geometry, measurement_mode, version, k1, k2, letdowns_json, results_json, mean_delta_e00, passed_validation)
+            VALUES (?, ?, ?, ?, 'CHNSpec DS-36D (d/8°)', 'd/8°', 'SCI', 1, ?, ?, ?, ?, ?, 1)
+        """, (
+            req.black_paste_id, black_name, req.clear_base_id, base_name,
+            req.k1, req.k2, json.dumps([ld.model_dump() for ld in req.bw_letdowns]),
+            json.dumps(calc_res), calc_res["mean_delta_e00"]
+        ))
 
     # Clear previous bootstrap flags for this optical system
     cur.execute("UPDATE bases SET is_bootstrap_base = 0 WHERE optical_system = ?", (req.optical_system,))
@@ -501,10 +972,15 @@ def setup_bootstrap_system(req: SetupBootstrapSystemRequest):
     conn.commit()
     conn.close()
 
+    msg = "Bootstrap referans üçlüsü (Şeffaf Baz + Siyah + Beyaz) başarıyla kilitlendi."
+    if calc_res:
+        msg = f"Bootstrap optik kalibrasyonu tamamlandı ve kilitlendi! (Ortalama ΔE00: {calc_res['mean_delta_e00']})"
+
     return {
         "success": True,
         "optical_system": req.optical_system,
-        "message": "Bootstrap referans üçlüsü (Şeffaf Baz + Siyah + Beyaz) başarıyla kilitlendi."
+        "message": msg,
+        "calculation": calc_res
     }
 
 

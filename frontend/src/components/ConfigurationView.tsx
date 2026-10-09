@@ -222,7 +222,7 @@ export const ConfigurationView: React.FC<ConfigurationViewProps> = ({
               Endüstriyel Yapılandırma ve İş Akışı
             </h1>
             <span className="px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono bg-[var(--accent-subtle)] border border-[var(--accent-border)] text-[var(--accent-text)] font-semibold">
-              Innovatint Mimarisi
+              Endüstriyel CCM Mimarisi
             </span>
           </div>
           <p className="text-xs text-[var(--text-secondary)] mt-1">

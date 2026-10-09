@@ -5,7 +5,9 @@ import type {
   BootstrapSystemStatus,
   CharacterizeBaseResponse,
   ChnspecStatusInfo,
-  CalibrationHealthInfo
+  CalibrationHealthInfo,
+  MixtureTemplateItem,
+  BootstrapCalibrationResult
 } from '../types';
 import {
   fetchBootstrapStatus,
@@ -13,7 +15,13 @@ import {
   characterizeBaseFromBootstrap,
   getChnspecStatus,
   getChnspecCalibrationHealth,
-  measureChnspec
+  measureChnspec,
+  fetchMixtureTemplates,
+  createMixtureTemplate,
+  updateMixtureTemplate,
+  deleteMixtureTemplate,
+  resetMixtureTemplates,
+  calculateBootstrapCalibration
 } from '../services/api';
 import { SpectralChart } from './SpectralChart';
 import {
@@ -31,8 +39,24 @@ import {
   Scale,
   Award,
   ChevronRight,
-  Sliders
+  Sliders,
+  Edit2,
+  RotateCcw,
+  X,
+  Save,
+  Check,
+  Download
 } from 'lucide-react';
+
+// Recommended BW ladder fallback if server is offline
+const FALLBACK_BW_LADDER: MixtureTemplateItem[] = [
+  { series_type: 'BW', name: 'Masstone (Saf Beyaz Referans)', concentration_pct: 0.0, colorant_ratio: 0.0, base_ratio: 1.0, is_masstone: true, description: 'Saf beyaz baz/pasta yansıma referansı' },
+  { series_type: 'BW', name: 'Siyah Kademesi 1 (Hafif Gri)', concentration_pct: 0.15, colorant_ratio: 0.0015, base_ratio: 0.9985, is_masstone: false, description: 'Hassas absorpsiyon başlangıç eşiği' },
+  { series_type: 'BW', name: 'Siyah Kademesi 2 (Açık Gri)', concentration_pct: 0.45, colorant_ratio: 0.0045, base_ratio: 0.9955, is_masstone: false, description: 'Açık gri skala referansı' },
+  { series_type: 'BW', name: 'Siyah Kademesi 3 (Orta Gri)', concentration_pct: 1.18, colorant_ratio: 0.0118, base_ratio: 0.9882, is_masstone: false, description: 'Orta gri skala referansı' },
+  { series_type: 'BW', name: 'Siyah Kademesi 4 (Koyu Gri)', concentration_pct: 2.34, colorant_ratio: 0.0234, base_ratio: 0.9766, is_masstone: false, description: 'Koyu gri skala referansı' },
+  { series_type: 'BW', name: 'Siyah Kademesi 5 (Derin Gri)', concentration_pct: 7.00, colorant_ratio: 0.0700, base_ratio: 0.9300, is_masstone: false, description: 'Doygun siyah absorpsiyon kalibrasyonu' },
+];
 
 interface BootstrapWorkflowProps {
   bases: BasePaint[];
@@ -57,11 +81,37 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
   const [deviceStatus, setDeviceStatus] = useState<ChnspecStatusInfo | null>(null);
   const [calHealth, setCalHealth] = useState<CalibrationHealthInfo | null>(null);
 
-  // Stage 1 Selection State
+  // Stage 1 Material Selection State
   const [clearBaseId, setClearBaseId] = useState<number>(0);
   const [blackPasteId, setBlackPasteId] = useState<number>(0);
   const [whitePasteId, setWhitePasteId] = useState<number>(0);
   const [isSavingStage1, setIsSavingStage1] = useState<boolean>(false);
+
+  // Stage 1 BW Dilution Ladder & Measurements State
+  const [bwTemplates, setBwTemplates] = useState<MixtureTemplateItem[]>(FALLBACK_BW_LADDER);
+  const [bwBatchWeight, setBwBatchWeight] = useState<number>(100.0);
+  const [bwMeasurements, setBwMeasurements] = useState<
+    Record<
+      number,
+      {
+        reflectance_white?: number[];
+        reflectance_black?: number[];
+        actual_base_g?: number;
+        actual_black_g?: number;
+      }
+    >
+  >({});
+  const [measuringBwKey, setMeasuringBwKey] = useState<string | null>(null);
+  const [isCalculatingBw, setIsCalculatingBw] = useState<boolean>(false);
+  const [bwCalibrationResult, setBwCalibrationResult] = useState<BootstrapCalibrationResult | null>(null);
+
+  // Stage 1 BW Template Manager Modal State
+  const [isBwTemplateModalOpen, setIsBwTemplateModalOpen] = useState<boolean>(false);
+  const [editingBwTemplate, setEditingBwTemplate] = useState<MixtureTemplateItem | null>(null);
+  const [bwFormName, setBwFormName] = useState<string>('');
+  const [bwFormConc, setBwFormConc] = useState<number>(1.0);
+  const [bwFormDesc, setBwFormDesc] = useState<string>('');
+  const [bwFormIsMasstone, setBwFormIsMasstone] = useState<boolean>(false);
 
   // Stage 3 Base Characterization State
   const [baseName, setBaseName] = useState<string>('Baz A (Süper Opak Beyaz)');
@@ -85,6 +135,7 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
 
   useEffect(() => {
     loadStatus();
+    loadBwTemplates();
     refreshHardware();
   }, []);
 
@@ -98,6 +149,17 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
       setCalHealth(health);
     } catch {
       // Hardware background check
+    }
+  };
+
+  const loadBwTemplates = async () => {
+    try {
+      const tpls = await fetchMixtureTemplates('BW');
+      if (tpls && tpls.length > 0) {
+        setBwTemplates(tpls);
+      }
+    } catch {
+      // Fallback is already initialized
     }
   };
 
@@ -136,30 +198,271 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
     }
   };
 
-  // Stage 1 Action
-  const handleLockStage1 = async () => {
+  // ---------------------------------------------------------------------------
+  // Stage 1 BW Dilution Ladder Actions
+  // ---------------------------------------------------------------------------
+
+  const handleMeasureBwWhite = async (conc: number, name: string) => {
+    setMeasuringBwKey(`bw_w_${conc}`);
+    setErrorMessage(null);
+    try {
+      const record = await measureChnspec('SCI', `${name} - Leneta Beyaz (Rw)`);
+      setBwMeasurements((prev) => ({
+        ...prev,
+        [conc]: {
+          ...prev[conc],
+          reflectance_white: record.reflectance
+        }
+      }));
+      setSuccessMessage(`${name} Leneta Beyaz (Rw) okundu.`);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Ölçüm alınamadı. Spektrofotometre bağlantısını kontrol edin.');
+    } finally {
+      setMeasuringBwKey(null);
+    }
+  };
+
+  const handleMeasureBwBlack = async (conc: number, name: string) => {
+    setMeasuringBwKey(`bw_b_${conc}`);
+    setErrorMessage(null);
+    try {
+      const record = await measureChnspec('SCI', `${name} - Leneta Siyah (Rb)`);
+      setBwMeasurements((prev) => ({
+        ...prev,
+        [conc]: {
+          ...prev[conc],
+          reflectance_black: record.reflectance
+        }
+      }));
+      setSuccessMessage(`${name} Leneta Siyah (Rb) okundu.`);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Ölçüm alınamadı. Spektrofotometre bağlantısını kontrol edin.');
+    } finally {
+      setMeasuringBwKey(null);
+    }
+  };
+
+  const handleBwWeightChange = (conc: number, field: 'base' | 'black', val: number) => {
+    setBwMeasurements((prev) => ({
+      ...prev,
+      [conc]: {
+        ...prev[conc],
+        [field === 'base' ? 'actual_base_g' : 'actual_black_g']: val
+      }
+    }));
+  };
+
+  const handleLoadDemoBwData = () => {
+    // Realistic Titanium Dioxide (PW6) masstone curve ~ 86-90%
+    const whiteRw = [
+      0.824, 0.851, 0.869, 0.881, 0.887, 0.891,
+      0.894, 0.896, 0.897, 0.898, 0.897, 0.896,
+      0.895, 0.894, 0.892, 0.891, 0.889, 0.888,
+      0.886, 0.884, 0.883, 0.881, 0.879, 0.877,
+      0.876, 0.874, 0.872, 0.870, 0.868, 0.866, 0.863
+    ];
+    const whiteRb = whiteRw.map((v) => Math.max(0.04, Number((v * 0.985).toFixed(4))));
+
+    const newMeasures: Record<number, any> = {};
+    bwTemplates.forEach((item) => {
+      const c = item.concentration_pct;
+      const targetBaseG = Number((bwBatchWeight * Math.max(0, 1.0 - c / 100.0)).toFixed(2));
+      const targetBlackG = Number((bwBatchWeight * (c / 100.0)).toFixed(2));
+
+      if (c <= 0.001) {
+        newMeasures[c] = {
+          reflectance_white: whiteRw,
+          reflectance_black: whiteRb,
+          actual_base_g: targetBaseG,
+          actual_black_g: targetBlackG
+        };
+      } else {
+        const drop = 1.0 / (1.0 + (c / 100.0) * 85.0);
+        const rw = whiteRw.map((v) => Math.max(0.04, Number((v * drop).toFixed(4))));
+        const rb = rw.map((v) => Math.max(0.035, Number((v * 0.97).toFixed(4))));
+        newMeasures[c] = {
+          reflectance_white: rw,
+          reflectance_black: rb,
+          actual_base_g: targetBaseG,
+          actual_black_g: targetBlackG
+        };
+      }
+    });
+
+    setBwMeasurements(newMeasures);
+    setSuccessMessage('Demo spektrofotometrik BW seyreltme serisi (Rw/Rb) başarıyla yüklendi.');
+  };
+
+  const handleCalculateBw = async () => {
+    const measuredItems = bwTemplates.filter(
+      (item) => bwMeasurements[item.concentration_pct]?.reflectance_white?.length === 31
+    );
+
+    if (measuredItems.length < 2) {
+      setErrorMessage('Bootstrap kalibrasyonu için en az 1 Saf Beyaz ve 1 adet Siyah seyreltme ölçümü gereklidir.');
+      return;
+    }
+
+    setIsCalculatingBw(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const payload = {
+        clear_base_id: clearBaseId,
+        black_paste_id: blackPasteId,
+        white_paste_id: whitePasteId,
+        k1: 0.04,
+        k2: 0.60,
+        thickness: 100.0,
+        bw_letdowns: measuredItems.map((item) => {
+          const m = bwMeasurements[item.concentration_pct];
+          return {
+            concentration: item.concentration_pct,
+            reflectance: m.reflectance_white!,
+            reflectance_black: m.reflectance_black,
+            actual_base_g: m.actual_base_g,
+            actual_colorant_g: m.actual_black_g
+          };
+        })
+      };
+
+      const res = await calculateBootstrapCalibration(payload);
+      setBwCalibrationResult(res);
+      setSuccessMessage(`Bootstrap kalibrasyon eğrileri çözüldü! Ortalama ΔE00: ${res.mean_delta_e00} (R²: ${res.r_squared})`);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Bootstrap kalibrasyonu hesaplanamadı.');
+    } finally {
+      setIsCalculatingBw(false);
+    }
+  };
+
+  const handleLockStage1WithCalibration = async () => {
     if (!clearBaseId || !blackPasteId || !whitePasteId) {
       setErrorMessage('Lütfen Şeffaf Baz, Referans Siyah Pasta ve Referans Beyaz Pasta seçimlerini tamamlayın.');
       return;
     }
+
     setIsSavingStage1(true);
     setErrorMessage(null);
     setSuccessMessage(null);
+
+    const measuredItems = bwTemplates.filter(
+      (item) => bwMeasurements[item.concentration_pct]?.reflectance_white?.length === 31
+    );
+
     try {
-      const res = await setupBootstrapSystem({
+      const payload: any = {
         clear_base_id: clearBaseId,
-        bootstrap_black_paste_id: blackPasteId,
-        bootstrap_white_paste_id: whitePasteId
-      });
-      setSuccessMessage(res.message || 'Bootstrap referans üçlüsü başarıyla kilitlendi.');
+        black_paste_id: blackPasteId,
+        white_paste_id: whitePasteId,
+        optical_system: 'bootstrap_v1',
+        k1: 0.04,
+        k2: 0.60,
+        thickness: 100.0,
+        bw_letdowns: measuredItems.map((item) => {
+          const m = bwMeasurements[item.concentration_pct];
+          return {
+            concentration: item.concentration_pct,
+            reflectance: m.reflectance_white!,
+            reflectance_black: m.reflectance_black,
+            actual_base_g: m.actual_base_g,
+            actual_colorant_g: m.actual_black_g
+          };
+        })
+      };
+
+      const res = await setupBootstrapSystem(payload);
+      if (res.calculation) {
+        setBwCalibrationResult(res.calculation);
+      }
+      setSuccessMessage(res.message || 'Bootstrap referans üçlüsü ve kalibrasyonu başarıyla kilitlendi.');
       await loadStatus();
       if (onRefreshData) onRefreshData();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Bootstrap sistemi kaydedilemedi');
+      setErrorMessage(err.message || 'Bootstrap sistemi kaydedilemedi.');
     } finally {
       setIsSavingStage1(false);
     }
   };
+
+  // Template Manager Handlers for BW series
+  const handleOpenAddBwTemplate = () => {
+    setEditingBwTemplate(null);
+    setBwFormName('Yeni Siyah Kademesi');
+    setBwFormConc(3.5);
+    setBwFormDesc('Özel siyah seyreltme kademesi');
+    setBwFormIsMasstone(false);
+    setIsBwTemplateModalOpen(true);
+  };
+
+  const handleOpenEditBwTemplate = (item: MixtureTemplateItem) => {
+    setEditingBwTemplate(item);
+    setBwFormName(item.name);
+    setBwFormConc(item.concentration_pct);
+    setBwFormDesc(item.description || '');
+    setBwFormIsMasstone(!!item.is_masstone);
+    setIsBwTemplateModalOpen(true);
+  };
+
+  const handleSaveBwTemplate = async () => {
+    if (!bwFormName.trim()) {
+      alert('Lütfen kademe adını girin.');
+      return;
+    }
+    try {
+      const colorantRatio = bwFormConc / 100.0;
+      const baseRatio = Math.max(0, 1.0 - colorantRatio);
+      if (editingBwTemplate && editingBwTemplate.id) {
+        await updateMixtureTemplate(editingBwTemplate.id, {
+          name: bwFormName,
+          concentration_pct: bwFormConc,
+          colorant_ratio: colorantRatio,
+          base_ratio: baseRatio,
+          is_masstone: bwFormIsMasstone,
+          description: bwFormDesc,
+          series_type: 'BW'
+        });
+      } else {
+        await createMixtureTemplate({
+          series_type: 'BW',
+          name: bwFormName,
+          concentration_pct: bwFormConc,
+          colorant_ratio: colorantRatio,
+          base_ratio: baseRatio,
+          is_masstone: bwFormIsMasstone,
+          description: bwFormDesc
+        });
+      }
+      setIsBwTemplateModalOpen(false);
+      await loadBwTemplates();
+    } catch (err: any) {
+      alert(err.message || 'Şablon kaydedilemedi');
+    }
+  };
+
+  const handleDeleteBwTemplate = async (id?: number) => {
+    if (!id) return;
+    if (!window.confirm('Bu karışım kademesini silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteMixtureTemplate(id);
+      await loadBwTemplates();
+    } catch (err: any) {
+      alert(err.message || 'Silinemedi');
+    }
+  };
+
+  const handleResetBwTemplates = async () => {
+    if (!window.confirm('Önerilen BW karışım serisini fabrika varsayılanlarına sıfırlamak istediğinize emin misiniz?')) return;
+    try {
+      await resetMixtureTemplates('BW');
+      await loadBwTemplates();
+      setSuccessMessage('BW serisi fabrika standartlarına sıfırlandı.');
+    } catch (err: any) {
+      alert(err.message || 'Sıfırlanamadı');
+    }
+  };
+
 
   // Stage 3: Measure un-tinted base
   const handleMeasureUnTintedBase = async () => {
@@ -537,26 +840,453 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
             </div>
           </div>
 
+          {/* ----------------------------------------------------------- */}
+          {/* STAGE 1: DILUTION LADDER & MEASUREMENT TABLE (BW SERIES)     */}
+          {/* ----------------------------------------------------------- */}
+          <div className="pt-4 border-t border-[var(--border)] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-[var(--brand-clay)]" />
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                    Bootstrap Karışım ve Seyreltme Masası (BW Serisi)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-[var(--radius-xs)] bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-mono font-semibold border border-blue-500/20">
+                    Leneta Çift Yüzey (Rw / Rb)
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                  Referans Beyaz (PW6) içerisine Referans Siyah (PBk7) seyreltilerek K_siyah ve S_beyaz çift-sabitli omurgası türetilir.
+                </p>
+              </div>
+
+              {/* Table Toolbar */}
+              <div className="flex items-center flex-wrap gap-2">
+                {/* Batch Size Selector */}
+                <div className="flex items-center gap-1.5 bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius-sm)] px-2 py-1 text-xs">
+                  <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Kutu / Numune:</span>
+                  <select
+                    value={bwBatchWeight}
+                    onChange={(e) => setBwBatchWeight(Number(e.target.value))}
+                    className="bg-transparent text-[var(--text-primary)] font-mono font-semibold focus:outline-none cursor-pointer"
+                  >
+                    <option value={50.0}>50.0 g</option>
+                    <option value={100.0}>100.0 g</option>
+                    <option value={200.0}>200.0 g</option>
+                    <option value={250.0}>250.0 g</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLoadDemoBwData}
+                  className="px-2.5 py-1 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-[var(--radius-sm)] text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Spektrofotometre olmadan tam simülasyon verisi yükler"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Demo Veri Yükle</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenAddBwTemplate}
+                  className="px-2.5 py-1 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-primary)] rounded-[var(--radius-sm)] text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Plus className="h-3.5 w-3.5 text-[var(--brand-clay)]" />
+                  <span>Karışım Ekle</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetBwTemplates}
+                  className="p-1 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-[var(--radius-sm)] transition-colors cursor-pointer"
+                  title="Varsayılan BW serisine sıfırla"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Dilution Ladder Table */}
+            <div className="overflow-x-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-0)]">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-[var(--surface-1)] text-[var(--text-secondary)] text-[10px] uppercase border-b border-[var(--border)]">
+                  <tr>
+                    <th className="p-2.5 w-10 text-center">Ton</th>
+                    <th className="p-2.5">Kademe / Açıklama</th>
+                    <th className="p-2.5 w-24">Kons. (%)</th>
+                    <th className="p-2.5">Hedef Tartım (Öneri)</th>
+                    <th className="p-2.5">Fiili Terazi Gramajı (g)</th>
+                    <th className="p-2.5 text-center">Leneta Beyaz (Rw)</th>
+                    <th className="p-2.5 text-center">Leneta Siyah (Rb)</th>
+                    <th className="p-2.5 text-center">Kontrast / Opaklık</th>
+                    <th className="p-2.5 text-right w-16">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {bwTemplates.map((item) => {
+                    const c = item.concentration_pct;
+                    const m = bwMeasurements[c];
+                    const targetBaseG = Number((bwBatchWeight * Math.max(0, 1.0 - c / 100.0)).toFixed(2));
+                    const targetBlackG = Number((bwBatchWeight * (c / 100.0)).toFixed(2));
+
+                    const actualBaseG = m?.actual_base_g ?? targetBaseG;
+                    const actualBlackG = m?.actual_black_g ?? targetBlackG;
+
+                    const hasRw = m?.reflectance_white && m.reflectance_white.length === 31;
+                    const hasRb = m?.reflectance_black && m.reflectance_black.length === 31;
+
+                    // Swatch color estimation
+                    let swatchColor = '#f8fafc';
+                    if (hasRw) {
+                      const avg = m!.reflectance_white!.reduce((a, b) => a + b, 0) / 31;
+                      const val = Math.round(Math.min(255, Math.max(15, avg * 255)));
+                      swatchColor = `rgb(${val}, ${val}, ${val})`;
+                    } else if (c <= 0.001) {
+                      swatchColor = '#f8fafc';
+                    } else if (c <= 0.2) {
+                      swatchColor = '#e2e8f0';
+                    } else if (c <= 0.5) {
+                      swatchColor = '#cbd5e1';
+                    } else if (c <= 1.5) {
+                      swatchColor = '#94a3b8';
+                    } else if (c <= 3.0) {
+                      swatchColor = '#64748b';
+                    } else {
+                      swatchColor = '#1e293b';
+                    }
+
+                    // Contrast ratio
+                    let crText = '-';
+                    if (hasRw && hasRb) {
+                      const avgW = m!.reflectance_white!.reduce((a, b) => a + b, 0) / 31;
+                      const avgB = m!.reflectance_black!.reduce((a, b) => a + b, 0) / 31;
+                      const cr = Math.min(100.0, (avgB / Math.max(avgW, 0.001)) * 100.0);
+                      crText = `%${cr.toFixed(1)}`;
+                    }
+
+                    return (
+                      <tr key={item.id || c} className="hover:bg-[var(--surface-1)]/50 transition-colors">
+                        {/* Swatch */}
+                        <td className="p-2.5 text-center">
+                          <div
+                            className="w-5 h-5 rounded-full mx-auto border border-black/20 shadow-xs"
+                            style={{ backgroundColor: swatchColor }}
+                          />
+                        </td>
+
+                        {/* Name & Role */}
+                        <td className="p-2.5">
+                          <div className="font-semibold text-[var(--text-primary)]">{item.name}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] line-clamp-1">
+                            {item.description || (item.is_masstone ? 'Saf beyaz yansıma omurgası' : 'Siyah seyreltme basamağı')}
+                          </div>
+                        </td>
+
+                        {/* Concentration */}
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-primary)] font-bold">
+                            %{c.toFixed(2)}
+                          </span>
+                        </td>
+
+                        {/* Target weights */}
+                        <td className="p-2.5 text-[11px] text-[var(--text-secondary)]">
+                          <div>
+                            Beyaz: <span className="font-bold text-[var(--text-primary)]">{targetBaseG.toFixed(2)}g</span>
+                          </div>
+                          <div>
+                            Siyah: <span className="font-bold text-[var(--text-primary)]">{targetBlackG.toFixed(2)}g</span>
+                          </div>
+                        </td>
+
+                        {/* Actual Scale Weights */}
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div>
+                              <span className="text-[9px] text-[var(--text-muted)] block">Beyaz(g)</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={actualBaseG}
+                                onChange={(e) => handleBwWeightChange(c, 'base', parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1.5 py-0.5 bg-[var(--surface-1)] border border-[var(--border)] rounded text-[11px] font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-[var(--text-muted)] block">Siyah(g)</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={actualBlackG}
+                                onChange={(e) => handleBwWeightChange(c, 'black', parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1.5 py-0.5 bg-[var(--surface-1)] border border-[var(--border)] rounded text-[11px] font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Leneta Rw */}
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleMeasureBwWhite(c, item.name)}
+                            disabled={measuringBwKey !== null}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center justify-center gap-1 mx-auto transition-colors cursor-pointer ${
+                              hasRw
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
+                                : 'bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white shadow-xs'
+                            }`}
+                          >
+                            {measuringBwKey === `bw_w_${c}` ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : hasRw ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                <span>31λ Okundu</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="h-3 w-3" />
+                                <span>Rw Oku</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Leneta Rb */}
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleMeasureBwBlack(c, item.name)}
+                            disabled={measuringBwKey !== null}
+                            className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center justify-center gap-1 mx-auto transition-colors cursor-pointer ${
+                              hasRb
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
+                                : 'bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] border border-[var(--border)]'
+                            }`}
+                          >
+                            {measuringBwKey === `bw_b_${c}` ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : hasRb ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                <span>31λ Okundu</span>
+                              </>
+                            ) : (
+                              <>
+                                <Layers className="h-3 w-3" />
+                                <span>Rb Oku</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Contrast Ratio */}
+                        <td className="p-2.5 text-center font-bold text-[var(--text-secondary)]">
+                          {crText}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditBwTemplate(item)}
+                              className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--surface-1)] transition-colors cursor-pointer"
+                              title="Kademeyi Düzenle"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBwTemplate(item.id)}
+                              className="p-1 text-[var(--text-muted)] hover:text-red-500 rounded hover:bg-[var(--surface-1)] transition-colors cursor-pointer"
+                              title="Kademeyi Sil"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ----------------------------------------------------------- */}
+          {/* STAGE 1: CALIBRATION RESULTS & SPECTRAL CHART               */}
+          {/* ----------------------------------------------------------- */}
+          {bwCalibrationResult && (
+            <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-0)] space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
+                <div>
+                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <Award className="h-4 w-4 text-[var(--brand-clay)]" />
+                    <span>Bootstrap Kalibrasyon Çözümü & Optik Eğriler</span>
+                  </h4>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    {bwCalibrationResult.summary}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-[var(--radius-sm)] text-xs font-bold font-mono border ${
+                      bwCalibrationResult.passed_validation
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                    }`}
+                  >
+                    {bwCalibrationResult.passed_validation ? 'DOĞRULAMA: GEÇTİ' : 'DOĞRULAMA: UYARI'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Scorecards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                <div className="p-3 rounded bg-[var(--surface-1)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted)] block">Ortalama ΔE00</span>
+                  <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                    {bwCalibrationResult.mean_delta_e00.toFixed(3)}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded bg-[var(--surface-1)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted)] block">Maksimum ΔE00</span>
+                  <span className="text-base font-bold text-[var(--text-primary)]">
+                    {bwCalibrationResult.max_delta_e00.toFixed(3)}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded bg-[var(--surface-1)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted)] block">Doğrusallık (R²)</span>
+                  <span className="text-base font-bold text-[var(--text-primary)]">
+                    {bwCalibrationResult.r_squared.toFixed(4)}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded bg-[var(--surface-1)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted)] block">Spektral RMSE</span>
+                  <span className="text-base font-bold text-[var(--text-primary)]">
+                    {bwCalibrationResult.spectral_rmse.toFixed(4)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Spectral Chart */}
+              <div className="h-64 border border-[var(--border)] rounded-[var(--radius)] overflow-hidden bg-[var(--surface-1)] p-3">
+                <SpectralChart
+                  series={[
+                    {
+                      id: 'k-black',
+                      name: 'K_siyah(λ) [PBk7 Absorpsiyon]',
+                      color: '#0f172a',
+                      data: bwCalibrationResult.unit_k_black,
+                      strokeWidth: 2.2
+                    },
+                    {
+                      id: 's-white',
+                      name: 'S_beyaz(λ) [PW6 Saçılma ≡ 1.0]',
+                      color: '#2563eb',
+                      data: bwCalibrationResult.unit_s_white,
+                      strokeWidth: 2.0,
+                      strokeDasharray: '4 4'
+                    },
+                    {
+                      id: 'k-white',
+                      name: 'K_beyaz(λ) [PW6 Absorpsiyon]',
+                      color: '#d97706',
+                      data: bwCalibrationResult.unit_k_white,
+                      strokeWidth: 1.8
+                    }
+                  ]}
+                  title="Bootstrap Kalibrasyon Eğrileri (K_black & S_white)"
+                  subtitle="Türetilen temel optik absorpsiyon ve saçılma katsayıları"
+                  height={240}
+                />
+              </div>
+
+              {/* Back predictions table */}
+              <div className="overflow-x-auto rounded-[var(--radius)] border border-[var(--border)]">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-[var(--surface-1)] text-[var(--text-secondary)] text-[10px] uppercase border-b border-[var(--border)]">
+                    <tr>
+                      <th className="p-2">Kademe</th>
+                      <th className="p-2">Kons. (%)</th>
+                      <th className="p-2">Ölçülen Lab (D65/10°)</th>
+                      <th className="p-2">Tahmin Lab (K-M)</th>
+                      <th className="p-2">ΔE00 Residual</th>
+                      <th className="p-2 text-right">Durum</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {bwCalibrationResult.back_predictions.map((bp, idx) => (
+                      <tr key={idx} className="hover:bg-[var(--surface-1)]/50">
+                        <td className="p-2 font-semibold text-[var(--text-primary)]">{bp.name}</td>
+                        <td className="p-2">%{bp.concentration.toFixed(2)}</td>
+                        <td className="p-2 text-[var(--text-secondary)]">
+                          L:{bp.measured_lab[0].toFixed(1)} a:{bp.measured_lab[1].toFixed(1)} b:{bp.measured_lab[2].toFixed(1)}
+                        </td>
+                        <td className="p-2 text-[var(--text-secondary)]">
+                          L:{bp.predicted_lab[0].toFixed(1)} a:{bp.predicted_lab[1].toFixed(1)} b:{bp.predicted_lab[2].toFixed(1)}
+                        </td>
+                        <td className="p-2 font-bold text-emerald-600 dark:text-emerald-400">
+                          {bp.delta_e00.toFixed(3)}
+                        </td>
+                        <td className="p-2 text-right font-medium">
+                          {bp.passed ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                              <Check className="h-3 w-3" /> Geçti (&lt;0.40)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-amber-500">
+                              Uyarı
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Action Button & Guidance */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[var(--border)]">
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
               <Info className="h-4 w-4 text-[var(--brand-clay)] shrink-0" />
               <span>
-                Kilitleme işlemi bu üçlüyü veri tabanında <code className="font-mono text-[11px]">bootstrap_role</code> ile etiketler.
+                Kilitleme işlemi türetilen <code className="font-mono text-[11px]">K_black</code> ve <code className="font-mono text-[11px]">S_white</code> eğrilerini kütüphaneye yazar.
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center flex-wrap gap-3">
               <button
-                onClick={handleLockStage1}
+                type="button"
+                onClick={handleCalculateBw}
+                disabled={isCalculatingBw}
+                className="px-4 py-2 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-primary)] font-semibold text-xs rounded-[var(--radius)] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                <span>{isCalculatingBw ? 'Hesaplanıyor...' : 'Kalibrasyonu Hesapla & Önizle'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLockStage1WithCalibration}
                 disabled={isSavingStage1 || !clearBaseId || !blackPasteId || !whitePasteId}
                 className="px-4 py-2 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] disabled:opacity-50 text-white font-medium text-xs rounded-[var(--radius)] flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
               >
                 <ShieldCheck className="h-4 w-4" />
-                <span>{isSavingStage1 ? 'Kilitleniyor...' : 'Bootstrap Referansını Kilitle ve Onayla'}</span>
+                <span>{isSavingStage1 ? 'Kilitleniyor...' : 'Bootstrap Referansını Çöz ve Kilitle'}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveStage(2)}
                 className="px-3 py-2 bg-[var(--surface-0)] hover:bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-xs rounded-[var(--radius)] flex items-center gap-1.5 transition-colors cursor-pointer"
               >
@@ -1121,6 +1851,103 @@ export const BootstrapCharacterizationWorkflow: React.FC<BootstrapWorkflowProps>
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* MODAL: BW ÖNERİLEN KARIŞIM ŞABLONU EKLE / DÜZENLE         */}
+      {/* ======================================================== */}
+      {isBwTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-[var(--surface-0)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 max-w-md w-full shadow-xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <h3 className="font-bold text-[var(--text-primary)] text-sm flex items-center gap-2">
+                <Scale className="h-4 w-4 text-[var(--brand-clay)]" />
+                <span>{editingBwTemplate ? 'BW Karışımını Düzenle' : 'Yeni BW Karışım Kademesi Ekle'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsBwTemplateModalOpen(false)}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] uppercase text-[var(--text-secondary)] mb-1">
+                  Kademe Adı
+                </label>
+                <input
+                  type="text"
+                  value={bwFormName}
+                  onChange={(e) => setBwFormName(e.target.value)}
+                  placeholder="Örn: Siyah Kademesi 6 (%10.0)"
+                  className="w-full px-2.5 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase text-[var(--text-secondary)] mb-1">
+                  Siyah Konsantrasyonu (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0.0"
+                  max="100.0"
+                  value={bwFormConc}
+                  onChange={(e) => setBwFormConc(parseFloat(e.target.value) || 0)}
+                  className="w-full px-2.5 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase text-[var(--text-secondary)] mb-1">
+                  Açıklama / Kalibrasyon Rolü
+                </label>
+                <input
+                  type="text"
+                  value={bwFormDesc}
+                  onChange={(e) => setBwFormDesc(e.target.value)}
+                  placeholder="Örn: Yüksek absorpsiyon kontrol noktası"
+                  className="w-full px-2.5 py-1.5 bg-[var(--surface-1)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-clay)]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="bw_masstone_cb"
+                  checked={bwFormIsMasstone}
+                  onChange={(e) => setBwFormIsMasstone(e.target.checked)}
+                  className="rounded border-[var(--border)] text-[var(--brand-clay)] focus:ring-0 cursor-pointer"
+                />
+                <label htmlFor="bw_masstone_cb" className="text-xs text-[var(--text-primary)] cursor-pointer select-none">
+                  Saf Beyaz Masstone (%0 Siyah Katkısı)
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setIsBwTemplateModalOpen(false)}
+                className="px-3 py-1.5 bg-[var(--surface-1)] hover:bg-[var(--surface-2)] border border-[var(--border)] rounded text-xs text-[var(--text-secondary)] cursor-pointer"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBwTemplate}
+                className="px-4 py-1.5 bg-[var(--brand-clay)] hover:bg-[var(--brand-clay-emphasized)] text-white rounded text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                {editingBwTemplate ? 'Güncelle' : 'Kaydet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

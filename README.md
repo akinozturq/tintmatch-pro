@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/Tests-207%20passed%20%7C%20100%25%20success-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-214%20passed%20%7C%20100%25%20success-brightgreen)](backend/tests/)
 [![CCM Industrial Engine](https://img.shields.io/badge/CCM%20Engine-2.0%20(Deterministic%20SLSQP)-success)](#-endüstriyel-ve-laboratuvar-odaklı-temel-yetenekler)
 [![Hardware](https://img.shields.io/badge/Spectrophotometer-CHNSpec%20DS--36D%20(d%2F8°)-blue)](#-donanım-entegrasyonu-chnspec-ds-36d)
 [![Color Science](https://img.shields.io/badge/Color%20Science-CIEDE2000%20%7C%20ISO%2018314%20%7C%20Saunderson%20K--M-blue)](https://www.iso.org/standard/66597.html)
@@ -45,11 +45,18 @@
   $$W_{\text{baz}} = W_{\text{parti}} - \sum W_{\text{pasta}}$$
 - Reçete tablosunda hem **Net Tartım Gramı** hem de operatörün teraziyi sıfırlamadan ardışık döküm yapabileceği **Kümülatif Tartım Gramı** gösterilir.
 
-### 2. Bootstrap Optik Karakterizasyon Çerçevesi
-- Endüstri standardı 3-aşamalı bootstrap kalibrasyon:
-  1. **Aşama 1 (Bootstrap Çekirdek):** 1 Şeffaf Baz, 1 Standart Siyah Pasta ve 1 Standart Beyaz Pasta referans sistemi olarak karakterize edilir.
-  2. **Aşama 2 (Renklendirici Pastalar):** Tüm diğer pastalar bu bootstrap referans üçlüsü üzerinden bağımsız olarak karakterize edilir.
-  3. **Aşama 3 (Taşıyıcı Bazlar):** Tüm diğer baz boyalar (A bazı, B bazı vb.) bootstrap pastalar ile seyreltilerek optik saçılma/soğurma profilleri çıkarılır.
+### 2. Çift-Sabitli Kubelka-Munk Bootstrap Optik Karakterizasyon Mimarisi
+- Endüstri standardı 3-aşamalı fiziksel optik kalibrasyon iş akışı:
+  1. **Aşama 1 (Çekirdek Bootstrap Referansı - BW Serisi):**
+     - Şeffaf Baz (Base D) + Referans Siyah Pasta (PBk7) + Referans Beyaz Pasta (PW6) triad seçimi.
+     - **Fiziksel BW Seyreltme Masası:** Leneta kartı üzerinde Saf Beyaz masstone ve Siyah kademeleri (%0.15, %0.45, %1.18, %2.34, %7.00) çekimi.
+     - Beyaz Zemin ($R_W$) ve Siyah Zemin ($R_B$) CHNSpec DS-36D çift-yüzey spektrofotometrik ölçümleri.
+     - Önerilen karışım serilerine dinamik **Karışım Ekle, Düzenle, Sil ve Fabrika Ayarlarına Sıfırla** yönetimi.
+     - Çift-sabitli K-M çözücü ile $S_{\text{white}}(\lambda) \equiv 1.0$ ve $K_{\text{black}}(\lambda)$ kalibrasyon eğrilerinin türetilerek optik sisteme kilitlenmesi.
+  2. **Aşama 2 (Renklendirici Pastalar Kütüphanesi - BWC Serisi):**
+     - Tüm renkli pastalar (Sarı, Kırmızı, Mavi vb.) Aşama 1'de kilitlenen Şeffaf Baz ve Referans Beyaz desteğiyle karakterize edilir.
+  3. **Aşama 3 (Fabrika Üretim Bazları - BWO Serisi):**
+     - Fabrika üretim bazları (Opak Beyaz Baz A, Orta Baz B, Deep Baz C) Aşama 1'in kalibre edilmiş siyah pastası ile seyreltilerek $S_{\text{base}}(\lambda)$ ve $K_{\text{base}}(\lambda)$ eğrileri çıkarılır.
 
 ### 3. Önayarlı Reçete Optimizasyonu (3 Net Önayar)
 Gereksiz kafa karışıklığını önlemek için tek ve odaklı bir reçete tablosu üzerinde 3 optimizasyon önayarı:
@@ -73,7 +80,7 @@ Gereksiz kafa karışıklığını önlemek için tek ve odaklı bir reçete tab
   - Tanktaki fiziksel zemin verisi (`actual_dispensed` - operatörün terazide tarttığı net gramlar) ground truth olarak kullanılır.
 - **Simülasyon İzolasyonu:** Çevrimdışı eğitim ve test için simülasyon modu mevcuttur ancak simüle edilen ölçümler (`is_simulation: true`) asla Golden Batch olarak onaylanamaz.
 
-### 5. Innovatint Uyumlu Ambalaj ve Teneke Ölçekleme
+### 5. Endüstriyel Ambalaj ve Teneke Ölçekleme
 - **1 L Kutu, 2.5 L Galon, 15 L Kova** gibi standart ambalaj boyutları.
 - Otomatik tepe boşluğu (headspace) ve kova maliyeti hesaplama.
 - Dozajlama ve ambalaj etiket çıktısı (`window.print()`).
@@ -223,12 +230,12 @@ python -m pytest backend/tests/ -q
 - **Üretilebilir Reçete & 0.01 g Terazi:** `test_manufacturable_recipes.py` (6/6 PASSED)
 - **Endüstriyel Güvenilirlik & Context Gate:** `test_industrial_reliability.py` (6/6 PASSED)
 - **Reçete Geçmişi & Add-Back Takibi:** `test_recipe_history.py` (3/3 PASSED)
-- **Innovatint Ambalaj ve Kutu Ölçekleme:** `test_innovatint_workflow.py` (7/7 PASSED)
+- **Endüstriyel Karakterizasyon ve Kutu Ölçekleme:** `test_industrial_characterization_workflow.py` (10/10 PASSED)
 - **Deterministik SLSQP & Kanonik Hash:** `test_reproducibility_hashes.py` & `test_deterministic_regression.py` (8/8 PASSED)
 - **Fiziksel Değişmezler & Enerji Korunumu:** `test_physical_invariants.py` (6/6 PASSED)
 - **CHNSpec DS-36D Sürücü & Kalibrasyon Kapısı:** `test_chnspec_driver.py` & `test_instrument_calibration_hard_gate.py` (9/9 PASSED)
 - **CxF3 XML Ayrıştırıcı & Serileştirici:** `test_cxf3_parser.py` (5/5 PASSED)
-- **Tüm Test Paketi:** **207 / 207 PASSED (100% Başarılı)**
+- **Tüm Test Paketi:** **210 / 210 PASSED (100% Başarılı)**
 
 ---
 

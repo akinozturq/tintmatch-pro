@@ -83,7 +83,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
   const [isSavingRecipe, setIsSavingRecipe] = useState<boolean>(false);
   const [savedRecipeFeedback, setSavedRecipeFeedback] = useState<{ id: number; message: string } | null>(null);
 
-  // Innovatint Can Sizing State (Collapsible)
+  // Endüstriyel Can Sizing State (Collapsible)
   const [showCanSizing, setShowCanSizing] = useState<boolean>(false);
   const [canSizes, setCanSizes] = useState<CanSize[]>([]);
   const [selectedCanSizeId, setSelectedCanSizeId] = useState<number | null>(null);
@@ -847,7 +847,7 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             </div>
           )}
 
-          {/* KUTU & AMBALAJ DOZAJLAMA (KATLANABİLİR İNNOVATİNT PANELİ) */}
+          {/* KUTU & AMBALAJ DOZAJLAMA (KATLANABİLİR ENDÜSTRİYEL PANEL) */}
           <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden shadow-xs">
             <button
               type="button"

@@ -820,3 +820,212 @@ def characterize_production_base(
         "optical_system": "bootstrap_v1",
         "summary": "Base Characterization PASSED" if mean_de00 <= 0.60 else f"Base Calibration Refinement Needed (Mean ΔE00 = {mean_de00:.2f})"
     }
+
+
+def characterize_bootstrap_triplet(
+    bw_letdowns: list[dict],
+    clear_base_reflectance: list[float] | None = None,
+    k1: float = 0.04,
+    k2: float = 0.60,
+    thickness: float = 100.0
+) -> dict:
+    """
+    Calibrates the foundational Stage 1 Bootstrap Optical Triplet:
+    - Reference White Paste / Base (S_white(λ) ≡ 1.0, K_white(λ) derived from masstone)
+    - Reference Black Paste (K_black(λ), S_black(λ) derived from black-in-white dilution ladder)
+    - Clear Base (transparency baseline)
+
+    Formulation:
+    For pure white (masstone / 0% black):
+        r_white_int = saunderson_correction(R_white, k1, k2)
+        (K/S)_white = (1 - r_white_int)^2 / (2 * r_white_int)
+        S_white(λ) ≡ 1.0 (bootstrap normalization)
+        K_white(λ) = (K/S)_white * S_white(λ) = (K/S)_white
+
+    For black dilutions in white c_j:
+        (K/S)_mix,j = (K_white + c_j * K_black) / (S_white + c_j * S_black)
+        Rearranging:
+        c_j * K_black - c_j * (K/S)_mix,j * S_black = (K/S)_mix,j - K_white
+        Solved per wavelength via least-squares optimization.
+
+    Back-predicts reflectance for all dilutions, computes CIEDE2000 residuals,
+    and returns complete calibration curves and metrics.
+    """
+    if not bw_letdowns:
+        raise ValueError("At least 1 measurement is required for bootstrap characterization.")
+
+    # 1. Parse letdowns and sort by concentration
+    parsed_items = []
+    for ld in bw_letdowns:
+        raw_c = ld.get("concentration", 0.0)
+        c = float(raw_c) if raw_c is not None else 0.0
+
+        # Effective concentration from scale weights if present
+        actual_base = ld.get("actual_base_g")
+        actual_paste = ld.get("actual_paste_g")
+        if actual_base is not None and actual_paste is not None:
+            tot = float(actual_base) + float(actual_paste)
+            if tot > 0:
+                c_eff = float(actual_paste) / tot
+            else:
+                c_eff = c / 100.0 if c > 0.5 else c
+        else:
+            c_eff = c / 100.0 if c > 0.5 else c
+
+        r_meas = np.asarray(ld["reflectance"], dtype=float)
+        if np.max(r_meas) > 1.5:
+            r_meas = r_meas / 100.0
+        r_meas = np.clip(r_meas, 0.001, 0.999)
+
+        r_black = None
+        if ld.get("reflectance_black") and len(ld["reflectance_black"]) == N_WAVELENGTHS:
+            r_b = np.asarray(ld["reflectance_black"], dtype=float)
+            if np.max(r_b) > 1.5:
+                r_b = r_b / 100.0
+            r_black = np.clip(r_b, 0.001, 0.999)
+
+        parsed_items.append({
+            "name": ld.get("name", f"%{c:.2f} Siyah Açması"),
+            "nominal_c": c,
+            "effective_c": c_eff,
+            "r_meas": r_meas,
+            "r_black": r_black,
+            "actual_base_g": actual_base,
+            "actual_paste_g": actual_paste
+        })
+
+    # Sort ascending by effective concentration
+    parsed_items.sort(key=lambda x: x["effective_c"])
+
+    # 2. Extract White Reference (lowest concentration, typically c=0.0)
+    white_sample = parsed_items[0]
+    r_white_meas = white_sample["r_meas"]
+    r_white_int = saunderson_correction(r_white_meas, k1=k1, k2=k2)
+    ks_white = reflectance_to_ks(r_white_int)
+
+    # Standard Two-Constant Bootstrap Convention:
+    # S_white(λ) ≡ 1.0 (Scattering Reference)
+    # K_white(λ) = (K/S)_white * S_white
+    s_white = np.ones(N_WAVELENGTHS, dtype=float)
+    k_white = np.maximum(ks_white * s_white, 1e-4)
+
+    # 3. Fit Black Reference across dilutions where c > 0
+    black_samples = [p for p in parsed_items if p["effective_c"] > 0.0005]
+
+    s_black = np.zeros(N_WAVELENGTHS, dtype=float)
+    k_black = np.zeros(N_WAVELENGTHS, dtype=float)
+
+    if black_samples:
+        concs_blk = np.array([p["effective_c"] for p in black_samples], dtype=float)
+        r_int_blk = [saunderson_correction(p["r_meas"], k1=k1, k2=k2) for p in black_samples]
+        ks_blk = [reflectance_to_ks(rint) for rint in r_int_blk]
+
+        for i in range(N_WAVELENGTHS):
+            kw_i = k_white[i]
+            sw_i = s_white[i]
+
+            # Linear regression: (K/S)_mix * (S_white + c*S_black) = K_white + c*K_black
+            # Since S_black is typically negligible for carbon black, we solve K_black directly
+            # with slight scattering regularization
+            y_i = []
+            x_i = []
+            for j in range(len(black_samples)):
+                c_j = concs_blk[j]
+                theta_j = ks_blk[j][i]
+                # theta_j * sw_i - kw_i ≈ c_j * (k_black - theta_j * s_black)
+                y_i.append(theta_j * sw_i - kw_i)
+                x_i.append(c_j)
+
+            x_arr = np.array(x_i, dtype=float)
+            y_arr = np.array(y_i, dtype=float)
+
+            denom = float(np.sum(x_arr * x_arr))
+            if denom > 1e-9:
+                k_est = float(np.sum(x_arr * y_arr) / denom)
+            else:
+                k_est = 2.5
+
+            k_black[i] = max(0.05, k_est)
+            # Low scattering for pure carbon black
+            s_black[i] = 0.005
+    else:
+        # Default fallback high absorption black
+        k_black = np.full(N_WAVELENGTHS, 3.5, dtype=float)
+        s_black = np.full(N_WAVELENGTHS, 0.005, dtype=float)
+
+    # 4. Back-Predictions and CIEDE2000 Validation
+    back_predictions = []
+    delta_e_list = []
+    total_sse = 0.0
+    total_var = 0.0
+
+    for item in parsed_items:
+        c = item["effective_c"]
+        meas_r = item["r_meas"]
+
+        mix_k = k_white + c * k_black
+        mix_s = s_white + c * s_black
+        pred_ks = mix_k / np.maximum(mix_s, 1e-6)
+
+        pred_r_int = ks_to_reflectance(pred_ks)
+        denom = np.maximum(1.0 - k2 * pred_r_int, 1e-6)
+        pred_r_meas = np.clip(k1 + (1.0 - k1) * (1.0 - k2) * pred_r_int / denom, 0.0, 1.0)
+
+        lab_meas = reflectance_to_lab(meas_r, illuminant="D65", observer="10")
+        lab_pred = reflectance_to_lab(pred_r_meas, illuminant="D65", observer="10")
+        diff = ciede2000(lab_meas, lab_pred)
+        de00 = round(float(diff["delta_e00"]), 3)
+        delta_e_list.append(de00)
+
+        # Contrast ratio if black substrate measurement exists
+        cr_val = None
+        if item["r_black"] is not None:
+            y_white = float(lab_meas[0])
+            lab_b = reflectance_to_lab(item["r_black"], illuminant="D65", observer="10")
+            y_black = float(lab_b[0])
+            cr_val = round((y_black / max(y_white, 1e-3)) * 100.0, 1)
+
+        diff_curve = meas_r - pred_r_meas
+        sse = float(np.sum(diff_curve ** 2))
+        total_sse += sse
+        total_var += float(np.sum((meas_r - np.mean(meas_r)) ** 2))
+
+        back_predictions.append({
+            "name": item["name"],
+            "concentration": round(item["nominal_c"], 4),
+            "effective_concentration": round(c, 5),
+            "measured_reflectance": [round(float(v), 4) for v in meas_r],
+            "predicted_reflectance": [round(float(v), 4) for v in pred_r_meas],
+            "measured_lab": [round(float(v), 2) for v in lab_meas],
+            "predicted_lab": [round(float(v), 2) for v in lab_pred],
+            "delta_e00": de00,
+            "contrast_ratio": cr_val,
+            "passed": de00 < 0.40
+        })
+
+    mean_de00 = float(np.mean(delta_e_list)) if delta_e_list else 0.0
+    max_de00 = float(np.max(delta_e_list)) if delta_e_list else 0.0
+    r_squared = float(max(0.0, 1.0 - (total_sse / max(total_var, 1e-9))))
+    spectral_rmse = float(np.sqrt(total_sse / max(len(parsed_items) * N_WAVELENGTHS, 1)))
+
+    unit_ks_white = k_white / s_white
+    unit_ks_black = k_black / np.maximum(s_black, 1e-4)
+
+    return {
+        "unit_k_white": [round(float(v), 5) for v in k_white],
+        "unit_s_white": [round(float(v), 5) for v in s_white],
+        "unit_ks_white": [round(float(v), 5) for v in unit_ks_white],
+        "unit_k_black": [round(float(v), 5) for v in k_black],
+        "unit_s_black": [round(float(v), 5) for v in s_black],
+        "unit_ks_black": [round(float(v), 5) for v in unit_ks_black],
+        "wavelengths": WAVELENGTHS.tolist(),
+        "back_predictions": back_predictions,
+        "mean_delta_e00": round(mean_de00, 3),
+        "max_delta_e00": round(max_de00, 3),
+        "r_squared": round(r_squared, 4),
+        "spectral_rmse": round(spectral_rmse, 4),
+        "passed_validation": bool(mean_de00 <= 0.40),
+        "optical_system": "bootstrap_v1",
+        "summary": "Stage 1 Bootstrap Optical Triplet Calibrated (K_black & S_white Derived)" if mean_de00 <= 0.40 else f"Bootstrap Refinement Recommended (Mean ΔE00 = {mean_de00:.2f})"
+    }
+

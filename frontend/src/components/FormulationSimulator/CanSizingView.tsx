@@ -55,7 +55,7 @@ export const CanSizingView: React.FC<CanSizingViewProps> = ({
                 Ambalaj Ölçekleme & Endüstriyel Dozajlama
               </h3>
               <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-mono bg-[var(--surface-0)] border border-[var(--border)] text-[var(--text-secondary)]">
-                Innovatint Scaling Engine
+                Endüstriyel Dozaj Motoru
               </span>
             </div>
             <p className="text-[11px] text-[var(--text-secondary)]">

@@ -438,6 +438,44 @@ def init_db():
     );
     """)
 
+    # Characterization Sets table (Container for optical calibration settings, Saunderson constants, substrates)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS characterization_sets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        system_mode TEXT NOT NULL DEFAULT 'WHITE',
+        default_thickness_um REAL NOT NULL DEFAULT 150.0,
+        k1 REAL NOT NULL DEFAULT 0.04,
+        k2 REAL NOT NULL DEFAULT 0.60,
+        white_substrate_r TEXT,
+        black_substrate_r TEXT,
+        clear_base_id INTEGER REFERENCES bases(id),
+        white_component_id INTEGER,
+        black_paste_id INTEGER REFERENCES pastes(id),
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Mixture Templates table (Customizable mixture series: BWC colorants, BW bootstrap, BWO bases)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mixture_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_type TEXT NOT NULL,
+        item_order INTEGER NOT NULL DEFAULT 1,
+        name TEXT NOT NULL,
+        concentration_pct REAL NOT NULL,
+        colorant_ratio REAL NOT NULL DEFAULT 0.0,
+        white_ratio REAL NOT NULL DEFAULT 0.0,
+        black_ratio REAL NOT NULL DEFAULT 0.0,
+        base_ratio REAL NOT NULL DEFAULT 1.0,
+        is_masstone BOOLEAN NOT NULL DEFAULT 0,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     # Seed default instrument if empty
     cur.execute("SELECT COUNT(*) FROM instruments")
     if cur.fetchone()[0] == 0:
@@ -460,6 +498,16 @@ def init_db():
     has_products = cur.fetchone()[0]
     if has_cans == 0 or has_products == 0:
         _seed_configuration_data(conn)
+
+    # Check if mixture templates need seeding
+    cur.execute("SELECT COUNT(*) FROM mixture_templates")
+    if cur.fetchone()[0] == 0:
+        _seed_mixture_templates(conn)
+
+    # Check if characterization sets need seeding
+    cur.execute("SELECT COUNT(*) FROM characterization_sets")
+    if cur.fetchone()[0] == 0:
+        _seed_characterization_sets(conn)
 
     conn.close()
 
@@ -743,3 +791,66 @@ def _seed_configuration_data(conn: sqlite3.Connection):
             """, (card_id, color_code, color_name, hex_val, json.dumps(lab_val), json.dumps(refl)))
 
     conn.commit()
+
+
+def _seed_mixture_templates(conn: sqlite3.Connection):
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM mixture_templates")
+    if cur.fetchone()[0] == 0:
+        default_templates = [
+            # BWC - Colorant Pastes Series (Masstone, letdown tints, undertone with black)
+            ("BWC", 1, "Masstone (Tam Ton / Ana Renk)", 7.0, 0.07, 0.0, 0.0, 0.93, 1, "Doygun ana ton ve pik absorpsiyonu (K)"),
+            ("BWC", 2, "Koyu Açma (Deep Tint)", 5.0, 0.05, 0.0, 0.0, 0.95, 0, "Yüksek konsantrasyon açma davranışı"),
+            ("BWC", 3, "Orta Açma (Medium Tint)", 2.0, 0.02, 0.0, 0.0, 0.98, 0, "Standart ara ton kalibrasyonu"),
+            ("BWC", 4, "Açık Açma (Light Tint)", 0.5, 0.005, 0.0, 0.0, 0.995, 0, "Pastel ton ve renklendirme gücü tespiti"),
+            ("BWC", 5, "Pastel Açma (Pastel Tint)", 0.1, 0.001, 0.0, 0.0, 0.999, 0, "Düşük konsantrasyon doğrusallık kontrolü"),
+            ("BWC", 6, "Undertone & Opaklık (Siyah Karışımı)", 7.0, 0.0693, 0.0, 0.0007, 0.93, 0, "Siyah zemin önünde iç saçılma (S) ve şeffaflık"),
+
+            # BW - Bootstrap Calibration Series (White base masstone and letdown greys)
+            ("BW", 1, "Masstone (Saf Beyaz Referans)", 0.0, 0.0, 0.0, 0.0, 1.0, 1, "Saf beyaz baz yansıma referansı"),
+            ("BW", 2, "Siyah Kademesi 1 (Hafif Gri)", 0.15, 0.0, 0.0, 0.0015, 0.9985, 0, "Hassas absorpsiyon başlangıç eşiği"),
+            ("BW", 3, "Siyah Kademesi 2 (Açık Gri)", 0.45, 0.0, 0.0, 0.0045, 0.9955, 0, "Açık gri skala referansı"),
+            ("BW", 4, "Siyah Kademesi 3 (Orta Gri)", 1.18, 0.0, 0.0, 0.0118, 0.9882, 0, "Orta gri skala referansı"),
+            ("BW", 5, "Siyah Kademesi 4 (Koyu Gri)", 2.34, 0.0, 0.0, 0.0234, 0.9766, 0, "Koyu gri skala referansı"),
+            ("BW", 6, "Siyah Kademesi 5 (Derin Gri)", 7.0, 0.0, 0.0, 0.07, 0.93, 0, "Doygun siyah absorpsiyon kalibrasyonu"),
+
+            # BWO - Production Bases Series (Base tested with calibrated black paste)
+            ("BWO", 1, "Saf Baz (Örtücülük & Beyazlık)", 0.0, 0.0, 0.0, 0.0, 1.0, 1, "Renksiz baz öz yansıması ve zemin rengi"),
+            ("BWO", 2, "Baz + Siyah Kademesi 1", 0.5, 0.0, 0.0, 0.005, 0.995, 0, "Baz saçılma tespiti için hafif siyah katkısı"),
+            ("BWO", 3, "Baz + Siyah Kademesi 2", 1.0, 0.0, 0.0, 0.01, 0.99, 0, "Baz saçılma tespiti için orta siyah katkısı"),
+            ("BWO", 4, "Baz + Siyah Kademesi 3", 2.5, 0.0, 0.0, 0.025, 0.975, 0, "Baz saçılma tespiti için koyu siyah katkısı"),
+            ("BWO", 5, "Baz + Siyah Kademesi 4", 5.0, 0.0, 0.0, 0.05, 0.95, 0, "Baz saçılma tespiti için yüksek siyah katkısı"),
+        ]
+        cur.executemany("""
+        INSERT INTO mixture_templates (series_type, item_order, name, concentration_pct, colorant_ratio, white_ratio, black_ratio, base_ratio, is_masstone, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, default_templates)
+        conn.commit()
+
+
+def _seed_characterization_sets(conn: sqlite3.Connection):
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM characterization_sets")
+    if cur.fetchone()[0] == 0:
+        base_d = cur.execute("SELECT id FROM bases WHERE code LIKE 'BASE-D%' LIMIT 1").fetchone()
+        base_a = cur.execute("SELECT id FROM bases WHERE code LIKE 'BASE-A%' LIMIT 1").fetchone()
+        pbk7 = cur.execute("SELECT id FROM pastes WHERE code = 'PBk7' LIMIT 1").fetchone()
+
+        base_d_id = base_d[0] if base_d else 4
+        base_a_id = base_a[0] if base_a else 1
+        pbk7_id = pbk7[0] if pbk7 else 5
+
+        cur.execute("""
+        INSERT INTO characterization_sets (
+            code, name, system_mode, default_thickness_um, k1, k2,
+            white_substrate_r, black_substrate_r,
+            clear_base_id, white_component_id, black_paste_id, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "CHASET-MAIN-d8", "Endüstriyel Akrilik CCM Kalibrasyon Seti (d/8° SCI)", "WHITE", 150.0, 0.04, 0.60,
+            json.dumps([0.82] * 31), json.dumps([0.04] * 31),
+            base_d_id, base_a_id, pbk7_id, "ACTIVE"
+        ))
+        conn.commit()
+
