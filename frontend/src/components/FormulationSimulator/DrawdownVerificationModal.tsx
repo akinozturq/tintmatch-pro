@@ -71,8 +71,11 @@ export const DrawdownVerificationModal: React.FC<DrawdownVerificationModalProps>
   React.useEffect(() => {
     if (activeRecipe && isOpen) {
       const initial: Record<string | number, number> = {};
+      const isRecipeBatchSizeMatch = activeRecipe.batch_size_g === batchSizeG;
       activeRecipe.matched_pastes.forEach((p) => {
-        const grams = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
+        const grams = (isRecipeBatchSizeMatch && p.amount_g !== undefined)
+          ? p.amount_g
+          : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
         initial[p.id] = grams;
       });
       setActualDispensed(initial);
@@ -253,14 +256,29 @@ export const DrawdownVerificationModal: React.FC<DrawdownVerificationModalProps>
 
         {/* Step 1: Dispensed Pastes (Tartılan Miktarlar) */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs font-mono">
-            <span className="font-semibold text-[var(--text-secondary)] uppercase">
-              1. Tartılan Fiziksel Miktarlar ({scaleResolutionG} g Hassasiyet)
-            </span>
-            <span className="text-[11px] text-[var(--text-muted)]">
-              Baz: {activeRecipe.base_amount_g ? `${activeRecipe.base_amount_g.toFixed(2)} g` : '-'}
-            </span>
-          </div>
+          {(() => {
+            const isMatch = activeRecipe.batch_size_g === batchSizeG;
+            const totalPasteG = activeRecipe.matched_pastes.reduce((acc, p) => {
+              const g = (isMatch && p.amount_g !== undefined)
+                ? p.amount_g
+                : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
+              return acc + g;
+            }, 0);
+            const scaledBaseG = (isMatch && activeRecipe.base_amount_g !== undefined)
+              ? activeRecipe.base_amount_g
+              : Math.max(0, parseFloat((batchSizeG - totalPasteG).toFixed(2)));
+
+            return (
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="font-semibold text-[var(--text-secondary)] uppercase">
+                  1. Tartılan Fiziksel Miktarlar ({scaleResolutionG} g Hassasiyet)
+                </span>
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  Baz: {scaledBaseG.toFixed(2)} g ({batchSizeG} g Parti)
+                </span>
+              </div>
+            );
+          })()}
           <div className="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
             <table className="w-full text-left text-xs font-mono">
               <thead className="bg-[var(--surface-1)] text-[var(--text-muted)] text-[10px] uppercase border-b border-[var(--border)]">
@@ -273,7 +291,11 @@ export const DrawdownVerificationModal: React.FC<DrawdownVerificationModalProps>
               </thead>
               <tbody className="divide-y divide-[var(--border)] bg-[var(--surface-0)]">
                 {activeRecipe.matched_pastes.map((p) => {
-                  const targetGrams = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
+                  const isMatch = activeRecipe.batch_size_g === batchSizeG;
+                  const targetGrams = (isMatch && p.amount_g !== undefined)
+                    ? p.amount_g
+                    : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
+                  const formatConc = p.concentration < 0.1 ? p.concentration.toFixed(3) : p.concentration.toFixed(2);
                   return (
                     <tr key={p.id}>
                       <td className="p-2 flex items-center gap-1.5 font-medium">
@@ -283,7 +305,7 @@ export const DrawdownVerificationModal: React.FC<DrawdownVerificationModalProps>
                         />
                         <span>{p.name}</span>
                       </td>
-                      <td className="p-2 text-center font-mono">%{p.concentration.toFixed(2)}</td>
+                      <td className="p-2 text-center font-mono">%{formatConc}</td>
                       <td className="p-2 text-right font-mono text-[var(--text-secondary)]">
                         {targetGrams.toFixed(2)} g
                       </td>

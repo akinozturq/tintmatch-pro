@@ -361,12 +361,17 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
             : 'En İyi Renk'
         }`,
         base_id: selectedBaseId,
-        pastes: currentActiveRecipe.matched_pastes.map((p) => ({
-          paste_id: Number(p.id),
-          id: Number(p.id),
-          concentration: p.concentration,
-          amount_g: p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2)),
-        })),
+        pastes: currentActiveRecipe.matched_pastes.map((p) => {
+          const isMatch = currentActiveRecipe.batch_size_g === batchSizeG;
+          return {
+            paste_id: Number(p.id),
+            id: Number(p.id),
+            concentration: p.concentration,
+            amount_g: (isMatch && p.amount_g !== undefined)
+              ? p.amount_g
+              : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2)),
+          };
+        }),
         predicted_reflectance: simulation.reflectance,
         lab: simulation.lab,
         hex_color: simulation.hex,
@@ -759,20 +764,33 @@ export const FormulationSimulator: React.FC<SimulatorProps> = ({
           )}
 
           {/* REÇETE GÜVEN SKORU KARTI */}
-          {currentActiveRecipe && currentActiveRecipe.recipe_confidence && (
-            <RecipeConfidenceCard
-              confidence={currentActiveRecipe.recipe_confidence}
-              batchSizeG={batchSizeG}
-              scaleResolutionG={scaleResolutionG}
-              baseAmountG={currentActiveRecipe.base_amount_g}
-              totalColorantG={currentActiveRecipe.matched_pastes?.reduce(
-                (acc, p) => acc + (p.amount_g ?? (p.concentration / 100) * batchSizeG),
-                0
-              )}
-              extrapolationWarning={currentActiveRecipe.extrapolation_warning}
-              extrapolationNotes={currentActiveRecipe.extrapolation_notes}
-            />
-          )}
+          {currentActiveRecipe && currentActiveRecipe.recipe_confidence && (() => {
+            const isMatch = currentActiveRecipe.batch_size_g === batchSizeG;
+            const curPastes = currentActiveRecipe.matched_pastes || [];
+            const totalColG = curPastes.reduce(
+              (acc, p) => acc + (
+                (isMatch && p.amount_g !== undefined)
+                  ? p.amount_g
+                  : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2))
+              ),
+              0
+            );
+            const curBaseG = (isMatch && currentActiveRecipe.base_amount_g !== undefined)
+              ? currentActiveRecipe.base_amount_g
+              : Math.max(0, parseFloat((batchSizeG - totalColG).toFixed(2)));
+
+            return (
+              <RecipeConfidenceCard
+                confidence={currentActiveRecipe.recipe_confidence}
+                batchSizeG={batchSizeG}
+                scaleResolutionG={scaleResolutionG}
+                baseAmountG={curBaseG}
+                totalColorantG={parseFloat(totalColG.toFixed(2))}
+                extrapolationWarning={currentActiveRecipe.extrapolation_warning}
+                extrapolationNotes={currentActiveRecipe.extrapolation_notes}
+              />
+            );
+          })()}
 
           {/* ÜRETİLEBİLİR FİZİKSEL TARTIM TABLOSU (0.01g HASSASİYET) */}
           {currentActiveRecipe && (

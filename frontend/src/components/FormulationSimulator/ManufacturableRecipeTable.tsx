@@ -34,33 +34,50 @@ export const ManufacturableRecipeTable: React.FC<ManufacturableRecipeTableProps>
   if (!activeRecipe) return null;
 
   const pastes = activeRecipe.matched_pastes;
-  const totalPasteG = pastes.reduce((acc, p) => {
-    const g = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
-    return acc + g;
-  }, 0);
+  const totalColorantConc = pastes.reduce((acc, p) => acc + (p.concentration || 0), 0);
+  const baseConcentration = Math.max(0, 100 - totalColorantConc);
 
-  const baseG = activeRecipe.base_amount_g ?? Math.max(0, parseFloat((batchSizeG - totalPasteG).toFixed(2)));
-
-  // Running cumulative scale weight targets
-  let runningScaleTotal = baseG;
-  const pastesWithCumulative = pastes.map((p) => {
-    const amountG = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
-    runningScaleTotal = parseFloat((runningScaleTotal + amountG).toFixed(2));
+  // Dynamically calculate grams for the current batchSizeG
+  const isRecipeBatchSizeMatch = activeRecipe.batch_size_g === batchSizeG;
+  const pastesWithAmounts = pastes.map((p) => {
+    const amountG = (isRecipeBatchSizeMatch && p.amount_g !== undefined)
+      ? p.amount_g
+      : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
     return {
       ...p,
       amountG,
+    };
+  });
+
+  const totalPasteG = parseFloat(pastesWithAmounts.reduce((acc, p) => acc + p.amountG, 0).toFixed(2));
+  const baseG = (isRecipeBatchSizeMatch && activeRecipe.base_amount_g !== undefined)
+    ? activeRecipe.base_amount_g
+    : Math.max(0, parseFloat((batchSizeG - totalPasteG).toFixed(2)));
+
+  // Running cumulative scale weight targets
+  let runningScaleTotal = baseG;
+  const pastesWithCumulative = pastesWithAmounts.map((p) => {
+    runningScaleTotal = parseFloat((runningScaleTotal + p.amountG).toFixed(2));
+    return {
+      ...p,
       cumulativeG: runningScaleTotal,
     };
   });
 
+  const formatConcentration = (conc: number) => {
+    if (conc < 0.01) return conc.toFixed(3);
+    if (conc < 0.1) return conc.toFixed(3);
+    return conc.toFixed(2);
+  };
+
   const handleCopy = () => {
     let text = `TINTMATCH PRO - ÜRETİM REÇETESİ\n`;
     text += `Parti Boyutu: ${batchSizeG} g (Terazi Hassasiyeti: ${scaleResolutionG} g)\n`;
-    text += `Baz: ${activeBase.name} (${activeBase.code}) -> ${baseG.toFixed(2)} g\n`;
+    text += `Baz: ${activeBase.name} (${activeBase.code}) -> ${baseG.toFixed(2)} g (%${baseConcentration.toFixed(2)})\n`;
     pastesWithCumulative.forEach((p) => {
-      text += `Pasta: ${p.name} (%${p.concentration.toFixed(2)}) -> Net: ${p.amountG.toFixed(2)} g | Kümülatif: ${p.cumulativeG.toFixed(2)} g\n`;
+      text += `Pasta: ${p.name} (%${formatConcentration(p.concentration)}) -> Net: ${p.amountG.toFixed(2)} g | Kümülatif: ${p.cumulativeG.toFixed(2)} g\n`;
     });
-    text += `Toplam: ${batchSizeG.toFixed(2)} g\n`;
+    text += `Toplam: ${batchSizeG.toFixed(2)} g (%100.00)\n`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -186,8 +203,8 @@ export const ManufacturableRecipeTable: React.FC<ManufacturableRecipeTableProps>
                 <span className="text-[10px] text-[var(--text-muted)] font-mono">({activeBase.code})</span>
               </td>
               <td className="p-2.5 text-[var(--text-secondary)]">Taşıyıcı Baz Boya</td>
-              <td className="p-2.5 text-center text-[var(--text-muted)] font-mono">
-                %{((baseG / batchSizeG) * 100).toFixed(2)}
+              <td className="p-2.5 text-center text-[var(--text-muted)] font-mono font-semibold">
+                %{baseConcentration.toFixed(2)}
               </td>
               <td className="p-2.5 text-right font-black text-sm text-[var(--brand-clay)] font-mono">
                 {baseG.toFixed(2)} g
@@ -219,7 +236,7 @@ export const ManufacturableRecipeTable: React.FC<ManufacturableRecipeTableProps>
                   </td>
                   <td className="p-2.5 text-[var(--text-secondary)]">Renklendirici Pasta</td>
                   <td className="p-2.5 text-center font-semibold text-[var(--accent-text)] font-mono">
-                    %{p.concentration.toFixed(2)}
+                    %{formatConcentration(p.concentration)}
                   </td>
                   <td className="p-2.5 text-right font-black text-sm text-[var(--text-primary)] font-mono">
                     {p.amountG.toFixed(2)} g

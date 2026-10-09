@@ -39,23 +39,40 @@ export const BatchTicketModal: React.FC<BatchTicketModalProps> = ({
   ).padStart(2, '0')}-${String(recipe.recipe_id || Math.floor(1000 + Math.random() * 9000))}`;
 
   const pastes = recipe.matched_pastes;
-  const totalPasteG = pastes.reduce((acc, p) => {
-    const g = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
-    return acc + g;
-  }, 0);
-  const baseG = recipe.base_amount_g ?? Math.max(0, parseFloat((batchSizeG - totalPasteG).toFixed(2)));
+  const totalColorantConc = pastes.reduce((acc, p) => acc + (p.concentration || 0), 0);
+  const baseConcentration = Math.max(0, 100 - totalColorantConc);
 
-  // Calculate cumulative scale targets
-  let runningTotal = baseG;
-  const pasteRowsWithCumulative = pastes.map((p) => {
-    const amount = p.amount_g ?? parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
-    runningTotal = parseFloat((runningTotal + amount).toFixed(2));
+  const isRecipeBatchSizeMatch = recipe.batch_size_g === batchSizeG;
+  const pastesWithAmounts = pastes.map((p) => {
+    const amount = (isRecipeBatchSizeMatch && p.amount_g !== undefined)
+      ? p.amount_g
+      : parseFloat(((p.concentration / 100) * batchSizeG).toFixed(2));
     return {
       ...p,
       amountG: amount,
+    };
+  });
+
+  const totalPasteG = parseFloat(pastesWithAmounts.reduce((acc, p) => acc + p.amountG, 0).toFixed(2));
+  const baseG = (isRecipeBatchSizeMatch && recipe.base_amount_g !== undefined)
+    ? recipe.base_amount_g
+    : Math.max(0, parseFloat((batchSizeG - totalPasteG).toFixed(2)));
+
+  // Calculate cumulative scale targets
+  let runningTotal = baseG;
+  const pasteRowsWithCumulative = pastesWithAmounts.map((p) => {
+    runningTotal = parseFloat((runningTotal + p.amountG).toFixed(2));
+    return {
+      ...p,
       cumulativeG: runningTotal,
     };
   });
+
+  const formatConcentration = (conc: number) => {
+    if (conc < 0.01) return conc.toFixed(3);
+    if (conc < 0.1) return conc.toFixed(3);
+    return conc.toFixed(2);
+  };
 
   const handlePrint = () => {
     window.print();
@@ -176,8 +193,8 @@ export const BatchTicketModal: React.FC<BatchTicketModalProps> = ({
                     <span className="font-bold">{base.name}</span>{' '}
                     <span className="text-gray-500">({base.code}) - Taşıyıcı Baz</span>
                   </td>
-                  <td className="p-2 border-r border-gray-300 text-center">
-                    %{((baseG / batchSizeG) * 100).toFixed(2)}
+                  <td className="p-2 border-r border-gray-300 text-center font-bold">
+                    %{baseConcentration.toFixed(2)}
                   </td>
                   <td className="p-2 border-r border-gray-300 text-right font-black text-gray-900">
                     {baseG.toFixed(2)}
@@ -208,7 +225,7 @@ export const BatchTicketModal: React.FC<BatchTicketModalProps> = ({
                       </div>
                     </td>
                     <td className="p-2 border-r border-gray-300 text-center">
-                      %{p.concentration.toFixed(2)}
+                      %{formatConcentration(p.concentration)}
                     </td>
                     <td className="p-2 border-r border-gray-300 text-right font-black">
                       {p.amountG.toFixed(2)}
